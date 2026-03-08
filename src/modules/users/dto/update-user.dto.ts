@@ -1,36 +1,9 @@
-import {
-  IsEmail,
-  IsEnum,
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-} from 'class-validator';
-import { UserType } from '../entities/user.entity';
+import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { IsOptional, IsString } from 'class-validator';
+import { CreateUserDto } from './create-user.dto';
 
-export class UpdateUserDto {
-  @IsOptional()
-  @IsEnum(UserType)
-  type?: UserType;
-
-  @IsOptional()
-  @IsEmail()
-  email?: string;
-
-  @IsOptional()
-  @Matches(/^[+0-9\\s-]{7,20}$/)
-  phone?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(80)
-  firstName?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(80)
-  lastName?: string;
-
+export class UpdateUserDto extends PartialType(CreateUserDto) {
+  @ApiPropertyOptional({ example: 'https://cdn.chamba.com/profile.jpg' })
   @IsOptional()
   @IsString()
   profilePhotoUrl?: string;

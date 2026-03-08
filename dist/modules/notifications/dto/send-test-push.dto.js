@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SendTestPushDto = void 0;
 const class_validator_1 = require("class-validator");
+const swagger_1 = require("@nestjs/swagger");
 class SendTestPushDto {
     token;
     title;
@@ -18,16 +19,19 @@ class SendTestPushDto {
 }
 exports.SendTestPushDto = SendTestPushDto;
 __decorate([
+    (0, swagger_1.ApiProperty)({ example: 'fcm-device-token' }),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsNotEmpty)(),
     __metadata("design:type", String)
 ], SendTestPushDto.prototype, "token", void 0);
 __decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: 'Chamba' }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], SendTestPushDto.prototype, "title", void 0);
 __decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: 'Notificación de prueba desde backend' }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)

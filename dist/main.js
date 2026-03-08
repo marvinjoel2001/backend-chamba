@@ -8,6 +8,7 @@ const config_1 = require("@nestjs/config");
 const core_1 = require("@nestjs/core");
 const connect_redis_1 = require("connect-redis");
 const express_session_1 = __importDefault(require("express-session"));
+const swagger_1 = require("@nestjs/swagger");
 const app_module_1 = require("./app.module");
 const redis_constants_1 = require("./infrastructure/redis/redis.constants");
 async function bootstrap() {
@@ -23,6 +24,13 @@ async function bootstrap() {
         transform: true,
         forbidNonWhitelisted: true,
     }));
+    const swaggerConfig = new swagger_1.DocumentBuilder()
+        .setTitle('Chamba Backend API')
+        .setDescription('Documentación de endpoints HTTP de Chamba')
+        .setVersion('1.0')
+        .build();
+    const swaggerDocument = swagger_1.SwaggerModule.createDocument(app, swaggerConfig);
+    swagger_1.SwaggerModule.setup('api/docs', app, swaggerDocument);
     app.use((0, express_session_1.default)({
         store: new connect_redis_1.RedisStore({
             client: redisClient,

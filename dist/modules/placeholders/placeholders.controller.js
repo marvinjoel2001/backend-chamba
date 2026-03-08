@@ -11,7 +11,27 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PlaceholdersController = void 0;
 const common_1 = require("@nestjs/common");
+const swagger_1 = require("@nestjs/swagger");
 const placeholders_service_1 = require("./placeholders.service");
+class PlannedApiAreaDto {
+    area;
+    status;
+    notes;
+}
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: 'auth' }),
+    __metadata("design:type", String)
+], PlannedApiAreaDto.prototype, "area", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: 'pending' }),
+    __metadata("design:type", String)
+], PlannedApiAreaDto.prototype, "status", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        example: 'Firebase Auth OTP with phone number onboarding for workers and clients.',
+    }),
+    __metadata("design:type", String)
+], PlannedApiAreaDto.prototype, "notes", void 0);
 let PlaceholdersController = class PlaceholdersController {
     placeholdersService;
     constructor(placeholdersService) {
@@ -23,12 +43,15 @@ let PlaceholdersController = class PlaceholdersController {
 };
 exports.PlaceholdersController = PlaceholdersController;
 __decorate([
+    (0, swagger_1.ApiOperation)({ summary: 'Listar áreas API planificadas' }),
+    (0, swagger_1.ApiOkResponse)({ type: PlannedApiAreaDto, isArray: true }),
     (0, common_1.Get)('planned-apis'),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], PlaceholdersController.prototype, "listPlannedApiAreas", null);
 exports.PlaceholdersController = PlaceholdersController = __decorate([
+    (0, swagger_1.ApiTags)('Placeholders'),
     (0, common_1.Controller)('placeholders'),
     __metadata("design:paramtypes", [placeholders_service_1.PlaceholdersService])
 ], PlaceholdersController);

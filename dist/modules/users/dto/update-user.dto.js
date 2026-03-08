@@ -10,45 +10,15 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdateUserDto = void 0;
+const swagger_1 = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
-const user_entity_1 = require("../entities/user.entity");
-class UpdateUserDto {
-    type;
-    email;
-    phone;
-    firstName;
-    lastName;
+const create_user_dto_1 = require("./create-user.dto");
+class UpdateUserDto extends (0, swagger_1.PartialType)(create_user_dto_1.CreateUserDto) {
     profilePhotoUrl;
 }
 exports.UpdateUserDto = UpdateUserDto;
 __decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsEnum)(user_entity_1.UserType),
-    __metadata("design:type", String)
-], UpdateUserDto.prototype, "type", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsEmail)(),
-    __metadata("design:type", String)
-], UpdateUserDto.prototype, "email", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.Matches)(/^[+0-9\\s-]{7,20}$/),
-    __metadata("design:type", String)
-], UpdateUserDto.prototype, "phone", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.MaxLength)(80),
-    __metadata("design:type", String)
-], UpdateUserDto.prototype, "firstName", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.MaxLength)(80),
-    __metadata("design:type", String)
-], UpdateUserDto.prototype, "lastName", void 0);
-__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: 'https://cdn.chamba.com/profile.jpg' }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)

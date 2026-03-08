@@ -14,8 +14,40 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotificationsController = void 0;
 const common_1 = require("@nestjs/common");
+const swagger_1 = require("@nestjs/swagger");
 const send_test_push_dto_1 = require("./dto/send-test-push.dto");
 const notifications_service_1 = require("./notifications.service");
+class NotificationsStatusResponseDto {
+    provider;
+    enabled;
+    note;
+}
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: 'firebase-fcm' }),
+    __metadata("design:type", String)
+], NotificationsStatusResponseDto.prototype, "provider", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: false }),
+    __metadata("design:type", Boolean)
+], NotificationsStatusResponseDto.prototype, "enabled", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        example: 'FCM wiring listo. Completa FIREBASE_* para envios reales.',
+    }),
+    __metadata("design:type", String)
+], NotificationsStatusResponseDto.prototype, "note", void 0);
+class SendTestPushResponseDto {
+    enabled;
+    messageId;
+}
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: false }),
+    __metadata("design:type", Boolean)
+], SendTestPushResponseDto.prototype, "enabled", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: null, nullable: true }),
+    __metadata("design:type", Object)
+], SendTestPushResponseDto.prototype, "messageId", void 0);
 let NotificationsController = class NotificationsController {
     notificationsService;
     constructor(notificationsService) {
@@ -34,12 +66,17 @@ let NotificationsController = class NotificationsController {
 };
 exports.NotificationsController = NotificationsController;
 __decorate([
+    (0, swagger_1.ApiOperation)({ summary: 'Verificar estado de integración FCM' }),
+    (0, swagger_1.ApiOkResponse)({ type: NotificationsStatusResponseDto }),
     (0, common_1.Get)('status'),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], NotificationsController.prototype, "status", null);
 __decorate([
+    (0, swagger_1.ApiOperation)({ summary: 'Enviar push de prueba por token FCM' }),
+    (0, swagger_1.ApiBody)({ type: send_test_push_dto_1.SendTestPushDto }),
+    (0, swagger_1.ApiOkResponse)({ type: SendTestPushResponseDto }),
     (0, common_1.Post)('test-push'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -47,6 +84,7 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], NotificationsController.prototype, "sendTestPush", null);
 exports.NotificationsController = NotificationsController = __decorate([
+    (0, swagger_1.ApiTags)('Notifications'),
     (0, common_1.Controller)('notifications'),
     __metadata("design:paramtypes", [notifications_service_1.NotificationsService])
 ], NotificationsController);

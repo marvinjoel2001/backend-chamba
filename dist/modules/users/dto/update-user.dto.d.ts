@@ -1,9 +1,6 @@
-import { UserType } from '../entities/user.entity';
-export declare class UpdateUserDto {
-    type?: UserType;
-    email?: string;
-    phone?: string;
-    firstName?: string;
-    lastName?: string;
+import { CreateUserDto } from './create-user.dto';
+declare const UpdateUserDto_base: import("@nestjs/common").Type<Partial<CreateUserDto>>;
+export declare class UpdateUserDto extends UpdateUserDto_base {
     profilePhotoUrl?: string;
 }
+export {};
