@@ -16,6 +16,7 @@ const redis_module_1 = require("./infrastructure/redis/redis.module");
 const storage_module_1 = require("./infrastructure/storage/storage.module");
 const health_module_1 = require("./modules/health/health.module");
 const notifications_module_1 = require("./modules/notifications/notifications.module");
+const mobile_module_1 = require("./modules/mobile/mobile.module");
 const placeholders_module_1 = require("./modules/placeholders/placeholders.module");
 const queues_module_1 = require("./modules/queues/queues.module");
 const realtime_module_1 = require("./modules/realtime/realtime.module");
@@ -44,6 +45,7 @@ exports.AppModule = AppModule = __decorate([
             realtime_module_1.RealtimeModule,
             queues_module_1.QueuesModule,
             notifications_module_1.NotificationsModule,
+            mobile_module_1.MobileModule,
             placeholders_module_1.PlaceholdersModule,
         ],
     })
