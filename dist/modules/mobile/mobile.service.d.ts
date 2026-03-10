@@ -16,6 +16,24 @@ export declare class MobileService implements OnModuleInit {
     private readonly dataSource;
     constructor(dataSource: DataSource);
     onModuleInit(): Promise<void>;
+    register(input: {
+        type?: string;
+        email: string;
+        phone?: string;
+        firstName: string;
+        lastName?: string;
+        password: string;
+    }): Promise<{
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+        };
+    }>;
     login(identifier: string, password: string): Promise<{
         user: {
             id: any;

@@ -14,6 +14,25 @@ const parseNumber = (value?: string): number | undefined => {
 export class MobileController {
   constructor(private readonly mobileService: MobileService) {}
 
+  @Post('auth/register')
+  register(
+    @Body('type') type: string,
+    @Body('email') email: string,
+    @Body('phone') phone: string | undefined,
+    @Body('firstName') firstName: string,
+    @Body('lastName') lastName: string | undefined,
+    @Body('password') password: string,
+  ) {
+    return this.mobileService.register({
+      type,
+      email,
+      phone,
+      firstName,
+      lastName,
+      password,
+    });
+  }
+
   @Post('auth/login')
   login(
     @Body('identifier') identifier: string,

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
   OnModuleInit,
@@ -28,6 +29,93 @@ export class MobileService implements OnModuleInit {
     await this.ensureSchema();
     await this.seedData();
   }
+
+  async register(input: {
+    type?: string;
+    email: string;
+    phone?: string;
+    firstName: string;
+    lastName?: string;
+    password: string;
+  }) {
+    const type = (input.type ?? 'client').toLowerCase().trim();
+    if (type !== 'client' && type !== 'worker') {
+      throw new BadRequestException('type must be client or worker');
+    }
+
+    const email = input.email?.trim().toLowerCase();
+    if (!email) {
+      throw new BadRequestException('email is required');
+    }
+
+    const firstName = input.firstName?.trim();
+    if (!firstName) {
+      throw new BadRequestException('firstName is required');
+    }
+
+    const password = input.password?.trim();
+    if (!password || password.length < 4) {
+      throw new BadRequestException('password must be at least 4 characters');
+    }
+
+    const phone = input.phone?.trim() || null;
+    const lastName = input.lastName?.trim() || null;
+
+    return this.dataSource.transaction(async (manager) => {
+      const existing = await manager.query<any[]>(
+        `
+        SELECT id
+        FROM users
+        WHERE LOWER(email) = LOWER($1)
+           OR ($2::text IS NOT NULL AND phone = $2)
+        LIMIT 1
+        `,
+        [email, phone],
+      );
+
+      if (existing[0]) {
+        throw new ConflictException('El correo o telefono ya esta registrado');
+      }
+
+      const createdRows = await manager.query<any[]>(
+        `
+        INSERT INTO users (
+          type,
+          email,
+          phone,
+          first_name,
+          last_name,
+          is_available
+        )
+        VALUES ($1, $2, $3, $4, $5, false)
+        RETURNING id, type, first_name, last_name, email, phone, profile_photo_url
+        `,
+        [type, email, phone, firstName, lastName],
+      );
+
+      const created = createdRows[0];
+      await manager.query(
+        `
+        INSERT INTO auth_credentials (user_id, password)
+        VALUES ($1, $2)
+        `,
+        [created.id, password],
+      );
+
+      return {
+        user: {
+          id: created.id,
+          type: created.type,
+          firstName: created.first_name,
+          lastName: created.last_name ?? null,
+          email: created.email,
+          phone: created.phone ?? null,
+          profilePhotoUrl: created.profile_photo_url ?? null,
+        },
+      };
+    });
+  }
+
   async login(identifier: string, password: string) {
     if (!identifier?.trim() || !password?.trim()) {
       throw new BadRequestException('identifier and password are required');

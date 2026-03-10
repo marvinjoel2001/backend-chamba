@@ -2,6 +2,17 @@ import { MobileService } from './mobile.service';
 export declare class MobileController {
     private readonly mobileService;
     constructor(mobileService: MobileService);
+    register(type: string, email: string, phone: string | undefined, firstName: string, lastName: string | undefined, password: string): Promise<{
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+        };
+    }>;
     login(identifier: string, password: string): Promise<{
         user: {
             id: any;

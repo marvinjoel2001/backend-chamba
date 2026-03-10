@@ -27,6 +27,16 @@ let MobileController = class MobileController {
     constructor(mobileService) {
         this.mobileService = mobileService;
     }
+    register(type, email, phone, firstName, lastName, password) {
+        return this.mobileService.register({
+            type,
+            email,
+            phone,
+            firstName,
+            lastName,
+            password,
+        });
+    }
     login(identifier, password) {
         return this.mobileService.login(identifier, password);
     }
@@ -110,6 +120,18 @@ let MobileController = class MobileController {
     }
 };
 exports.MobileController = MobileController;
+__decorate([
+    (0, common_1.Post)('auth/register'),
+    __param(0, (0, common_1.Body)('type')),
+    __param(1, (0, common_1.Body)('email')),
+    __param(2, (0, common_1.Body)('phone')),
+    __param(3, (0, common_1.Body)('firstName')),
+    __param(4, (0, common_1.Body)('lastName')),
+    __param(5, (0, common_1.Body)('password')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object, String, Object, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "register", null);
 __decorate([
     (0, common_1.Post)('auth/login'),
     __param(0, (0, common_1.Body)('identifier')),
