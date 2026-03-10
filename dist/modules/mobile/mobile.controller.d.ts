@@ -33,6 +33,7 @@ export declare class MobileController {
             email: any;
             phone: any;
             profilePhotoUrl: any;
+            profilePhotoPublicId: any;
             isAvailable: any;
         };
         categories: string[];
@@ -63,7 +64,7 @@ export declare class MobileController {
             skills: any;
         }[];
     }>;
-    createRequest(clientUserId: string, title: string, description: string, category: string, budget: number, priceType: string, address: string, latitude: number, longitude: number, scheduledAt?: string): Promise<{
+    createRequest(clientUserId: string, title: string, description: string, category: string, budget: number, priceType: string, address: string, latitude: number, longitude: number, scheduledAt?: string, photosBase64?: string[]): Promise<{
         request: {
             id: any;
             status: any;
@@ -71,11 +72,51 @@ export declare class MobileController {
             budget: number;
             address: any;
             createdAt: any;
+            photos: string[];
         };
         notifiedWorkers: number;
     }>;
+    uploadProfilePhoto(userId: string, imageBase64: string): Promise<{
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+            profilePhotoPublicId: any;
+            isAvailable: any;
+        };
+    }>;
+    removeProfilePhoto(userId: string): Promise<{
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+            profilePhotoPublicId: any;
+            isAvailable: any;
+        };
+    }>;
+    deleteRequestPhoto(requestPhotoId: string, clientUserId: string): Promise<{
+        deleted: boolean;
+        requestPhotoId: string;
+        requestId: any;
+    }>;
+    upsertPushToken(userId: string, token: string, platform?: string): Promise<{
+        pushToken: any;
+    }>;
     getRequestStatus(requestId?: string, clientUserId?: string): Promise<{
         request: {
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
             id: any;
             clientUserId: any;
             title: any;
@@ -87,6 +128,11 @@ export declare class MobileController {
             status: any;
             createdAt: any;
         } | {
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
             id: any;
             client_user_id: any;
             title: any;
@@ -116,6 +162,11 @@ export declare class MobileController {
     }>;
     getOffers(requestId?: string, clientUserId?: string): Promise<{
         request: {
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
             id: any;
             clientUserId: any;
             title: any;
@@ -127,6 +178,11 @@ export declare class MobileController {
             status: any;
             createdAt: any;
         } | {
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
             id: any;
             client_user_id: any;
             title: any;
@@ -167,7 +223,7 @@ export declare class MobileController {
             workRadiusKm: number;
             skills: any[];
             bio: string;
-            gallery: string[];
+            gallery: any[];
         };
         reviews: {
             stars: number;
@@ -266,6 +322,7 @@ export declare class MobileController {
             email: any;
             phone: any;
             profilePhotoUrl: any;
+            profilePhotoPublicId: any;
             isAvailable: any;
         };
         available: any;

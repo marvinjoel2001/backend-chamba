@@ -1,5 +1,7 @@
 import { OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { StorageService } from '../../infrastructure/storage/storage.service';
+import { NotificationsService } from '../notifications/notifications.service';
 type CreateRequestInput = {
     clientUserId: string;
     title: string;
@@ -11,10 +13,13 @@ type CreateRequestInput = {
     latitude: number;
     longitude: number;
     scheduledAt?: string;
+    photosBase64?: string[];
 };
 export declare class MobileService implements OnModuleInit {
     private readonly dataSource;
-    constructor(dataSource: DataSource);
+    private readonly storageService;
+    private readonly notificationsService;
+    constructor(dataSource: DataSource, storageService: StorageService, notificationsService: NotificationsService);
     onModuleInit(): Promise<void>;
     register(input: {
         type?: string;
@@ -59,6 +64,7 @@ export declare class MobileService implements OnModuleInit {
             email: any;
             phone: any;
             profilePhotoUrl: any;
+            profilePhotoPublicId: any;
             isAvailable: any;
         };
         categories: string[];
@@ -97,14 +103,64 @@ export declare class MobileService implements OnModuleInit {
             budget: number;
             address: any;
             createdAt: any;
+            photos: string[];
         };
         notifiedWorkers: number;
+    }>;
+    uploadProfilePhoto(params: {
+        userId: string;
+        imageBase64: string;
+    }): Promise<{
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+            profilePhotoPublicId: any;
+            isAvailable: any;
+        };
+    }>;
+    removeProfilePhoto(userId: string): Promise<{
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+            profilePhotoPublicId: any;
+            isAvailable: any;
+        };
+    }>;
+    deleteRequestPhoto(params: {
+        requestPhotoId: string;
+        clientUserId: string;
+    }): Promise<{
+        deleted: boolean;
+        requestPhotoId: string;
+        requestId: any;
+    }>;
+    upsertPushToken(params: {
+        userId: string;
+        token: string;
+        platform?: string;
+    }): Promise<{
+        pushToken: any;
     }>;
     getRequestStatus(params: {
         requestId?: string;
         clientUserId?: string;
     }): Promise<{
         request: {
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
             id: any;
             clientUserId: any;
             title: any;
@@ -116,6 +172,11 @@ export declare class MobileService implements OnModuleInit {
             status: any;
             createdAt: any;
         } | {
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
             id: any;
             client_user_id: any;
             title: any;
@@ -148,6 +209,11 @@ export declare class MobileService implements OnModuleInit {
         clientUserId?: string;
     }): Promise<{
         request: {
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
             id: any;
             clientUserId: any;
             title: any;
@@ -159,6 +225,11 @@ export declare class MobileService implements OnModuleInit {
             status: any;
             createdAt: any;
         } | {
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
             id: any;
             client_user_id: any;
             title: any;
@@ -199,7 +270,7 @@ export declare class MobileService implements OnModuleInit {
             workRadiusKm: number;
             skills: any[];
             bio: string;
-            gallery: string[];
+            gallery: any[];
         };
         reviews: {
             stars: number;
@@ -310,6 +381,7 @@ export declare class MobileService implements OnModuleInit {
             email: any;
             phone: any;
             profilePhotoUrl: any;
+            profilePhotoPublicId: any;
             isAvailable: any;
         };
         available: any;
@@ -351,6 +423,11 @@ export declare class MobileService implements OnModuleInit {
     private findLatestClientRequest;
     private getRequestById;
     private getUserById;
+    private getUserByIdWithPhotoMeta;
+    private validateBase64Images;
+    private ensureDataUri;
+    private uploadRequestPhotos;
+    private getRequestPhotos;
     private ensureThreadExists;
     private ensureThreadAndInitialMessage;
     private seedOffersForRequest;

@@ -68,6 +68,7 @@ export class MobileController {
     @Body('latitude') latitude: number,
     @Body('longitude') longitude: number,
     @Body('scheduledAt') scheduledAt?: string,
+    @Body('photosBase64') photosBase64?: string[],
   ) {
     return this.mobileService.createRequest({
       clientUserId,
@@ -80,7 +81,38 @@ export class MobileController {
       latitude: Number(latitude),
       longitude: Number(longitude),
       scheduledAt,
+      photosBase64,
     });
+  }
+
+  @Post('mobile/profile/photo')
+  uploadProfilePhoto(
+    @Body('userId') userId: string,
+    @Body('imageBase64') imageBase64: string,
+  ) {
+    return this.mobileService.uploadProfilePhoto({ userId, imageBase64 });
+  }
+
+  @Post('mobile/profile/photo/delete')
+  removeProfilePhoto(@Body('userId') userId: string) {
+    return this.mobileService.removeProfilePhoto(userId);
+  }
+
+  @Post('mobile/requests/photos/delete')
+  deleteRequestPhoto(
+    @Body('requestPhotoId') requestPhotoId: string,
+    @Body('clientUserId') clientUserId: string,
+  ) {
+    return this.mobileService.deleteRequestPhoto({ requestPhotoId, clientUserId });
+  }
+
+  @Post('mobile/push/token')
+  upsertPushToken(
+    @Body('userId') userId: string,
+    @Body('token') token: string,
+    @Body('platform') platform?: string,
+  ) {
+    return this.mobileService.upsertPushToken({ userId, token, platform });
   }
 
   @Get('mobile/request-status')

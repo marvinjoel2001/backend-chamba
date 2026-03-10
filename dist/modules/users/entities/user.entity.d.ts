@@ -14,6 +14,7 @@ export declare class User {
     firstName: string;
     lastName?: string;
     profilePhotoUrl?: string;
+    profilePhotoPublicId?: string;
     currentLocation?: GeoPoint;
     workRadiusKm: number;
     averageRating: number;

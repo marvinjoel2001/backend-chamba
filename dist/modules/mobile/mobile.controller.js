@@ -48,7 +48,7 @@ let MobileController = class MobileController {
             radiusKm: parseNumber(radiusKm),
         });
     }
-    createRequest(clientUserId, title, description, category, budget, priceType, address, latitude, longitude, scheduledAt) {
+    createRequest(clientUserId, title, description, category, budget, priceType, address, latitude, longitude, scheduledAt, photosBase64) {
         return this.mobileService.createRequest({
             clientUserId,
             title,
@@ -60,7 +60,20 @@ let MobileController = class MobileController {
             latitude: Number(latitude),
             longitude: Number(longitude),
             scheduledAt,
+            photosBase64,
         });
+    }
+    uploadProfilePhoto(userId, imageBase64) {
+        return this.mobileService.uploadProfilePhoto({ userId, imageBase64 });
+    }
+    removeProfilePhoto(userId) {
+        return this.mobileService.removeProfilePhoto(userId);
+    }
+    deleteRequestPhoto(requestPhotoId, clientUserId) {
+        return this.mobileService.deleteRequestPhoto({ requestPhotoId, clientUserId });
+    }
+    upsertPushToken(userId, token, platform) {
+        return this.mobileService.upsertPushToken({ userId, token, platform });
     }
     getRequestStatus(requestId, clientUserId) {
         return this.mobileService.getRequestStatus({ requestId, clientUserId });
@@ -162,10 +175,43 @@ __decorate([
     __param(7, (0, common_1.Body)('latitude')),
     __param(8, (0, common_1.Body)('longitude')),
     __param(9, (0, common_1.Body)('scheduledAt')),
+    __param(10, (0, common_1.Body)('photosBase64')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String, Number, String, String, Number, Number, String]),
+    __metadata("design:paramtypes", [String, String, String, String, Number, String, String, Number, Number, String, Array]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "createRequest", null);
+__decorate([
+    (0, common_1.Post)('mobile/profile/photo'),
+    __param(0, (0, common_1.Body)('userId')),
+    __param(1, (0, common_1.Body)('imageBase64')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "uploadProfilePhoto", null);
+__decorate([
+    (0, common_1.Post)('mobile/profile/photo/delete'),
+    __param(0, (0, common_1.Body)('userId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "removeProfilePhoto", null);
+__decorate([
+    (0, common_1.Post)('mobile/requests/photos/delete'),
+    __param(0, (0, common_1.Body)('requestPhotoId')),
+    __param(1, (0, common_1.Body)('clientUserId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "deleteRequestPhoto", null);
+__decorate([
+    (0, common_1.Post)('mobile/push/token'),
+    __param(0, (0, common_1.Body)('userId')),
+    __param(1, (0, common_1.Body)('token')),
+    __param(2, (0, common_1.Body)('platform')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "upsertPushToken", null);
 __decorate([
     (0, common_1.Get)('mobile/request-status'),
     __param(0, (0, common_1.Query)('requestId')),

@@ -1,52 +1,132 @@
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class StorageService {
-  private readonly bucketName: string;
-  private readonly publicUrl?: string;
-  private readonly client: S3Client;
+  private readonly logger = new Logger(StorageService.name);
+  private readonly cloudName: string;
+  private readonly apiKey: string;
+  private readonly apiSecret: string;
+  private readonly enabled: boolean;
 
   constructor(private readonly configService: ConfigService) {
-    const accountId = this.configService.getOrThrow<string>('R2_ACCOUNT_ID');
-    const region = this.configService.get<string>('R2_REGION', 'auto');
+    this.cloudName =
+      this.configService.get<string>('CLOUDINARY_CLOUD_NAME', '')?.trim() || '';
+    this.apiKey =
+      this.configService.get<string>('CLOUDINARY_API_KEY', '')?.trim() || '';
+    this.apiSecret =
+      this.configService.get<string>('CLOUDINARY_API_SECRET', '')?.trim() || '';
+    this.enabled = Boolean(this.cloudName && this.apiKey && this.apiSecret);
 
-    this.bucketName = this.configService.getOrThrow<string>('R2_BUCKET');
-    this.publicUrl = this.configService.get<string>('R2_PUBLIC_URL');
+    if (!this.enabled) {
+      this.logger.warn(
+        'Cloudinary disabled: missing CLOUDINARY_CLOUD_NAME/CLOUDINARY_API_KEY/CLOUDINARY_API_SECRET.',
+      );
+    }
+  }
 
-    this.client = new S3Client({
-      region,
-      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: this.configService.getOrThrow<string>('R2_ACCESS_KEY_ID'),
-        secretAccessKey: this.configService.getOrThrow<string>(
-          'R2_SECRET_ACCESS_KEY',
-        ),
+  async uploadBase64Image(params: {
+    base64Data: string;
+    folder: string;
+  }): Promise<{ url: string; publicId: string }> {
+    this.ensureConfigured();
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signature = this.sign({
+      folder: params.folder,
+      timestamp: String(timestamp),
+    });
+
+    const formData = new FormData();
+    formData.append('file', params.base64Data);
+    formData.append('folder', params.folder);
+    formData.append('timestamp', String(timestamp));
+    formData.append('api_key', this.apiKey);
+    formData.append('signature', signature);
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${this.cloudName}/image/upload`,
+      {
+        method: 'POST',
+        body: formData,
       },
-    });
-  }
+    );
 
-  async uploadBuffer(params: {
-    key: string;
-    body: Buffer;
-    contentType: string;
-  }): Promise<void> {
-    const command = new PutObjectCommand({
-      Bucket: this.bucketName,
-      Key: params.key,
-      Body: params.body,
-      ContentType: params.contentType,
-    });
+    const payload = (await response.json()) as {
+      secure_url?: string;
+      public_id?: string;
+      error?: { message?: string };
+    };
 
-    await this.client.send(command);
-  }
-
-  getPublicFileUrl(key: string): string | null {
-    if (!this.publicUrl) {
-      return null;
+    if (!response.ok || !payload.secure_url || !payload.public_id) {
+      throw new ServiceUnavailableException(
+        payload.error?.message || 'Cloudinary upload failed',
+      );
     }
 
-    return `${this.publicUrl.replace(/\/$/, '')}/${key}`;
+    return {
+      url: payload.secure_url,
+      publicId: payload.public_id,
+    };
+  }
+
+  async deleteImage(publicId?: string | null): Promise<void> {
+    if (!publicId) {
+      return;
+    }
+
+    this.ensureConfigured();
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signature = this.sign({
+      public_id: publicId,
+      timestamp: String(timestamp),
+    });
+
+    const formData = new FormData();
+    formData.append('public_id', publicId);
+    formData.append('timestamp', String(timestamp));
+    formData.append('api_key', this.apiKey);
+    formData.append('signature', signature);
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${this.cloudName}/image/destroy`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+    );
+
+    if (!response.ok) {
+      const text = await response.text();
+      this.logger.warn(`Cloudinary delete failed: ${text}`);
+    }
+  }
+
+  private ensureConfigured(): void {
+    if (this.enabled) {
+      return;
+    }
+
+    throw new ServiceUnavailableException(
+      'Cloudinary is not configured in environment variables.',
+    );
+  }
+
+  private sign(params: Record<string, string>): string {
+    const toSign = Object.entries(params)
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}=${value}`)
+      .join('&');
+
+    return createHash('sha1')
+      .update(`${toSign}${this.apiSecret}`)
+      .digest('hex');
   }
 }

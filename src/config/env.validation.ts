@@ -23,12 +23,16 @@ export const envValidationSchema = Joi.object({
   SESSION_SECRET: Joi.string().min(16).required(),
   SESSION_TTL_SECONDS: Joi.number().default(86400),
 
-  R2_ACCOUNT_ID: Joi.string().required(),
-  R2_ACCESS_KEY_ID: Joi.string().required(),
-  R2_SECRET_ACCESS_KEY: Joi.string().required(),
-  R2_BUCKET: Joi.string().required(),
+  R2_ACCOUNT_ID: Joi.string().allow('').optional(),
+  R2_ACCESS_KEY_ID: Joi.string().allow('').optional(),
+  R2_SECRET_ACCESS_KEY: Joi.string().allow('').optional(),
+  R2_BUCKET: Joi.string().allow('').optional(),
   R2_REGION: Joi.string().default('auto'),
   R2_PUBLIC_URL: Joi.string().allow('').optional(),
+
+  CLOUDINARY_CLOUD_NAME: Joi.string().allow('').optional(),
+  CLOUDINARY_API_KEY: Joi.string().allow('').optional(),
+  CLOUDINARY_API_SECRET: Joi.string().allow('').optional(),
 
   FIREBASE_PROJECT_ID: Joi.string().allow('').optional(),
   FIREBASE_CLIENT_EMAIL: Joi.string().allow('').optional(),

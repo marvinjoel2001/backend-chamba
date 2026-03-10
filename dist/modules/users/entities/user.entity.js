@@ -25,6 +25,7 @@ let User = class User {
     firstName;
     lastName;
     profilePhotoUrl;
+    profilePhotoPublicId;
     currentLocation;
     workRadiusKm;
     averageRating;
@@ -69,6 +70,10 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'profile_photo_url', nullable: true }),
     __metadata("design:type", String)
 ], User.prototype, "profilePhotoUrl", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'profile_photo_public_id', nullable: true }),
+    __metadata("design:type", String)
+], User.prototype, "profilePhotoPublicId", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({
         example: {

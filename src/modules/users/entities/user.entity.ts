@@ -47,6 +47,9 @@ export class User {
   @Column({ name: 'profile_photo_url', nullable: true })
   profilePhotoUrl?: string;
 
+  @Column({ name: 'profile_photo_public_id', nullable: true })
+  profilePhotoPublicId?: string;
+
   @ApiPropertyOptional({
     example: {
       type: 'Point',

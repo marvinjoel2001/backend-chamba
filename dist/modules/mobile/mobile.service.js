@@ -12,10 +12,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MobileService = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("typeorm");
+const storage_service_1 = require("../../infrastructure/storage/storage.service");
+const notifications_service_1 = require("../notifications/notifications.service");
 let MobileService = class MobileService {
     dataSource;
-    constructor(dataSource) {
+    storageService;
+    notificationsService;
+    constructor(dataSource, storageService, notificationsService) {
         this.dataSource = dataSource;
+        this.storageService = storageService;
+        this.notificationsService = notificationsService;
     }
     async onModuleInit() {
         await this.ensureSchema();
@@ -191,6 +197,7 @@ let MobileService = class MobileService {
         if (!Number.isFinite(input.latitude) || !Number.isFinite(input.longitude)) {
             throw new common_1.BadRequestException('latitude and longitude are required');
         }
+        const photos = this.validateBase64Images(input.photosBase64, 5);
         await this.getUserById(input.clientUserId);
         const rows = await this.dataSource.query(`
       INSERT INTO job_requests (
@@ -231,6 +238,7 @@ let MobileService = class MobileService {
             input.address,
         ]);
         const created = rows[0];
+        const uploadedPhotos = await this.uploadRequestPhotos(created.id, photos);
         const notifiedWorkers = await this.seedOffersForRequest(created.id, input.budget);
         return {
             request: {
@@ -240,12 +248,104 @@ let MobileService = class MobileService {
                 budget: Number(created.budget),
                 address: created.address,
                 createdAt: created.created_at,
+                photos: uploadedPhotos,
             },
             notifiedWorkers,
         };
     }
+    async uploadProfilePhoto(params) {
+        const user = await this.getUserByIdWithPhotoMeta(params.userId);
+        const payload = params.imageBase64?.trim();
+        if (!payload) {
+            throw new common_1.BadRequestException('imageBase64 is required');
+        }
+        this.ensureDataUri(payload);
+        const uploaded = await this.storageService.uploadBase64Image({
+            base64Data: payload,
+            folder: 'chamba/profile',
+        });
+        await this.dataSource.query(`
+      UPDATE users
+      SET profile_photo_url = $2,
+          profile_photo_public_id = $3,
+          updated_at = NOW()
+      WHERE id = $1
+      `, [params.userId, uploaded.url, uploaded.publicId]);
+        if (user.profilePhotoPublicId && user.profilePhotoPublicId !== uploaded.publicId) {
+            await this.storageService.deleteImage(user.profilePhotoPublicId);
+        }
+        return {
+            user: await this.getUserById(params.userId),
+        };
+    }
+    async removeProfilePhoto(userId) {
+        const user = await this.getUserByIdWithPhotoMeta(userId);
+        await this.dataSource.query(`
+      UPDATE users
+      SET profile_photo_url = NULL,
+          profile_photo_public_id = NULL,
+          updated_at = NOW()
+      WHERE id = $1
+      `, [userId]);
+        if (user.profilePhotoPublicId) {
+            await this.storageService.deleteImage(user.profilePhotoPublicId);
+        }
+        return {
+            user: await this.getUserById(userId),
+        };
+    }
+    async deleteRequestPhoto(params) {
+        const rows = await this.dataSource.query(`
+      SELECT p.id,
+             p.public_id,
+             p.request_id,
+             jr.client_user_id
+      FROM job_request_photos p
+      JOIN job_requests jr ON jr.id = p.request_id
+      WHERE p.id = $1
+      LIMIT 1
+      `, [params.requestPhotoId]);
+        const photo = rows[0];
+        if (!photo) {
+            throw new common_1.NotFoundException('Request photo not found');
+        }
+        if (photo.client_user_id !== params.clientUserId) {
+            throw new common_1.UnauthorizedException('Only the request owner can delete photos');
+        }
+        await this.dataSource.query(`DELETE FROM job_request_photos WHERE id = $1`, [params.requestPhotoId]);
+        await this.storageService.deleteImage(photo.public_id);
+        return {
+            deleted: true,
+            requestPhotoId: params.requestPhotoId,
+            requestId: photo.request_id,
+        };
+    }
+    async upsertPushToken(params) {
+        if (!params.userId) {
+            throw new common_1.BadRequestException('userId is required');
+        }
+        const token = params.token?.trim();
+        if (!token) {
+            throw new common_1.BadRequestException('token is required');
+        }
+        await this.getUserById(params.userId);
+        const rows = await this.dataSource.query(`
+      INSERT INTO push_tokens (user_id, token, platform, last_seen_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (token)
+      DO UPDATE SET
+        user_id = EXCLUDED.user_id,
+        platform = EXCLUDED.platform,
+        last_seen_at = NOW()
+      RETURNING id, user_id, token, platform, last_seen_at
+      `, [params.userId, token, (params.platform ?? 'unknown').trim().toLowerCase()]);
+        return {
+            pushToken: rows[0],
+        };
+    }
     async getRequestStatus(params) {
         const request = await this.resolveRequest(params);
+        const photos = await this.getRequestPhotos(request.id);
         const metricRows = await this.dataSource.query(`
       SELECT
         COUNT(*)::text AS offers_count,
@@ -280,7 +380,10 @@ let MobileService = class MobileService {
         const metrics = metricRows[0] ?? {};
         const nearestKm = metrics.nearest_worker_km == null ? null : Number(metrics.nearest_worker_km);
         return {
-            request,
+            request: {
+                ...request,
+                photos,
+            },
             metrics: {
                 offersCount: Number(metrics.offers_count ?? 0),
                 acceptedCount: Number(metrics.accepted_count ?? 0),
@@ -299,6 +402,7 @@ let MobileService = class MobileService {
     }
     async getOffers(params) {
         const request = await this.resolveRequest(params);
+        const photos = await this.getRequestPhotos(request.id);
         const rows = await this.dataSource.query(`
       WITH skill_agg AS (
         SELECT ws.user_id, array_agg(ws.skill ORDER BY ws.skill) AS skills
@@ -329,7 +433,10 @@ let MobileService = class MobileService {
       ORDER BY jo.amount ASC, u.average_rating DESC
       `, [request.id]);
         return {
-            request,
+            request: {
+                ...request,
+                photos,
+            },
             offers: rows.map((row) => ({
                 id: row.offer_id,
                 amount: Number(row.amount),
@@ -377,6 +484,15 @@ let MobileService = class MobileService {
       ORDER BY r.created_at DESC
       LIMIT 10
       `, [workerId]);
+        const galleryRows = await this.dataSource.query(`
+      SELECT p.url
+      FROM job_request_photos p
+      JOIN job_offers jo ON jo.request_id = p.request_id
+      WHERE jo.worker_user_id = $1
+        AND jo.status = 'accepted'
+      ORDER BY p.created_at DESC
+      LIMIT 10
+      `, [workerId]);
         return {
             worker: {
                 id: worker.id,
@@ -388,11 +504,7 @@ let MobileService = class MobileService {
                 workRadiusKm: Number(worker.work_radius_km ?? 0),
                 skills: skillRows.map((row) => row.skill),
                 bio: 'Especialista verificado. Puntual, responsable y con experiencia en servicios de hogar.',
-                gallery: [
-                    'https://images.unsplash.com/photo-1506744038136-46273834b3fb',
-                    'https://images.unsplash.com/photo-1513694203232-719a280e022f',
-                    'https://images.unsplash.com/photo-1472224371017-08207f84aaae',
-                ],
+                gallery: galleryRows.map((row) => row.url),
             },
             reviews: reviewRows.map((row) => ({
                 stars: Number(row.stars),
@@ -767,6 +879,7 @@ let MobileService = class MobileService {
         const statements = [
             `CREATE EXTENSION IF NOT EXISTS postgis;`,
             `CREATE EXTENSION IF NOT EXISTS pgcrypto;`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_public_id TEXT NULL;`,
             `
       CREATE TABLE IF NOT EXISTS auth_credentials (
         user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -841,9 +954,30 @@ let MobileService = class MobileService {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       `,
+            `
+      CREATE TABLE IF NOT EXISTS job_request_photos (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        request_id UUID NOT NULL REFERENCES job_requests(id) ON DELETE CASCADE,
+        url TEXT NOT NULL,
+        public_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      `,
+            `
+      CREATE TABLE IF NOT EXISTS push_tokens (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token TEXT NOT NULL UNIQUE,
+        platform TEXT NOT NULL DEFAULT 'unknown',
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      `,
             `CREATE INDEX IF NOT EXISTS idx_job_requests_location ON job_requests USING GIST(location);`,
             `CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_created ON chat_messages(thread_id, created_at DESC);`,
             `CREATE INDEX IF NOT EXISTS idx_job_offers_request ON job_offers(request_id);`,
+            `CREATE INDEX IF NOT EXISTS idx_job_request_photos_request ON job_request_photos(request_id);`,
+            `CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_id);`,
         ];
         for (const statement of statements) {
             await this.dataSource.query(statement);
@@ -1115,6 +1249,7 @@ let MobileService = class MobileService {
              email,
              phone,
              profile_photo_url,
+             profile_photo_public_id,
              is_available
       FROM users
       WHERE id = $1
@@ -1132,8 +1267,61 @@ let MobileService = class MobileService {
             email: row.email,
             phone: row.phone ?? null,
             profilePhotoUrl: row.profile_photo_url ?? null,
+            profilePhotoPublicId: row.profile_photo_public_id ?? null,
             isAvailable: row.is_available,
         };
+    }
+    async getUserByIdWithPhotoMeta(userId) {
+        return this.getUserById(userId);
+    }
+    validateBase64Images(input, limit) {
+        if (!Array.isArray(input)) {
+            return [];
+        }
+        const values = input
+            .map((item) => (typeof item === 'string' ? item.trim() : ''))
+            .filter(Boolean);
+        if (values.length > limit) {
+            throw new common_1.BadRequestException(`Maximum ${limit} images are allowed`);
+        }
+        for (const value of values) {
+            this.ensureDataUri(value);
+        }
+        return values;
+    }
+    ensureDataUri(value) {
+        const pattern = /^data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=\n\r]+$/;
+        if (!pattern.test(value)) {
+            throw new common_1.UnsupportedMediaTypeException('Only base64 image data URI payloads are supported');
+        }
+    }
+    async uploadRequestPhotos(requestId, images) {
+        const uploaded = [];
+        for (const base64Data of images) {
+            const result = await this.storageService.uploadBase64Image({
+                base64Data,
+                folder: 'chamba/requests',
+            });
+            await this.dataSource.query(`
+        INSERT INTO job_request_photos (request_id, url, public_id)
+        VALUES ($1, $2, $3)
+        `, [requestId, result.url, result.publicId]);
+            uploaded.push(result.url);
+        }
+        return uploaded;
+    }
+    async getRequestPhotos(requestId) {
+        const rows = await this.dataSource.query(`
+      SELECT id, url, created_at
+      FROM job_request_photos
+      WHERE request_id = $1
+      ORDER BY created_at ASC
+      `, [requestId]);
+        return rows.map((row) => ({
+            id: row.id,
+            url: row.url,
+            createdAt: row.created_at,
+        }));
     }
     async ensureThreadExists(threadId) {
         const rows = await this.dataSource.query(`SELECT id FROM chat_threads WHERE id = $1 LIMIT 1`, [threadId]);
@@ -1182,12 +1370,32 @@ let MobileService = class MobileService {
                 message: `Hola, puedo comenzar hoy mismo. Oferta inicial Bs ${amount}.`,
             });
         }
+        const workerIds = workers.map((worker) => worker.id).filter(Boolean);
+        if (workerIds.length > 0) {
+            const tokenRows = await this.dataSource.query(`
+        SELECT token
+        FROM push_tokens
+        WHERE user_id = ANY($1::uuid[])
+        `, [workerIds]);
+            const tokens = tokenRows.map((row) => String(row.token ?? '')).filter(Boolean);
+            if (tokens.length > 0) {
+                await this.notificationsService.notifyWorkersForJobWave({
+                    tokens,
+                    jobId: requestId,
+                    category: request.category,
+                    offeredPrice: `Bs ${Math.round(baseBudget)}`,
+                    distanceKm: 'cerca de ti',
+                });
+            }
+        }
         return workers.length;
     }
 };
 exports.MobileService = MobileService;
 exports.MobileService = MobileService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [typeorm_1.DataSource])
+    __metadata("design:paramtypes", [typeorm_1.DataSource,
+        storage_service_1.StorageService,
+        notifications_service_1.NotificationsService])
 ], MobileService);
 //# sourceMappingURL=mobile.service.js.map
