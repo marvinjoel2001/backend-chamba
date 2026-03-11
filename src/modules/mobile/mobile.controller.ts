@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, ParseBoolPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseBoolPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { MobileService } from './mobile.service';
 
 const parseNumber = (value?: string): number | undefined => {
@@ -62,6 +70,16 @@ export class MobileController {
     @Body('title') title: string,
     @Body('description') description: string,
     @Body('category') category: string,
+    @Body('aiCategories')
+    aiCategories:
+      | Array<{
+          id: string;
+          name?: string;
+          nombre?: string;
+          confidence?: number;
+          confianza?: number;
+        }>
+      | undefined,
     @Body('budget') budget: number,
     @Body('priceType') priceType: string,
     @Body('address') address: string,
@@ -75,6 +93,11 @@ export class MobileController {
       title,
       description,
       category,
+      aiCategories: aiCategories?.map((item) => ({
+        id: item.id,
+        name: item.name ?? item.nombre ?? '',
+        confidence: Number(item.confidence ?? item.confianza ?? 0),
+      })),
       budget: Number(budget),
       priceType,
       address,
@@ -82,6 +105,30 @@ export class MobileController {
       longitude: Number(longitude),
       scheduledAt,
       photosBase64,
+    });
+  }
+
+  @Get('mobile/categories')
+  getCategories() {
+    return this.mobileService.listCategories();
+  }
+
+  @Post('mobile/categories')
+  createCategory(
+    @Body('id') id: string | undefined,
+    @Body('name') name: string,
+    @Body('description') description?: string,
+    @Body('icon') icon?: string,
+    @Body('parentId') parentId?: string,
+    @Body('active') active?: boolean,
+  ) {
+    return this.mobileService.createCategory({
+      id,
+      name,
+      description,
+      icon,
+      parentId,
+      active,
     });
   }
 
@@ -103,7 +150,10 @@ export class MobileController {
     @Body('requestPhotoId') requestPhotoId: string,
     @Body('clientUserId') clientUserId: string,
   ) {
-    return this.mobileService.deleteRequestPhoto({ requestPhotoId, clientUserId });
+    return this.mobileService.deleteRequestPhoto({
+      requestPhotoId,
+      clientUserId,
+    });
   }
 
   @Post('mobile/push/token')
@@ -201,9 +251,27 @@ export class MobileController {
     return this.mobileService.setWorkerAvailability(workerUserId, available);
   }
 
+  @Post('mobile/worker/location')
+  updateWorkerLocation(
+    @Body('workerUserId') workerUserId: string,
+    @Body('latitude') latitude: number,
+    @Body('longitude') longitude: number,
+  ) {
+    return this.mobileService.updateWorkerLocation({
+      workerUserId,
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+    });
+  }
+
   @Get('mobile/worker/skills')
   getWorkerSkills(@Query('workerUserId') workerUserId: string) {
     return this.mobileService.getWorkerSkills(workerUserId);
+  }
+
+  @Get('mobile/worker/history')
+  getWorkerHistory(@Query('workerUserId') workerUserId: string) {
+    return this.mobileService.getWorkerHistory(workerUserId);
   }
 
   @Post('mobile/worker/skills')

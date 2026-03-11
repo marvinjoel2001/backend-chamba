@@ -35,6 +35,9 @@ export declare class MobileController {
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
             isAvailable: any;
+            workRadiusKm: number;
+            currentLatitude: number | null;
+            currentLongitude: number | null;
         };
         categories: string[];
         activeRequest: {
@@ -43,6 +46,11 @@ export declare class MobileController {
             title: any;
             description: any;
             category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
             budget: number;
             priceType: any;
             address: any;
@@ -64,17 +72,52 @@ export declare class MobileController {
             skills: any;
         }[];
     }>;
-    createRequest(clientUserId: string, title: string, description: string, category: string, budget: number, priceType: string, address: string, latitude: number, longitude: number, scheduledAt?: string, photosBase64?: string[]): Promise<{
+    createRequest(clientUserId: string, title: string, description: string, category: string, aiCategories: Array<{
+        id: string;
+        name?: string;
+        nombre?: string;
+        confidence?: number;
+        confianza?: number;
+    }> | undefined, budget: number, priceType: string, address: string, latitude: number, longitude: number, scheduledAt?: string, photosBase64?: string[]): Promise<{
         request: {
             id: any;
             status: any;
             title: any;
             budget: number;
             address: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
             createdAt: any;
             photos: string[];
         };
         notifiedWorkers: number;
+    }>;
+    getCategories(): Promise<{
+        categories: {
+            id: any;
+            name: any;
+            description: any;
+            icon: any;
+            parentId: any;
+            active: any;
+            createdAt: any;
+            updatedAt: any;
+        }[];
+    }>;
+    createCategory(id: string | undefined, name: string, description?: string, icon?: string, parentId?: string, active?: boolean): Promise<{
+        category: {
+            id: any;
+            name: any;
+            description: any;
+            icon: any;
+            parentId: any;
+            active: any;
+            createdAt: any;
+            updatedAt: any;
+        };
     }>;
     uploadProfilePhoto(userId: string, imageBase64: string): Promise<{
         user: {
@@ -87,6 +130,9 @@ export declare class MobileController {
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
             isAvailable: any;
+            workRadiusKm: number;
+            currentLatitude: number | null;
+            currentLongitude: number | null;
         };
     }>;
     removeProfilePhoto(userId: string): Promise<{
@@ -100,6 +146,9 @@ export declare class MobileController {
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
             isAvailable: any;
+            workRadiusKm: number;
+            currentLatitude: number | null;
+            currentLongitude: number | null;
         };
     }>;
     deleteRequestPhoto(requestPhotoId: string, clientUserId: string): Promise<{
@@ -122,6 +171,11 @@ export declare class MobileController {
             title: any;
             description: any;
             category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
             budget: number;
             priceType: any;
             address: any;
@@ -138,6 +192,11 @@ export declare class MobileController {
             title: any;
             description: any;
             category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
             budget: number;
             price_type: any;
             address: any;
@@ -172,6 +231,11 @@ export declare class MobileController {
             title: any;
             description: any;
             category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
             budget: number;
             priceType: any;
             address: any;
@@ -188,6 +252,11 @@ export declare class MobileController {
             title: any;
             description: any;
             category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
             budget: number;
             price_type: any;
             address: any;
@@ -324,8 +393,16 @@ export declare class MobileController {
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
             isAvailable: any;
+            workRadiusKm: number;
+            currentLatitude: number | null;
+            currentLongitude: number | null;
         };
         available: any;
+        location: {
+            latitude: number | null;
+            longitude: number | null;
+            workRadiusKm: number;
+        };
         summary: {
             jobsToday: number;
             earningsToday: number;
@@ -337,9 +414,35 @@ export declare class MobileController {
         workerId: any;
         isAvailable: any;
     }>;
+    updateWorkerLocation(workerUserId: string, latitude: number, longitude: number): Promise<{
+        workerId: any;
+        latitude: number;
+        longitude: number;
+    }>;
     getWorkerSkills(workerUserId: string): Promise<{
         workerUserId: string;
         skills: any[];
+    }>;
+    getWorkerHistory(workerUserId: string): Promise<{
+        workerUserId: string;
+        jobs: {
+            offerId: any;
+            requestId: any;
+            title: any;
+            description: any;
+            category: any;
+            address: any;
+            amount: number;
+            status: any;
+            acceptedAt: any;
+            threadId: any;
+            client: {
+                id: any;
+                firstName: any;
+                lastName: any;
+                profilePhotoUrl: any;
+            };
+        }[];
     }>;
     updateWorkerSkills(workerUserId: string, skills: string[]): Promise<{
         workerUserId: string;

@@ -8,9 +8,23 @@ export declare class RealtimeGateway implements OnGatewayConnection, OnGatewayDi
         event: string;
         data: unknown;
     };
+    joinUser(client: Socket, payload: {
+        userId?: string;
+    }): {
+        ok: boolean;
+    };
+    joinThread(client: Socket, payload: {
+        threadId?: string;
+    }): {
+        ok: boolean;
+    };
     broadcastUserCreated(user: {
         id: string;
         email: string;
         firstName: string;
     }): void;
+    emitToUser(userId: string, event: string, payload: unknown): void;
+    emitToThread(threadId: string, event: string, payload: unknown): void;
+    private userRoom;
+    private threadRoom;
 }

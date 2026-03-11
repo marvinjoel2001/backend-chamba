@@ -2,11 +2,17 @@ import { OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 type CreateRequestInput = {
     clientUserId: string;
     title: string;
     description: string;
     category: string;
+    aiCategories?: Array<{
+        id: string;
+        name: string;
+        confidence: number;
+    }>;
     budget: number;
     priceType: string;
     address: string;
@@ -19,7 +25,8 @@ export declare class MobileService implements OnModuleInit {
     private readonly dataSource;
     private readonly storageService;
     private readonly notificationsService;
-    constructor(dataSource: DataSource, storageService: StorageService, notificationsService: NotificationsService);
+    private readonly realtimeGateway;
+    constructor(dataSource: DataSource, storageService: StorageService, notificationsService: NotificationsService, realtimeGateway: RealtimeGateway);
     onModuleInit(): Promise<void>;
     register(input: {
         type?: string;
@@ -66,6 +73,9 @@ export declare class MobileService implements OnModuleInit {
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
             isAvailable: any;
+            workRadiusKm: number;
+            currentLatitude: number | null;
+            currentLongitude: number | null;
         };
         categories: string[];
         activeRequest: {
@@ -74,6 +84,11 @@ export declare class MobileService implements OnModuleInit {
             title: any;
             description: any;
             category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
             budget: number;
             priceType: any;
             address: any;
@@ -102,6 +117,11 @@ export declare class MobileService implements OnModuleInit {
             title: any;
             budget: number;
             address: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
             createdAt: any;
             photos: string[];
         };
@@ -121,6 +141,9 @@ export declare class MobileService implements OnModuleInit {
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
             isAvailable: any;
+            workRadiusKm: number;
+            currentLatitude: number | null;
+            currentLongitude: number | null;
         };
     }>;
     removeProfilePhoto(userId: string): Promise<{
@@ -134,6 +157,9 @@ export declare class MobileService implements OnModuleInit {
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
             isAvailable: any;
+            workRadiusKm: number;
+            currentLatitude: number | null;
+            currentLongitude: number | null;
         };
     }>;
     deleteRequestPhoto(params: {
@@ -166,6 +192,11 @@ export declare class MobileService implements OnModuleInit {
             title: any;
             description: any;
             category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
             budget: number;
             priceType: any;
             address: any;
@@ -182,6 +213,11 @@ export declare class MobileService implements OnModuleInit {
             title: any;
             description: any;
             category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
             budget: number;
             price_type: any;
             address: any;
@@ -219,6 +255,11 @@ export declare class MobileService implements OnModuleInit {
             title: any;
             description: any;
             category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
             budget: number;
             priceType: any;
             address: any;
@@ -235,6 +276,11 @@ export declare class MobileService implements OnModuleInit {
             title: any;
             description: any;
             category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
             budget: number;
             price_type: any;
             address: any;
@@ -383,8 +429,16 @@ export declare class MobileService implements OnModuleInit {
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
             isAvailable: any;
+            workRadiusKm: number;
+            currentLatitude: number | null;
+            currentLongitude: number | null;
         };
         available: any;
+        location: {
+            latitude: number | null;
+            longitude: number | null;
+            workRadiusKm: number;
+        };
         summary: {
             jobsToday: number;
             earningsToday: number;
@@ -396,13 +450,74 @@ export declare class MobileService implements OnModuleInit {
         workerId: any;
         isAvailable: any;
     }>;
+    updateWorkerLocation(params: {
+        workerUserId: string;
+        latitude: number;
+        longitude: number;
+    }): Promise<{
+        workerId: any;
+        latitude: number;
+        longitude: number;
+    }>;
     getWorkerSkills(workerUserId: string): Promise<{
         workerUserId: string;
         skills: any[];
     }>;
+    listCategories(): Promise<{
+        categories: {
+            id: any;
+            name: any;
+            description: any;
+            icon: any;
+            parentId: any;
+            active: any;
+            createdAt: any;
+            updatedAt: any;
+        }[];
+    }>;
+    createCategory(input: {
+        id?: string;
+        name: string;
+        description?: string;
+        icon?: string;
+        parentId?: string;
+        active?: boolean;
+    }): Promise<{
+        category: {
+            id: any;
+            name: any;
+            description: any;
+            icon: any;
+            parentId: any;
+            active: any;
+            createdAt: any;
+            updatedAt: any;
+        };
+    }>;
     updateWorkerSkills(workerUserId: string, skills: string[]): Promise<{
         workerUserId: string;
         skills: string[];
+    }>;
+    getWorkerHistory(workerUserId: string): Promise<{
+        workerUserId: string;
+        jobs: {
+            offerId: any;
+            requestId: any;
+            title: any;
+            description: any;
+            category: any;
+            address: any;
+            amount: number;
+            status: any;
+            acceptedAt: any;
+            threadId: any;
+            client: {
+                id: any;
+                firstName: any;
+                lastName: any;
+                profilePhotoUrl: any;
+            };
+        }[];
     }>;
     createReview(params: {
         requestId: string;
@@ -418,12 +533,16 @@ export declare class MobileService implements OnModuleInit {
     }>;
     private ensureSchema;
     private seedData;
+    private seedDefaultCategories;
     private extractTopCategories;
     private resolveRequest;
     private findLatestClientRequest;
     private getRequestById;
     private getUserById;
     private getUserByIdWithPhotoMeta;
+    private normalizeAiCategories;
+    private parseAiCategories;
+    private toCategoryId;
     private validateBase64Images;
     private ensureDataUri;
     private uploadRequestPhotos;

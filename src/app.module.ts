@@ -38,4 +38,3 @@ import { UsersModule } from './modules/users/users.module';
   ],
 })
 export class AppModule {}
-

@@ -15,8 +15,8 @@ Backend scaffold ready for feature development.
 
 ```bash
 cp .env.example .env
-npm install
-npm run start:dev
+pnpm install
+pnpm start:dev
 ```
 
 Base API URL: `http://localhost:3000/api`

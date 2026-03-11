@@ -10,6 +10,7 @@ exports.MobileModule = void 0;
 const common_1 = require("@nestjs/common");
 const storage_module_1 = require("../../infrastructure/storage/storage.module");
 const notifications_module_1 = require("../notifications/notifications.module");
+const realtime_module_1 = require("../realtime/realtime.module");
 const mobile_controller_1 = require("./mobile.controller");
 const mobile_service_1 = require("./mobile.service");
 let MobileModule = class MobileModule {
@@ -17,7 +18,7 @@ let MobileModule = class MobileModule {
 exports.MobileModule = MobileModule;
 exports.MobileModule = MobileModule = __decorate([
     (0, common_1.Module)({
-        imports: [storage_module_1.StorageModule, notifications_module_1.NotificationsModule],
+        imports: [storage_module_1.StorageModule, notifications_module_1.NotificationsModule, realtime_module_1.RealtimeModule],
         controllers: [mobile_controller_1.MobileController],
         providers: [mobile_service_1.MobileService],
         exports: [mobile_service_1.MobileService],

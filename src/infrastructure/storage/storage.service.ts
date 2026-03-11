@@ -120,7 +120,9 @@ export class StorageService {
 
   private sign(params: Record<string, string>): string {
     const toSign = Object.entries(params)
-      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .filter(
+        ([, value]) => value !== undefined && value !== null && value !== '',
+      )
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, value]) => `${key}=${value}`)
       .join('&');

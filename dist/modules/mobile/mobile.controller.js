@@ -48,12 +48,17 @@ let MobileController = class MobileController {
             radiusKm: parseNumber(radiusKm),
         });
     }
-    createRequest(clientUserId, title, description, category, budget, priceType, address, latitude, longitude, scheduledAt, photosBase64) {
+    createRequest(clientUserId, title, description, category, aiCategories, budget, priceType, address, latitude, longitude, scheduledAt, photosBase64) {
         return this.mobileService.createRequest({
             clientUserId,
             title,
             description,
             category,
+            aiCategories: aiCategories?.map((item) => ({
+                id: item.id,
+                name: item.name ?? item.nombre ?? '',
+                confidence: Number(item.confidence ?? item.confianza ?? 0),
+            })),
             budget: Number(budget),
             priceType,
             address,
@@ -63,6 +68,19 @@ let MobileController = class MobileController {
             photosBase64,
         });
     }
+    getCategories() {
+        return this.mobileService.listCategories();
+    }
+    createCategory(id, name, description, icon, parentId, active) {
+        return this.mobileService.createCategory({
+            id,
+            name,
+            description,
+            icon,
+            parentId,
+            active,
+        });
+    }
     uploadProfilePhoto(userId, imageBase64) {
         return this.mobileService.uploadProfilePhoto({ userId, imageBase64 });
     }
@@ -70,7 +88,10 @@ let MobileController = class MobileController {
         return this.mobileService.removeProfilePhoto(userId);
     }
     deleteRequestPhoto(requestPhotoId, clientUserId) {
-        return this.mobileService.deleteRequestPhoto({ requestPhotoId, clientUserId });
+        return this.mobileService.deleteRequestPhoto({
+            requestPhotoId,
+            clientUserId,
+        });
     }
     upsertPushToken(userId, token, platform) {
         return this.mobileService.upsertPushToken({ userId, token, platform });
@@ -116,8 +137,18 @@ let MobileController = class MobileController {
     setWorkerAvailability(workerUserId, available) {
         return this.mobileService.setWorkerAvailability(workerUserId, available);
     }
+    updateWorkerLocation(workerUserId, latitude, longitude) {
+        return this.mobileService.updateWorkerLocation({
+            workerUserId,
+            latitude: Number(latitude),
+            longitude: Number(longitude),
+        });
+    }
     getWorkerSkills(workerUserId) {
         return this.mobileService.getWorkerSkills(workerUserId);
+    }
+    getWorkerHistory(workerUserId) {
+        return this.mobileService.getWorkerHistory(workerUserId);
     }
     updateWorkerSkills(workerUserId, skills) {
         return this.mobileService.updateWorkerSkills(workerUserId, skills ?? []);
@@ -169,17 +200,36 @@ __decorate([
     __param(1, (0, common_1.Body)('title')),
     __param(2, (0, common_1.Body)('description')),
     __param(3, (0, common_1.Body)('category')),
-    __param(4, (0, common_1.Body)('budget')),
-    __param(5, (0, common_1.Body)('priceType')),
-    __param(6, (0, common_1.Body)('address')),
-    __param(7, (0, common_1.Body)('latitude')),
-    __param(8, (0, common_1.Body)('longitude')),
-    __param(9, (0, common_1.Body)('scheduledAt')),
-    __param(10, (0, common_1.Body)('photosBase64')),
+    __param(4, (0, common_1.Body)('aiCategories')),
+    __param(5, (0, common_1.Body)('budget')),
+    __param(6, (0, common_1.Body)('priceType')),
+    __param(7, (0, common_1.Body)('address')),
+    __param(8, (0, common_1.Body)('latitude')),
+    __param(9, (0, common_1.Body)('longitude')),
+    __param(10, (0, common_1.Body)('scheduledAt')),
+    __param(11, (0, common_1.Body)('photosBase64')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String, Number, String, String, Number, Number, String, Array]),
+    __metadata("design:paramtypes", [String, String, String, String, Object, Number, String, String, Number, Number, String, Array]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "createRequest", null);
+__decorate([
+    (0, common_1.Get)('mobile/categories'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getCategories", null);
+__decorate([
+    (0, common_1.Post)('mobile/categories'),
+    __param(0, (0, common_1.Body)('id')),
+    __param(1, (0, common_1.Body)('name')),
+    __param(2, (0, common_1.Body)('description')),
+    __param(3, (0, common_1.Body)('icon')),
+    __param(4, (0, common_1.Body)('parentId')),
+    __param(5, (0, common_1.Body)('active')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, String, String, String, Boolean]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "createCategory", null);
 __decorate([
     (0, common_1.Post)('mobile/profile/photo'),
     __param(0, (0, common_1.Body)('userId')),
@@ -306,12 +356,28 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "setWorkerAvailability", null);
 __decorate([
+    (0, common_1.Post)('mobile/worker/location'),
+    __param(0, (0, common_1.Body)('workerUserId')),
+    __param(1, (0, common_1.Body)('latitude')),
+    __param(2, (0, common_1.Body)('longitude')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Number, Number]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "updateWorkerLocation", null);
+__decorate([
     (0, common_1.Get)('mobile/worker/skills'),
     __param(0, (0, common_1.Query)('workerUserId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getWorkerSkills", null);
+__decorate([
+    (0, common_1.Get)('mobile/worker/history'),
+    __param(0, (0, common_1.Query)('workerUserId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getWorkerHistory", null);
 __decorate([
     (0, common_1.Post)('mobile/worker/skills'),
     __param(0, (0, common_1.Body)('workerUserId')),

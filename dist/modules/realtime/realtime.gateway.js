@@ -18,6 +18,10 @@ const socket_io_1 = require("socket.io");
 let RealtimeGateway = class RealtimeGateway {
     server;
     handleConnection(client) {
+        const userId = client.handshake.query['userId'];
+        if (typeof userId === 'string' && userId.trim().length > 0) {
+            client.join(this.userRoom(userId));
+        }
         client.emit('connection.ready', {
             message: 'Connected to realtime gateway',
             clientId: client.id,
@@ -39,6 +43,20 @@ let RealtimeGateway = class RealtimeGateway {
             },
         };
     }
+    joinUser(client, payload) {
+        const userId = payload?.userId?.trim();
+        if (userId) {
+            client.join(this.userRoom(userId));
+        }
+        return { ok: true };
+    }
+    joinThread(client, payload) {
+        const threadId = payload?.threadId?.trim();
+        if (threadId) {
+            client.join(this.threadRoom(threadId));
+        }
+        return { ok: true };
+    }
     broadcastUserCreated(user) {
         this.server.emit('user.created', {
             id: user.id,
@@ -46,6 +64,18 @@ let RealtimeGateway = class RealtimeGateway {
             firstName: user.firstName,
             timestamp: new Date().toISOString(),
         });
+    }
+    emitToUser(userId, event, payload) {
+        this.server.to(this.userRoom(userId)).emit(event, payload);
+    }
+    emitToThread(threadId, event, payload) {
+        this.server.to(this.threadRoom(threadId)).emit(event, payload);
+    }
+    userRoom(userId) {
+        return `user:${userId}`;
+    }
+    threadRoom(threadId) {
+        return `thread:${threadId}`;
     }
 };
 exports.RealtimeGateway = RealtimeGateway;
@@ -61,6 +91,22 @@ __decorate([
     __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
     __metadata("design:returntype", Object)
 ], RealtimeGateway.prototype, "handlePing", null);
+__decorate([
+    (0, websockets_1.SubscribeMessage)('join.user'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
+    __metadata("design:returntype", Object)
+], RealtimeGateway.prototype, "joinUser", null);
+__decorate([
+    (0, websockets_1.SubscribeMessage)('join.thread'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
+    __metadata("design:returntype", Object)
+], RealtimeGateway.prototype, "joinThread", null);
 exports.RealtimeGateway = RealtimeGateway = __decorate([
     (0, websockets_1.WebSocketGateway)({
         cors: {

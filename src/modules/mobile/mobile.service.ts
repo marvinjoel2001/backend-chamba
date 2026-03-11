@@ -10,12 +10,18 @@ import {
 import { DataSource } from 'typeorm';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 type CreateRequestInput = {
   clientUserId: string;
   title: string;
   description: string;
   category: string;
+  aiCategories?: Array<{
+    id: string;
+    name: string;
+    confidence: number;
+  }>;
   budget: number;
   priceType: string;
   address: string;
@@ -31,6 +37,7 @@ export class MobileService implements OnModuleInit {
     private readonly dataSource: DataSource,
     private readonly storageService: StorageService,
     private readonly notificationsService: NotificationsService,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -171,7 +178,8 @@ export class MobileService implements OnModuleInit {
     radiusKm?: number;
   }) {
     const user = await this.getUserById(params.userId);
-    const radiusKm = params.radiusKm && params.radiusKm > 0 ? params.radiusKm : 8;
+    const radiusKm =
+      params.radiusKm && params.radiusKm > 0 ? params.radiusKm : 8;
 
     const workerRows = await this.dataSource.query<any[]>(
       `
@@ -213,7 +221,12 @@ export class MobileService implements OnModuleInit {
       ORDER BY distance_km ASC
       LIMIT 30
       `,
-      [params.userId, params.latitude ?? null, params.longitude ?? null, radiusKm],
+      [
+        params.userId,
+        params.latitude ?? null,
+        params.longitude ?? null,
+        radiusKm,
+      ],
     );
 
     const activeRequest = await this.findLatestClientRequest(user.id);
@@ -242,8 +255,15 @@ export class MobileService implements OnModuleInit {
     if (!input.clientUserId) {
       throw new BadRequestException('clientUserId is required');
     }
-    if (!input.title || !input.description || !input.category || !input.address) {
-      throw new BadRequestException('title, description, category and address are required');
+    if (
+      !input.title ||
+      !input.description ||
+      !input.category ||
+      !input.address
+    ) {
+      throw new BadRequestException(
+        'title, description, category and address are required',
+      );
     }
     if (!Number.isFinite(input.budget) || input.budget <= 0) {
       throw new BadRequestException('budget must be greater than 0');
@@ -252,6 +272,10 @@ export class MobileService implements OnModuleInit {
       throw new BadRequestException('latitude and longitude are required');
     }
     const photos = this.validateBase64Images(input.photosBase64, 5);
+    const aiCategories = this.normalizeAiCategories(
+      input.aiCategories,
+      input.category,
+    );
 
     await this.getUserById(input.clientUserId);
 
@@ -262,6 +286,7 @@ export class MobileService implements OnModuleInit {
         title,
         description,
         category,
+        ai_categories,
         budget,
         price_type,
         scheduled_at,
@@ -275,19 +300,21 @@ export class MobileService implements OnModuleInit {
         $3,
         $4,
         $5,
-        $6,
+        $6::jsonb,
         $7,
-        ST_SetSRID(ST_MakePoint($9::float8, $8::float8), 4326)::geography,
-        $10,
+        $8,
+        ST_SetSRID(ST_MakePoint($10::float8, $9::float8), 4326)::geography,
+        $11,
         'searching'
       )
-      RETURNING id, status, title, budget, address, created_at
+      RETURNING id, status, title, budget, address, ai_categories, created_at
       `,
       [
         input.clientUserId,
         input.title,
         input.description,
         input.category,
+        JSON.stringify(aiCategories),
         input.budget,
         input.priceType,
         input.scheduledAt ?? null,
@@ -299,7 +326,10 @@ export class MobileService implements OnModuleInit {
 
     const created = rows[0];
     const uploadedPhotos = await this.uploadRequestPhotos(created.id, photos);
-    const notifiedWorkers = await this.seedOffersForRequest(created.id, input.budget);
+    const notifiedWorkers = await this.seedOffersForRequest(
+      created.id,
+      input.budget,
+    );
 
     return {
       request: {
@@ -308,6 +338,7 @@ export class MobileService implements OnModuleInit {
         title: created.title,
         budget: Number(created.budget),
         address: created.address,
+        aiCategories: this.parseAiCategories(created.ai_categories),
         createdAt: created.created_at,
         photos: uploadedPhotos,
       },
@@ -315,10 +346,7 @@ export class MobileService implements OnModuleInit {
     };
   }
 
-  async uploadProfilePhoto(params: {
-    userId: string;
-    imageBase64: string;
-  }) {
+  async uploadProfilePhoto(params: { userId: string; imageBase64: string }) {
     const user = await this.getUserByIdWithPhotoMeta(params.userId);
     const payload = params.imageBase64?.trim();
     if (!payload) {
@@ -342,7 +370,10 @@ export class MobileService implements OnModuleInit {
       [params.userId, uploaded.url, uploaded.publicId],
     );
 
-    if (user.profilePhotoPublicId && user.profilePhotoPublicId !== uploaded.publicId) {
+    if (
+      user.profilePhotoPublicId &&
+      user.profilePhotoPublicId !== uploaded.publicId
+    ) {
       await this.storageService.deleteImage(user.profilePhotoPublicId);
     }
 
@@ -374,7 +405,10 @@ export class MobileService implements OnModuleInit {
     };
   }
 
-  async deleteRequestPhoto(params: { requestPhotoId: string; clientUserId: string }) {
+  async deleteRequestPhoto(params: {
+    requestPhotoId: string;
+    clientUserId: string;
+  }) {
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT p.id,
@@ -394,10 +428,15 @@ export class MobileService implements OnModuleInit {
       throw new NotFoundException('Request photo not found');
     }
     if (photo.client_user_id !== params.clientUserId) {
-      throw new UnauthorizedException('Only the request owner can delete photos');
+      throw new UnauthorizedException(
+        'Only the request owner can delete photos',
+      );
     }
 
-    await this.dataSource.query(`DELETE FROM job_request_photos WHERE id = $1`, [params.requestPhotoId]);
+    await this.dataSource.query(
+      `DELETE FROM job_request_photos WHERE id = $1`,
+      [params.requestPhotoId],
+    );
     await this.storageService.deleteImage(photo.public_id);
 
     return {
@@ -407,7 +446,11 @@ export class MobileService implements OnModuleInit {
     };
   }
 
-  async upsertPushToken(params: { userId: string; token: string; platform?: string }) {
+  async upsertPushToken(params: {
+    userId: string;
+    token: string;
+    platform?: string;
+  }) {
     if (!params.userId) {
       throw new BadRequestException('userId is required');
     }
@@ -429,7 +472,11 @@ export class MobileService implements OnModuleInit {
         last_seen_at = NOW()
       RETURNING id, user_id, token, platform, last_seen_at
       `,
-      [params.userId, token, (params.platform ?? 'unknown').trim().toLowerCase()],
+      [
+        params.userId,
+        token,
+        (params.platform ?? 'unknown').trim().toLowerCase(),
+      ],
     );
 
     return {
@@ -437,7 +484,10 @@ export class MobileService implements OnModuleInit {
     };
   }
 
-  async getRequestStatus(params: { requestId?: string; clientUserId?: string }) {
+  async getRequestStatus(params: {
+    requestId?: string;
+    clientUserId?: string;
+  }) {
     const request = await this.resolveRequest(params);
     const photos = await this.getRequestPhotos(request.id);
 
@@ -481,7 +531,10 @@ export class MobileService implements OnModuleInit {
     );
 
     const metrics = metricRows[0] ?? {};
-    const nearestKm = metrics.nearest_worker_km == null ? null : Number(metrics.nearest_worker_km);
+    const nearestKm =
+      metrics.nearest_worker_km == null
+        ? null
+        : Number(metrics.nearest_worker_km);
 
     return {
       request: {
@@ -491,7 +544,8 @@ export class MobileService implements OnModuleInit {
       metrics: {
         offersCount: Number(metrics.offers_count ?? 0),
         acceptedCount: Number(metrics.accepted_count ?? 0),
-        estimatedMinutes: nearestKm == null ? null : Math.max(5, Math.ceil(nearestKm / 0.5)),
+        estimatedMinutes:
+          nearestKm == null ? null : Math.max(5, Math.ceil(nearestKm / 0.5)),
       },
       topOffers: topOfferRows.map((row) => ({
         id: row.id,
@@ -711,7 +765,11 @@ export class MobileService implements OnModuleInit {
     };
   }
 
-  async sendMessage(params: { threadId: string; senderUserId: string; content: string }) {
+  async sendMessage(params: {
+    threadId: string;
+    senderUserId: string;
+    content: string;
+  }) {
     if (!params.content?.trim()) {
       throw new BadRequestException('content is required');
     }
@@ -732,6 +790,35 @@ export class MobileService implements OnModuleInit {
       `UPDATE chat_threads SET updated_at = NOW() WHERE id = $1`,
       [params.threadId],
     );
+
+    const threadRows = await this.dataSource.query<any[]>(
+      `
+      SELECT request_id, client_user_id, worker_user_id
+      FROM chat_threads
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [params.threadId],
+    );
+
+    const thread = threadRows[0];
+    const payload = {
+      threadId: params.threadId,
+      requestId: thread?.request_id ?? null,
+      message: {
+        id: rows[0].id,
+        senderUserId: rows[0].sender_user_id,
+        content: rows[0].content,
+        createdAt: rows[0].created_at,
+      },
+    };
+    this.realtimeGateway.emitToThread(params.threadId, 'message.new', payload);
+    if (thread?.client_user_id) {
+      this.realtimeGateway.emitToUser(thread.client_user_id, 'message.new', payload);
+    }
+    if (thread?.worker_user_id) {
+      this.realtimeGateway.emitToUser(thread.worker_user_id, 'message.new', payload);
+    }
 
     return {
       message: {
@@ -848,7 +935,12 @@ export class MobileService implements OnModuleInit {
         VALUES ($1, $2, $3, $4, 'pending')
         RETURNING id
         `,
-        [params.requestId, params.workerUserId, params.amount, params.message ?? null],
+        [
+          params.requestId,
+          params.workerUserId,
+          params.amount,
+          params.message ?? null,
+        ],
       );
       offerId = rows[0].id;
     }
@@ -871,6 +963,18 @@ export class MobileService implements OnModuleInit {
         params.message?.trim() ||
         `Hola, puedo ayudarte por Bs ${Math.round(params.amount)}. Estoy disponible.`,
     });
+
+    const offerPayload = {
+      id: offerId,
+      requestId: params.requestId,
+      workerUserId: params.workerUserId,
+      clientUserId: request.client_user_id,
+      amount: params.amount,
+      message: params.message ?? '',
+      status: 'pending',
+    };
+    this.realtimeGateway.emitToUser(request.client_user_id, 'offer.new', offerPayload);
+    this.realtimeGateway.emitToUser(params.workerUserId, 'offer.updated', offerPayload);
 
     return {
       offer: {
@@ -905,18 +1009,33 @@ export class MobileService implements OnModuleInit {
     }
 
     if (offer.client_user_id !== params.clientUserId) {
-      throw new UnauthorizedException('Solo el cliente puede aceptar la oferta');
+      throw new UnauthorizedException(
+        'Solo el cliente puede aceptar la oferta',
+      );
     }
 
     await this.dataSource.query(
       `UPDATE job_offers SET status = 'rejected' WHERE request_id = $1`,
       [offer.request_id],
     );
-    await this.dataSource.query(`UPDATE job_offers SET status = 'accepted' WHERE id = $1`, [params.offerId]);
+    await this.dataSource.query(
+      `UPDATE job_offers SET status = 'accepted' WHERE id = $1`,
+      [params.offerId],
+    );
     await this.dataSource.query(
       `UPDATE job_requests SET status = 'assigned', updated_at = NOW() WHERE id = $1`,
       [offer.request_id],
     );
+
+    const payload = {
+      offerId: params.offerId,
+      requestId: offer.request_id,
+      clientUserId: offer.client_user_id,
+      workerUserId: offer.worker_user_id,
+      accepted: true,
+    };
+    this.realtimeGateway.emitToUser(offer.client_user_id, 'offer.accepted', payload);
+    this.realtimeGateway.emitToUser(offer.worker_user_id, 'offer.accepted', payload);
 
     return {
       accepted: true,
@@ -960,7 +1079,8 @@ export class MobileService implements OnModuleInit {
       requestId: row.request_id,
       address: row.request_address,
       distanceKm,
-      etaMinutes: distanceKm == null ? null : Math.max(5, Math.ceil(distanceKm / 0.5)),
+      etaMinutes:
+        distanceKm == null ? null : Math.max(5, Math.ceil(distanceKm / 0.5)),
       agreedAmount: Number(row.amount),
       worker: {
         id: row.worker_id,
@@ -1005,6 +1125,11 @@ export class MobileService implements OnModuleInit {
     return {
       worker,
       available: worker.isAvailable,
+      location: {
+        latitude: worker.currentLatitude,
+        longitude: worker.currentLongitude,
+        workRadiusKm: worker.workRadiusKm,
+      },
       summary: {
         jobsToday: Number(rows[0]?.jobs_today ?? 0),
         earningsToday: Number(rows[0]?.earnings_today ?? 0),
@@ -1036,6 +1161,42 @@ export class MobileService implements OnModuleInit {
     };
   }
 
+  async updateWorkerLocation(params: {
+    workerUserId: string;
+    latitude: number;
+    longitude: number;
+  }) {
+    if (
+      !Number.isFinite(params.latitude) ||
+      !Number.isFinite(params.longitude)
+    ) {
+      throw new BadRequestException('latitude and longitude are required');
+    }
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      UPDATE users
+      SET current_location = ST_SetSRID(ST_MakePoint($3::float8, $2::float8), 4326)::geography,
+          updated_at = NOW()
+      WHERE id = $1 AND type = 'worker'
+      RETURNING id,
+                ST_Y(current_location::geometry) AS latitude,
+                ST_X(current_location::geometry) AS longitude
+      `,
+      [params.workerUserId, params.latitude, params.longitude],
+    );
+
+    if (!rows[0]) {
+      throw new NotFoundException('Worker not found');
+    }
+
+    return {
+      workerId: rows[0].id,
+      latitude: Number(rows[0].latitude),
+      longitude: Number(rows[0].longitude),
+    };
+  }
+
   async getWorkerSkills(workerUserId: string) {
     await this.getUserById(workerUserId);
 
@@ -1050,12 +1211,116 @@ export class MobileService implements OnModuleInit {
     };
   }
 
+  async listCategories() {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT id,
+             name,
+             description,
+             icon,
+             parent_id,
+             is_active,
+             created_at,
+             updated_at
+      FROM categories
+      WHERE is_active = true
+      ORDER BY name ASC
+      `,
+    );
+
+    return {
+      categories: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description ?? '',
+        icon: row.icon ?? null,
+        parentId: row.parent_id ?? null,
+        active: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      })),
+    };
+  }
+
+  async createCategory(input: {
+    id?: string;
+    name: string;
+    description?: string;
+    icon?: string;
+    parentId?: string;
+    active?: boolean;
+  }) {
+    const name = input.name?.trim();
+    if (!name) {
+      throw new BadRequestException('name is required');
+    }
+
+    const id = (input.id?.trim() || this.toCategoryId(name)).toLowerCase();
+    if (!/^[a-z0-9_]+$/.test(id)) {
+      throw new BadRequestException(
+        'id must contain only lowercase letters, numbers and underscore',
+      );
+    }
+
+    if (input.parentId?.trim()) {
+      const parentRows = await this.dataSource.query<any[]>(
+        `SELECT id FROM categories WHERE id = $1 LIMIT 1`,
+        [input.parentId.trim().toLowerCase()],
+      );
+      if (!parentRows[0]) {
+        throw new BadRequestException('parentId not found');
+      }
+    }
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      INSERT INTO categories (id, name, description, icon, parent_id, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (id)
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        icon = EXCLUDED.icon,
+        parent_id = EXCLUDED.parent_id,
+        is_active = EXCLUDED.is_active,
+        updated_at = NOW()
+      RETURNING id, name, description, icon, parent_id, is_active, created_at, updated_at
+      `,
+      [
+        id,
+        name,
+        input.description?.trim() || '',
+        input.icon?.trim() || null,
+        input.parentId?.trim().toLowerCase() || null,
+        input.active ?? true,
+      ],
+    );
+
+    return {
+      category: {
+        id: rows[0].id,
+        name: rows[0].name,
+        description: rows[0].description ?? '',
+        icon: rows[0].icon ?? null,
+        parentId: rows[0].parent_id ?? null,
+        active: rows[0].is_active,
+        createdAt: rows[0].created_at,
+        updatedAt: rows[0].updated_at,
+      },
+    };
+  }
+
   async updateWorkerSkills(workerUserId: string, skills: string[]) {
     await this.getUserById(workerUserId);
 
-    const sanitized = [...new Set((skills ?? []).map((item) => item.trim()).filter(Boolean))].slice(0, 20);
+    const sanitized = [
+      ...new Set((skills ?? []).map((item) => item.trim()).filter(Boolean)),
+    ].slice(0, 20);
 
-    await this.dataSource.query(`DELETE FROM worker_skills WHERE user_id = $1`, [workerUserId]);
+    await this.dataSource.query(
+      `DELETE FROM worker_skills WHERE user_id = $1`,
+      [workerUserId],
+    );
 
     for (const skill of sanitized) {
       await this.dataSource.query(
@@ -1070,6 +1335,63 @@ export class MobileService implements OnModuleInit {
     };
   }
 
+  async getWorkerHistory(workerUserId: string) {
+    await this.getUserById(workerUserId);
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT jo.id AS offer_id,
+             jo.amount,
+             jo.status,
+             jo.created_at AS accepted_at,
+             jr.id AS request_id,
+             jr.title,
+             jr.description,
+             jr.category,
+             jr.address,
+             c.id AS client_id,
+             c.first_name AS client_first_name,
+             c.last_name AS client_last_name,
+             c.profile_photo_url AS client_photo,
+             ct.id AS thread_id
+      FROM job_offers jo
+      JOIN job_requests jr ON jr.id = jo.request_id
+      JOIN users c ON c.id = jr.client_user_id
+      LEFT JOIN chat_threads ct
+        ON ct.request_id = jr.id
+       AND ct.worker_user_id = jo.worker_user_id
+       AND ct.client_user_id = jr.client_user_id
+      WHERE jo.worker_user_id = $1
+        AND jo.status = 'accepted'
+      ORDER BY jo.created_at DESC
+      LIMIT 80
+      `,
+      [workerUserId],
+    );
+
+    return {
+      workerUserId,
+      jobs: rows.map((row) => ({
+        offerId: row.offer_id,
+        requestId: row.request_id,
+        title: row.title,
+        description: row.description,
+        category: row.category,
+        address: row.address,
+        amount: Number(row.amount),
+        status: row.status,
+        acceptedAt: row.accepted_at,
+        threadId: row.thread_id ?? null,
+        client: {
+          id: row.client_id,
+          firstName: row.client_first_name,
+          lastName: row.client_last_name ?? '',
+          profilePhotoUrl: row.client_photo ?? null,
+        },
+      })),
+    };
+  }
+
   async createReview(params: {
     requestId: string;
     workerUserId: string;
@@ -1077,7 +1399,11 @@ export class MobileService implements OnModuleInit {
     stars: number;
     comment?: string;
   }) {
-    if (!Number.isInteger(params.stars) || params.stars < 1 || params.stars > 5) {
+    if (
+      !Number.isInteger(params.stars) ||
+      params.stars < 1 ||
+      params.stars > 5
+    ) {
       throw new BadRequestException('stars must be between 1 and 5');
     }
 
@@ -1090,7 +1416,13 @@ export class MobileService implements OnModuleInit {
       INSERT INTO worker_reviews (request_id, worker_user_id, client_user_id, stars, comment)
       VALUES ($1, $2, $3, $4, $5)
       `,
-      [params.requestId, params.workerUserId, params.clientUserId, params.stars, params.comment ?? null],
+      [
+        params.requestId,
+        params.workerUserId,
+        params.clientUserId,
+        params.stars,
+        params.comment ?? null,
+      ],
     );
 
     const rows = await this.dataSource.query<any[]>(
@@ -1154,6 +1486,7 @@ export class MobileService implements OnModuleInit {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       `,
+      `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS ai_categories JSONB NOT NULL DEFAULT '[]'::jsonb;`,
       `
       CREATE TABLE IF NOT EXISTS job_offers (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1223,11 +1556,24 @@ export class MobileService implements OnModuleInit {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       `,
+      `
+      CREATE TABLE IF NOT EXISTS categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT NULL,
+        icon TEXT NULL,
+        parent_id TEXT NULL REFERENCES categories(id) ON DELETE SET NULL,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      `,
       `CREATE INDEX IF NOT EXISTS idx_job_requests_location ON job_requests USING GIST(location);`,
       `CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_created ON chat_messages(thread_id, created_at DESC);`,
       `CREATE INDEX IF NOT EXISTS idx_job_offers_request ON job_offers(request_id);`,
       `CREATE INDEX IF NOT EXISTS idx_job_request_photos_request ON job_request_photos(request_id);`,
       `CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_categories_active_name ON categories(is_active, name);`,
     ];
 
     for (const statement of statements) {
@@ -1236,6 +1582,8 @@ export class MobileService implements OnModuleInit {
   }
 
   private async seedData(): Promise<void> {
+    await this.seedDefaultCategories();
+
     const demoUsers = [
       {
         type: 'client',
@@ -1381,7 +1729,10 @@ export class MobileService implements OnModuleInit {
       );
 
       if (demoUser.type === 'worker') {
-        await this.dataSource.query(`DELETE FROM worker_skills WHERE user_id = $1`, [userId]);
+        await this.dataSource.query(
+          `DELETE FROM worker_skills WHERE user_id = $1`,
+          [userId],
+        );
         for (const skill of demoUser.skills) {
           await this.dataSource.query(
             `INSERT INTO worker_skills (user_id, skill) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
@@ -1391,7 +1742,9 @@ export class MobileService implements OnModuleInit {
       }
     }
 
-    const countRows = await this.dataSource.query<any[]>(`SELECT COUNT(*)::text AS count FROM job_requests`);
+    const countRows = await this.dataSource.query<any[]>(
+      `SELECT COUNT(*)::text AS count FROM job_requests`,
+    );
     if (Number(countRows[0]?.count ?? 0) > 0) {
       return;
     }
@@ -1404,7 +1757,8 @@ export class MobileService implements OnModuleInit {
     const created = await this.createRequest({
       clientUserId: clientId,
       title: 'Pintado de fachada exterior',
-      description: 'Necesito pintor con experiencia para retoques en fachada de vivienda unifamiliar.',
+      description:
+        'Necesito pintor con experiencia para retoques en fachada de vivienda unifamiliar.',
       category: 'Pintura',
       budget: 100,
       priceType: 'Por dia',
@@ -1418,11 +1772,87 @@ export class MobileService implements OnModuleInit {
     const firstOffer = offers.offers[0];
 
     if (firstOffer) {
-      await this.acceptOffer({ offerId: firstOffer.id, clientUserId: clientId });
+      await this.acceptOffer({
+        offerId: firstOffer.id,
+        clientUserId: clientId,
+      });
     }
   }
 
-  private extractTopCategories(workerRows: Array<{ skills?: string[] | null }>) {
+  private async seedDefaultCategories() {
+    const defaults = [
+      {
+        id: 'construccion',
+        name: 'Construccion',
+        description: 'Albanileria, techos, pisos, demolicion',
+      },
+      {
+        id: 'electricidad',
+        name: 'Electricidad',
+        description: 'Instalaciones domesticas e industriales',
+      },
+      {
+        id: 'plomeria',
+        name: 'Plomeria',
+        description: 'Tuberias, fugas y sanitarios',
+      },
+      {
+        id: 'jardineria',
+        name: 'Jardineria',
+        description: 'Poda, riego y mantenimiento de jardines',
+      },
+      {
+        id: 'transporte',
+        name: 'Transporte',
+        description: 'Chofer, mudanzas y mensajeria',
+      },
+      {
+        id: 'limpieza',
+        name: 'Limpieza',
+        description: 'Hogares, oficinas y post-obra',
+      },
+      {
+        id: 'mecanica',
+        name: 'Mecanica',
+        description: 'Mecanica y mantenimiento automotriz',
+      },
+      {
+        id: 'carpinteria',
+        name: 'Carpinteria',
+        description: 'Muebles, puertas y ventanas',
+      },
+      {
+        id: 'pintura',
+        name: 'Pintura',
+        description: 'Pintura interior y exterior',
+      },
+      {
+        id: 'trabajo_general',
+        name: 'General',
+        description: 'Ayudante general y tareas varias',
+      },
+    ];
+
+    for (const category of defaults) {
+      await this.dataSource.query(
+        `
+        INSERT INTO categories (id, name, description, is_active)
+        VALUES ($1, $2, $3, true)
+        ON CONFLICT (id)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          description = EXCLUDED.description,
+          is_active = true,
+          updated_at = NOW()
+        `,
+        [category.id, category.name, category.description],
+      );
+    }
+  }
+
+  private extractTopCategories(
+    workerRows: Array<{ skills?: string[] | null }>,
+  ) {
     const counter = new Map<string, number>();
 
     for (const row of workerRows) {
@@ -1437,7 +1867,10 @@ export class MobileService implements OnModuleInit {
       .map(([skill]) => skill);
   }
 
-  private async resolveRequest(params: { requestId?: string; clientUserId?: string }) {
+  private async resolveRequest(params: {
+    requestId?: string;
+    clientUserId?: string;
+  }) {
     if (params.requestId) {
       return this.getRequestById(params.requestId);
     }
@@ -1462,6 +1895,7 @@ export class MobileService implements OnModuleInit {
              title,
              description,
              category,
+             ai_categories,
              budget,
              price_type,
              address,
@@ -1486,6 +1920,7 @@ export class MobileService implements OnModuleInit {
       title: row.title,
       description: row.description,
       category: row.category,
+      aiCategories: this.parseAiCategories(row.ai_categories),
       budget: Number(row.budget),
       priceType: row.price_type,
       address: row.address,
@@ -1502,6 +1937,7 @@ export class MobileService implements OnModuleInit {
              title,
              description,
              category,
+             ai_categories,
              budget,
              price_type,
              address,
@@ -1526,6 +1962,7 @@ export class MobileService implements OnModuleInit {
       title: row.title,
       description: row.description,
       category: row.category,
+      aiCategories: this.parseAiCategories(row.ai_categories),
       budget: Number(row.budget),
       price_type: row.price_type,
       address: row.address,
@@ -1546,7 +1983,10 @@ export class MobileService implements OnModuleInit {
              phone,
              profile_photo_url,
              profile_photo_public_id,
-             is_available
+             is_available,
+             work_radius_km,
+             ST_Y(current_location::geometry) AS current_latitude,
+             ST_X(current_location::geometry) AS current_longitude
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -1569,11 +2009,109 @@ export class MobileService implements OnModuleInit {
       profilePhotoUrl: row.profile_photo_url ?? null,
       profilePhotoPublicId: row.profile_photo_public_id ?? null,
       isAvailable: row.is_available,
+      workRadiusKm: Number(row.work_radius_km ?? 0),
+      currentLatitude:
+        row.current_latitude == null ? null : Number(row.current_latitude),
+      currentLongitude:
+        row.current_longitude == null ? null : Number(row.current_longitude),
     };
   }
 
   private async getUserByIdWithPhotoMeta(userId: string) {
     return this.getUserById(userId);
+  }
+
+  private normalizeAiCategories(
+    input: unknown,
+    fallbackCategory: string,
+  ): Array<{ id: string; name: string; confidence: number }> {
+    if (!Array.isArray(input) || input.length === 0) {
+      return [
+        {
+          id: this.toCategoryId(fallbackCategory),
+          name: fallbackCategory.trim() || 'General',
+          confidence: 0.5,
+        },
+      ];
+    }
+
+    const normalized: Array<{ id: string; name: string; confidence: number }> =
+      [];
+    for (const item of input.slice(0, 3)) {
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+      const data = item as Record<string, unknown>;
+      const rawName = String(
+        data.name ?? data.nombre ?? fallbackCategory ?? 'General',
+      ).trim();
+      const safeName = rawName || 'General';
+      const rawId = String(data.id ?? this.toCategoryId(safeName))
+        .trim()
+        .toLowerCase();
+      const confidence = Number(data.confidence ?? data.confianza ?? 0.5);
+      normalized.push({
+        id: rawId || this.toCategoryId(safeName),
+        name: safeName,
+        confidence: Number.isFinite(confidence)
+          ? Math.max(0, Math.min(1, confidence))
+          : 0.5,
+      });
+    }
+
+    if (normalized.length === 0) {
+      return [
+        {
+          id: this.toCategoryId(fallbackCategory),
+          name: fallbackCategory.trim() || 'General',
+          confidence: 0.5,
+        },
+      ];
+    }
+
+    return normalized;
+  }
+
+  private parseAiCategories(
+    value: unknown,
+  ): Array<{ id: string; name: string; confidence: number }> {
+    if (!value) {
+      return [];
+    }
+
+    let parsed: unknown = value;
+    if (typeof value === 'string') {
+      try {
+        parsed = JSON.parse(value);
+      } catch (_) {
+        return [];
+      }
+    }
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter((item) => item && typeof item === 'object')
+      .map((item) => item as Record<string, unknown>)
+      .map((item) => ({
+        id: String(item.id ?? '').trim(),
+        name: String(item.name ?? '').trim(),
+        confidence: Number(item.confidence ?? 0),
+      }))
+      .filter((item) => Boolean(item.id) && Boolean(item.name))
+      .slice(0, 3);
+  }
+
+  private toCategoryId(value: string) {
+    return (
+      value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'trabajo_general'
+    );
   }
 
   private validateBase64Images(input: unknown, limit: number): string[] {
@@ -1721,6 +2259,14 @@ export class MobileService implements OnModuleInit {
         amount,
         message: `Hola, puedo comenzar hoy mismo. Oferta inicial Bs ${amount}.`,
       });
+
+      this.realtimeGateway.emitToUser(worker.id, 'request.new', {
+        requestId,
+        category: request.category,
+        title: request.title,
+        budget: Number(request.budget ?? baseBudget),
+        address: request.address,
+      });
     }
 
     const workerIds = workers.map((worker) => worker.id).filter(Boolean);
@@ -1734,7 +2280,9 @@ export class MobileService implements OnModuleInit {
         [workerIds],
       );
 
-      const tokens = tokenRows.map((row) => String(row.token ?? '')).filter(Boolean);
+      const tokens = tokenRows
+        .map((row) => String(row.token ?? ''))
+        .filter(Boolean);
       if (tokens.length > 0) {
         await this.notificationsService.notifyWorkersForJobWave({
           tokens,
