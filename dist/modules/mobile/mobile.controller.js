@@ -209,7 +209,7 @@ __decorate([
     __param(10, (0, common_1.Body)('scheduledAt')),
     __param(11, (0, common_1.Body)('photosBase64')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String, Object, Number, String, String, Number, Number, String, Array]),
+    __metadata("design:paramtypes", [String, String, String, Object, Object, Number, String, String, Number, Number, String, Array]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "createRequest", null);
 __decorate([

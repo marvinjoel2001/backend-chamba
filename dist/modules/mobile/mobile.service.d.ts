@@ -1,4 +1,5 @@
 import { OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -7,7 +8,7 @@ type CreateRequestInput = {
     clientUserId: string;
     title: string;
     description: string;
-    category: string;
+    category?: string;
     aiCategories?: Array<{
         id: string;
         name: string;
@@ -22,11 +23,15 @@ type CreateRequestInput = {
     photosBase64?: string[];
 };
 export declare class MobileService implements OnModuleInit {
+    private readonly configService;
     private readonly dataSource;
     private readonly storageService;
     private readonly notificationsService;
     private readonly realtimeGateway;
-    constructor(dataSource: DataSource, storageService: StorageService, notificationsService: NotificationsService, realtimeGateway: RealtimeGateway);
+    private static readonly OFFER_LIFETIME_SECONDS;
+    private static readonly DEFAULT_CATEGORY;
+    private static readonly GEMINI_TIMEOUT_MS;
+    constructor(configService: ConfigService, dataSource: DataSource, storageService: StorageService, notificationsService: NotificationsService, realtimeGateway: RealtimeGateway);
     onModuleInit(): Promise<void>;
     register(input: {
         type?: string;
@@ -292,6 +297,8 @@ export declare class MobileService implements OnModuleInit {
             id: any;
             amount: number;
             status: any;
+            expiresAt: any;
+            secondsRemaining: number | null;
             message: any;
             worker: {
                 id: any;
@@ -304,6 +311,7 @@ export declare class MobileService implements OnModuleInit {
                 distanceKm: number | null;
             };
         }[];
+        offerLifetimeSeconds: number;
     }>;
     getWorkerProfile(workerId: string): Promise<{
         worker: {
@@ -362,7 +370,9 @@ export declare class MobileService implements OnModuleInit {
     }>;
     getIncomingRequest(workerUserId: string): Promise<{
         request: null;
+        offerLifetimeSeconds?: undefined;
     } | {
+        offerLifetimeSeconds: number;
         request: {
             id: any;
             title: any;
@@ -379,6 +389,9 @@ export declare class MobileService implements OnModuleInit {
             workerOffer: {
                 id: any;
                 amount: number;
+                status: any;
+                expiresAt: any;
+                secondsRemaining: number | null;
             } | null;
         };
     }>;
@@ -542,6 +555,9 @@ export declare class MobileService implements OnModuleInit {
     private getUserByIdWithPhotoMeta;
     private normalizeAiCategories;
     private parseAiCategories;
+    private classifyRequestCategoriesWithAi;
+    private parseAiCategoriesFromGeminiText;
+    private listActiveCategoryCatalogForAi;
     private toCategoryId;
     private validateBase64Images;
     private ensureDataUri;
@@ -550,5 +566,7 @@ export declare class MobileService implements OnModuleInit {
     private ensureThreadExists;
     private ensureThreadAndInitialMessage;
     private seedOffersForRequest;
+    private expireStaleOffers;
+    private ensureCategoriesExist;
 }
 export {};

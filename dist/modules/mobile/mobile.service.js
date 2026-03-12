@@ -8,19 +8,27 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var MobileService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MobileService = void 0;
 const common_1 = require("@nestjs/common");
+const config_1 = require("@nestjs/config");
 const typeorm_1 = require("typeorm");
 const storage_service_1 = require("../../infrastructure/storage/storage.service");
 const notifications_service_1 = require("../notifications/notifications.service");
 const realtime_gateway_1 = require("../realtime/realtime.gateway");
 let MobileService = class MobileService {
+    static { MobileService_1 = this; }
+    configService;
     dataSource;
     storageService;
     notificationsService;
     realtimeGateway;
-    constructor(dataSource, storageService, notificationsService, realtimeGateway) {
+    static OFFER_LIFETIME_SECONDS = 120;
+    static DEFAULT_CATEGORY = 'General';
+    static GEMINI_TIMEOUT_MS = 9000;
+    constructor(configService, dataSource, storageService, notificationsService, realtimeGateway) {
+        this.configService = configService;
         this.dataSource = dataSource;
         this.storageService = storageService;
         this.notificationsService = notificationsService;
@@ -196,11 +204,8 @@ let MobileService = class MobileService {
         if (!input.clientUserId) {
             throw new common_1.BadRequestException('clientUserId is required');
         }
-        if (!input.title ||
-            !input.description ||
-            !input.category ||
-            !input.address) {
-            throw new common_1.BadRequestException('title, description, category and address are required');
+        if (!input.title || !input.description || !input.address) {
+            throw new common_1.BadRequestException('title, description and address are required');
         }
         if (!Number.isFinite(input.budget) || input.budget <= 0) {
             throw new common_1.BadRequestException('budget must be greater than 0');
@@ -209,7 +214,21 @@ let MobileService = class MobileService {
             throw new common_1.BadRequestException('latitude and longitude are required');
         }
         const photos = this.validateBase64Images(input.photosBase64, 5);
-        const aiCategories = this.normalizeAiCategories(input.aiCategories, input.category);
+        const fallbackCategory = input.category?.trim() || MobileService_1.DEFAULT_CATEGORY;
+        const aiCategoriesFromAi = await this.classifyRequestCategoriesWithAi({
+            title: input.title,
+            description: input.description,
+            fallbackCategory,
+        });
+        const aiCategoriesInput = aiCategoriesFromAi.length
+            ? aiCategoriesFromAi
+            : input.aiCategories;
+        const aiCategories = this.normalizeAiCategories(aiCategoriesInput, fallbackCategory);
+        const primaryCategory = aiCategories[0]?.name || fallbackCategory || MobileService_1.DEFAULT_CATEGORY;
+        await this.ensureCategoriesExist([
+            primaryCategory,
+            ...aiCategories.map((item) => item.name),
+        ]);
         await this.getUserById(input.clientUserId);
         const rows = await this.dataSource.query(`
       INSERT INTO job_requests (
@@ -243,7 +262,7 @@ let MobileService = class MobileService {
             input.clientUserId,
             input.title,
             input.description,
-            input.category,
+            primaryCategory,
             JSON.stringify(aiCategories),
             input.budget,
             input.priceType,
@@ -366,14 +385,22 @@ let MobileService = class MobileService {
     }
     async getRequestStatus(params) {
         const request = await this.resolveRequest(params);
+        await this.expireStaleOffers(request.id);
         const photos = await this.getRequestPhotos(request.id);
         const metricRows = await this.dataSource.query(`
       SELECT
-        COUNT(*)::text AS offers_count,
-        COUNT(*) FILTER (WHERE jo.status = 'accepted')::text AS accepted_count,
+        COUNT(*) FILTER (
+          WHERE jo.status = 'pending'
+            AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
+        )::text AS offers_count,
+        COUNT(*) FILTER (
+          WHERE jo.status = 'accepted'
+        )::text AS accepted_count,
         MIN(
           CASE
-            WHEN u.current_location IS NOT NULL
+            WHEN jo.status = 'pending'
+                 AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
+                 AND u.current_location IS NOT NULL
               THEN ST_Distance(u.current_location, jr.location) / 1000.0
             ELSE NULL
           END
@@ -395,6 +422,8 @@ let MobileService = class MobileService {
       FROM job_offers jo
       JOIN users u ON u.id = jo.worker_user_id
       WHERE jo.request_id = $1
+        AND jo.status = 'pending'
+        AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
       ORDER BY jo.amount ASC, u.average_rating DESC
       LIMIT 3
       `, [request.id]);
@@ -425,6 +454,7 @@ let MobileService = class MobileService {
     }
     async getOffers(params) {
         const request = await this.resolveRequest(params);
+        await this.expireStaleOffers(request.id);
         const photos = await this.getRequestPhotos(request.id);
         const rows = await this.dataSource.query(`
       WITH skill_agg AS (
@@ -435,6 +465,8 @@ let MobileService = class MobileService {
       SELECT jo.id AS offer_id,
              jo.amount,
              jo.status,
+             jo.expires_at,
+             EXTRACT(EPOCH FROM (jo.expires_at - NOW())) AS seconds_left,
              jo.message,
              u.id AS worker_id,
              u.first_name,
@@ -453,6 +485,8 @@ let MobileService = class MobileService {
       JOIN job_requests jr ON jr.id = jo.request_id
       LEFT JOIN skill_agg sa ON sa.user_id = u.id
       WHERE jo.request_id = $1
+        AND jo.status = 'pending'
+        AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
       ORDER BY jo.amount ASC, u.average_rating DESC
       `, [request.id]);
         return {
@@ -464,6 +498,10 @@ let MobileService = class MobileService {
                 id: row.offer_id,
                 amount: Number(row.amount),
                 status: row.status,
+                expiresAt: row.expires_at ?? null,
+                secondsRemaining: row.seconds_left == null
+                    ? null
+                    : Math.max(0, Math.floor(Number(row.seconds_left))),
                 message: row.message ?? '',
                 worker: {
                     id: row.worker_id,
@@ -476,6 +514,7 @@ let MobileService = class MobileService {
                     distanceKm: row.distance_km == null ? null : Number(row.distance_km),
                 },
             })),
+            offerLifetimeSeconds: MobileService_1.OFFER_LIFETIME_SECONDS,
         };
     }
     async getWorkerProfile(workerId) {
@@ -640,6 +679,7 @@ let MobileService = class MobileService {
         };
     }
     async getIncomingRequest(workerUserId) {
+        await this.expireStaleOffers();
         await this.getUserById(workerUserId);
         const rows = await this.dataSource.query(`
       SELECT jr.id AS request_id,
@@ -658,14 +698,63 @@ let MobileService = class MobileService {
              c.first_name AS client_first_name,
              c.last_name AS client_last_name,
              jo.id AS offer_id,
-             jo.amount AS offer_amount
+             jo.amount AS offer_amount,
+             jo.status AS offer_status,
+             jo.expires_at AS offer_expires_at,
+             CASE
+               WHEN jo.status = 'pending' AND jo.expires_at IS NOT NULL
+                 THEN EXTRACT(EPOCH FROM (jo.expires_at - NOW()))
+               ELSE NULL
+             END AS offer_seconds_left
       FROM job_requests jr
       JOIN users w ON w.id = $1
       JOIN users c ON c.id = jr.client_user_id
-      LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.worker_user_id = $1
-      WHERE jr.status IN ('searching', 'negotiating')
-        AND jr.client_user_id <> $1
-      ORDER BY distance_km ASC NULLS LAST, jr.created_at DESC
+      LEFT JOIN job_offers jo
+        ON jo.request_id = jr.id
+       AND jo.worker_user_id = $1
+       AND jo.status <> 'expired'
+       AND (jo.status <> 'pending' OR jo.expires_at IS NULL OR jo.expires_at > NOW())
+      WHERE jr.client_user_id <> $1
+        AND (
+          (
+            jr.status IN ('searching', 'negotiating')
+            AND w.current_location IS NOT NULL
+            AND ST_DWithin(
+              jr.location,
+              w.current_location,
+              w.work_radius_km * 1000
+            )
+            AND (
+              NOT EXISTS (SELECT 1 FROM worker_skills ws0 WHERE ws0.user_id = $1)
+              OR EXISTS (
+                SELECT 1
+                FROM worker_skills ws
+                WHERE ws.user_id = $1
+                  AND (
+                    LOWER(ws.skill) = LOWER(jr.category)
+                    OR LOWER(ws.skill) IN (
+                      SELECT LOWER(value->>'name')
+                      FROM jsonb_array_elements(jr.ai_categories) value
+                    )
+                  )
+              )
+            )
+          )
+          OR (
+            jr.status = 'assigned'
+            AND EXISTS (
+              SELECT 1
+              FROM job_offers jo2
+              WHERE jo2.request_id = jr.id
+                AND jo2.worker_user_id = $1
+                AND jo2.status = 'accepted'
+            )
+          )
+        )
+      ORDER BY
+        CASE WHEN jr.status = 'assigned' THEN 0 ELSE 1 END,
+        distance_km ASC NULLS LAST,
+        jr.created_at DESC
       LIMIT 1
       `, [workerUserId]);
         const row = rows[0];
@@ -673,6 +762,7 @@ let MobileService = class MobileService {
             return { request: null };
         }
         return {
+            offerLifetimeSeconds: MobileService_1.OFFER_LIFETIME_SECONDS,
             request: {
                 id: row.request_id,
                 title: row.title,
@@ -687,7 +777,15 @@ let MobileService = class MobileService {
                     name: `${row.client_first_name} ${row.client_last_name ?? ''}`.trim(),
                 },
                 workerOffer: row.offer_id
-                    ? { id: row.offer_id, amount: Number(row.offer_amount ?? 0) }
+                    ? {
+                        id: row.offer_id,
+                        amount: Number(row.offer_amount ?? 0),
+                        status: row.offer_status ?? 'pending',
+                        expiresAt: row.offer_expires_at ?? null,
+                        secondsRemaining: row.offer_seconds_left == null
+                            ? null
+                            : Math.max(0, Math.floor(Number(row.offer_seconds_left))),
+                    }
                     : null,
             },
         };
@@ -696,8 +794,12 @@ let MobileService = class MobileService {
         if (!Number.isFinite(params.amount) || params.amount <= 0) {
             throw new common_1.BadRequestException('amount must be greater than 0');
         }
+        await this.expireStaleOffers(params.requestId);
         await this.getUserById(params.workerUserId);
         const request = await this.getRequestById(params.requestId);
+        if (!['searching', 'negotiating'].includes(request.status)) {
+            throw new common_1.BadRequestException('La solicitud ya no admite nuevas ofertas');
+        }
         const existingRows = await this.dataSource.query(`
       SELECT id
       FROM job_offers
@@ -711,22 +813,29 @@ let MobileService = class MobileService {
         SET amount = $2,
             message = $3,
             status = 'pending',
+            expires_at = NOW() + ($4::int * INTERVAL '1 second'),
             created_at = NOW()
         WHERE id = $1
         RETURNING id
-        `, [existingRows[0].id, params.amount, params.message ?? null]);
+        `, [
+                existingRows[0].id,
+                params.amount,
+                params.message ?? null,
+                MobileService_1.OFFER_LIFETIME_SECONDS,
+            ]);
             offerId = rows[0].id;
         }
         else {
             const rows = await this.dataSource.query(`
-        INSERT INTO job_offers (request_id, worker_user_id, amount, message, status)
-        VALUES ($1, $2, $3, $4, 'pending')
+        INSERT INTO job_offers (request_id, worker_user_id, amount, message, status, expires_at)
+        VALUES ($1, $2, $3, $4, 'pending', NOW() + ($5::int * INTERVAL '1 second'))
         RETURNING id
         `, [
                 params.requestId,
                 params.workerUserId,
                 params.amount,
                 params.message ?? null,
+                MobileService_1.OFFER_LIFETIME_SECONDS,
             ]);
             offerId = rows[0].id;
         }
@@ -751,6 +860,7 @@ let MobileService = class MobileService {
             amount: params.amount,
             message: params.message ?? '',
             status: 'pending',
+            offerLifetimeSeconds: MobileService_1.OFFER_LIFETIME_SECONDS,
         };
         this.realtimeGateway.emitToUser(request.client_user_id, 'offer.new', offerPayload);
         this.realtimeGateway.emitToUser(params.workerUserId, 'offer.updated', offerPayload);
@@ -766,6 +876,7 @@ let MobileService = class MobileService {
         };
     }
     async acceptOffer(params) {
+        await this.expireStaleOffers();
         const rows = await this.dataSource.query(`
       SELECT jo.id,
              jo.request_id,
@@ -774,6 +885,8 @@ let MobileService = class MobileService {
       FROM job_offers jo
       JOIN job_requests jr ON jr.id = jo.request_id
       WHERE jo.id = $1
+        AND jo.status <> 'expired'
+        AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
       LIMIT 1
       `, [params.offerId]);
         const offer = rows[0];
@@ -783,7 +896,14 @@ let MobileService = class MobileService {
         if (offer.client_user_id !== params.clientUserId) {
             throw new common_1.UnauthorizedException('Solo el cliente puede aceptar la oferta');
         }
-        await this.dataSource.query(`UPDATE job_offers SET status = 'rejected' WHERE request_id = $1`, [offer.request_id]);
+        const rejectedRows = await this.dataSource.query(`
+      UPDATE job_offers
+      SET status = 'rejected'
+      WHERE request_id = $1
+        AND id <> $2
+        AND status <> 'expired'
+      RETURNING id, worker_user_id
+      `, [offer.request_id, params.offerId]);
         await this.dataSource.query(`UPDATE job_offers SET status = 'accepted' WHERE id = $1`, [params.offerId]);
         await this.dataSource.query(`UPDATE job_requests SET status = 'assigned', updated_at = NOW() WHERE id = $1`, [offer.request_id]);
         const payload = {
@@ -795,6 +915,16 @@ let MobileService = class MobileService {
         };
         this.realtimeGateway.emitToUser(offer.client_user_id, 'offer.accepted', payload);
         this.realtimeGateway.emitToUser(offer.worker_user_id, 'offer.accepted', payload);
+        for (const rejected of rejectedRows) {
+            this.realtimeGateway.emitToUser(rejected.worker_user_id, 'offer.rejected', {
+                offerId: rejected.id,
+                requestId: offer.request_id,
+                clientUserId: offer.client_user_id,
+                workerUserId: rejected.worker_user_id,
+                status: 'rejected',
+                reason: 'selected_other_worker',
+            });
+        }
         return {
             accepted: true,
             requestId: offer.request_id,
@@ -1008,6 +1138,7 @@ let MobileService = class MobileService {
         const sanitized = [
             ...new Set((skills ?? []).map((item) => item.trim()).filter(Boolean)),
         ].slice(0, 20);
+        await this.ensureCategoriesExist(sanitized);
         await this.dataSource.query(`DELETE FROM worker_skills WHERE user_id = $1`, [workerUserId]);
         for (const skill of sanitized) {
             await this.dataSource.query(`INSERT INTO worker_skills (user_id, skill) VALUES ($1, $2)`, [workerUserId, skill]);
@@ -1149,10 +1280,12 @@ let MobileService = class MobileService {
         amount NUMERIC(12,2) NOT NULL,
         message TEXT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
+        expires_at TIMESTAMPTZ NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (request_id, worker_user_id)
       );
       `,
+            `ALTER TABLE job_offers ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NULL;`,
             `
       CREATE TABLE IF NOT EXISTS chat_threads (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1672,8 +1805,214 @@ let MobileService = class MobileService {
             .filter((item) => Boolean(item.id) && Boolean(item.name))
             .slice(0, 3);
     }
+    async classifyRequestCategoriesWithAi(params) {
+        const fallbackCategory = params.fallbackCategory?.trim() || MobileService_1.DEFAULT_CATEGORY;
+        const catalog = await this.listActiveCategoryCatalogForAi();
+        if (catalog.length === 0) {
+            return [
+                {
+                    id: this.toCategoryId(fallbackCategory),
+                    name: fallbackCategory,
+                    confidence: 0.5,
+                },
+            ];
+        }
+        const geminiApiKey = this.configService.get('GEMINI_API_KEY')?.trim() ?? '';
+        if (!geminiApiKey) {
+            return [
+                {
+                    id: this.toCategoryId(fallbackCategory),
+                    name: fallbackCategory,
+                    confidence: 0.5,
+                },
+            ];
+        }
+        const geminiModel = this.configService.get('GEMINI_MODEL')?.trim() ||
+            'gemini-2.0-flash';
+        const categoryCatalog = catalog
+            .map((item) => `- id: ${item.id}, nombre: ${item.name}`)
+            .join('\n');
+        const prompt = `
+Eres un asistente que clasifica solicitudes de trabajo en Bolivia.
+
+Catalogo de categorias permitidas:
+${categoryCatalog}
+
+Entrada del usuario:
+- titulo: ${params.title ?? ''}
+- descripcion: ${params.description ?? ''}
+
+Reglas obligatorias:
+1) Devuelve SOLO JSON valido.
+2) Formato exacto:
+{
+  "categorias": [
+    { "id": "string", "nombre": "string", "confianza": 0.0 }
+  ]
+}
+3) Ordena por confianza descendente.
+4) Maximo 3 categorias.
+5) El "id" y "nombre" deben pertenecer al catalogo permitido.
+6) Si hay duda, incluye "trabajo_general" / "General".
+7) No agregues texto fuera del JSON.
+`.trim();
+        const endpoint = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent`);
+        endpoint.searchParams.set('key', geminiApiKey);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), MobileService_1.GEMINI_TIMEOUT_MS);
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    contents: [
+                        {
+                            role: 'user',
+                            parts: [{ text: prompt }],
+                        },
+                    ],
+                    generationConfig: {
+                        temperature: 0,
+                        responseMimeType: 'application/json',
+                        maxOutputTokens: 240,
+                    },
+                }),
+                signal: controller.signal,
+            });
+            if (!response.ok) {
+                return [
+                    {
+                        id: this.toCategoryId(fallbackCategory),
+                        name: fallbackCategory,
+                        confidence: 0.5,
+                    },
+                ];
+            }
+            const payload = (await response.json());
+            const text = payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+            if (!text) {
+                return [
+                    {
+                        id: this.toCategoryId(fallbackCategory),
+                        name: fallbackCategory,
+                        confidence: 0.5,
+                    },
+                ];
+            }
+            const parsed = this.parseAiCategoriesFromGeminiText({
+                text,
+                catalog,
+                fallbackCategory,
+            });
+            if (parsed.length > 0) {
+                return parsed;
+            }
+            return [
+                {
+                    id: this.toCategoryId(fallbackCategory),
+                    name: fallbackCategory,
+                    confidence: 0.5,
+                },
+            ];
+        }
+        catch (_) {
+            return [
+                {
+                    id: this.toCategoryId(fallbackCategory),
+                    name: fallbackCategory,
+                    confidence: 0.5,
+                },
+            ];
+        }
+        finally {
+            clearTimeout(timeout);
+        }
+    }
+    parseAiCategoriesFromGeminiText(params) {
+        const byId = new Map(params.catalog.map((item) => [item.id.trim().toLowerCase(), item]));
+        const byName = new Map(params.catalog.map((item) => [item.name.trim().toLowerCase(), item]));
+        let decoded;
+        try {
+            decoded = JSON.parse(params.text);
+        }
+        catch (_) {
+            const start = params.text.indexOf('{');
+            const end = params.text.lastIndexOf('}');
+            if (start < 0 || end <= start) {
+                return [];
+            }
+            try {
+                decoded = JSON.parse(params.text.slice(start, end + 1));
+            }
+            catch (_) {
+                return [];
+            }
+        }
+        if (!decoded || typeof decoded !== 'object') {
+            return [];
+        }
+        const rawCategories = decoded.categorias;
+        if (!Array.isArray(rawCategories)) {
+            return [];
+        }
+        const output = [];
+        const seen = new Set();
+        for (const item of rawCategories.slice(0, 3)) {
+            if (!item || typeof item !== 'object') {
+                continue;
+            }
+            const row = item;
+            const rawId = String(row.id ?? '').trim().toLowerCase();
+            const rawName = String(row.nombre ?? row.name ?? '').trim();
+            const resolved = (rawId ? byId.get(rawId) : undefined) ??
+                (rawName ? byName.get(rawName.toLowerCase()) : undefined) ??
+                (rawName
+                    ? params.catalog.find((category) => category.name.toLowerCase().includes(rawName.toLowerCase()))
+                    : undefined);
+            const name = resolved?.name || rawName || params.fallbackCategory;
+            const id = resolved?.id || rawId || this.toCategoryId(name);
+            if (!id || !name || seen.has(id)) {
+                continue;
+            }
+            seen.add(id);
+            const confidenceRaw = Number(row.confianza ?? row.confidence ?? 0.5);
+            output.push({
+                id,
+                name,
+                confidence: Number.isFinite(confidenceRaw)
+                    ? Math.max(0, Math.min(1, confidenceRaw))
+                    : 0.5,
+            });
+        }
+        output.sort((a, b) => b.confidence - a.confidence);
+        return output;
+    }
+    async listActiveCategoryCatalogForAi() {
+        const rows = await this.dataSource.query(`
+      SELECT id, name
+      FROM categories
+      WHERE is_active = true
+      ORDER BY name ASC
+      LIMIT 250
+      `);
+        const catalog = rows
+            .map((row) => ({
+            id: String(row.id ?? '').trim().toLowerCase(),
+            name: String(row.name ?? '').trim(),
+        }))
+            .filter((row) => row.id && row.name);
+        const hasGeneral = catalog.some((item) => item.id === 'trabajo_general' || item.name.toLowerCase() === 'general');
+        if (!hasGeneral) {
+            catalog.push({ id: 'trabajo_general', name: MobileService_1.DEFAULT_CATEGORY });
+        }
+        return catalog;
+    }
     toCategoryId(value) {
         return (value
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
             .trim()
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '_')
@@ -1754,32 +2093,44 @@ let MobileService = class MobileService {
     }
     async seedOffersForRequest(requestId, baseBudget) {
         const request = await this.getRequestById(requestId);
+        const normalizedSkills = [
+            ...new Set([
+                request.category,
+                ...(request.aiCategories ?? []).map((item) => item.name),
+            ]),
+        ]
+            .map((value) => String(value ?? '').trim().toLowerCase())
+            .filter(Boolean);
         const workers = await this.dataSource.query(`
-      SELECT u.id
+      SELECT u.id,
+             ST_Distance(u.current_location, $1::geography) / 1000.0 AS distance_km
       FROM users u
       WHERE u.type = 'worker'
         AND u.is_available = true
         AND u.current_location IS NOT NULL
         AND ST_DWithin(u.current_location, $1::geography, u.work_radius_km * 1000)
+        AND (
+          cardinality($2::text[]) = 0
+          OR EXISTS (
+            SELECT 1
+            FROM worker_skills ws
+            WHERE ws.user_id = u.id
+              AND LOWER(ws.skill) = ANY($2::text[])
+          )
+        )
       ORDER BY ST_Distance(u.current_location, $1::geography) ASC
-      LIMIT 5
-      `, [request.location]);
+      `, [request.location, normalizedSkills]);
         for (let index = 0; index < workers.length; index += 1) {
             const worker = workers[index];
-            const multiplier = 0.95 + index * 0.06;
-            const amount = Math.round(baseBudget * multiplier);
-            await this.upsertOffer({
-                requestId,
-                workerUserId: worker.id,
-                amount,
-                message: `Hola, puedo comenzar hoy mismo. Oferta inicial Bs ${amount}.`,
-            });
             this.realtimeGateway.emitToUser(worker.id, 'request.new', {
                 requestId,
                 category: request.category,
                 title: request.title,
                 budget: Number(request.budget ?? baseBudget),
+                distanceKm: Number(worker.distance_km ?? 0),
                 address: request.address,
+                description: request.description,
+                aiCategories: request.aiCategories ?? [],
             });
         }
         const workerIds = workers.map((worker) => worker.id).filter(Boolean);
@@ -1804,11 +2155,54 @@ let MobileService = class MobileService {
         }
         return workers.length;
     }
+    async expireStaleOffers(requestId) {
+        const rows = await this.dataSource.query(`
+      UPDATE job_offers jo
+      SET status = 'expired'
+      FROM job_requests jr
+      WHERE jo.request_id = jr.id
+        AND jo.status = 'pending'
+        AND jo.expires_at IS NOT NULL
+        AND jo.expires_at < NOW()
+        AND ($1::uuid IS NULL OR jo.request_id = $1::uuid)
+      RETURNING jo.id, jo.request_id, jo.worker_user_id, jr.client_user_id
+      `, [requestId ?? null]);
+        for (const row of rows) {
+            const payload = {
+                offerId: row.id,
+                requestId: row.request_id,
+                workerUserId: row.worker_user_id,
+                clientUserId: row.client_user_id,
+                status: 'expired',
+            };
+            this.realtimeGateway.emitToUser(row.worker_user_id, 'offer.expired', payload);
+            this.realtimeGateway.emitToUser(row.client_user_id, 'offer.expired', payload);
+        }
+    }
+    async ensureCategoriesExist(values) {
+        const sanitized = [...new Set(values.map((item) => item.trim()).filter(Boolean))]
+            .slice(0, 30);
+        for (const name of sanitized) {
+            const id = this.toCategoryId(name);
+            await this.dataSource.query(`
+        INSERT INTO categories (id, name, description, is_active)
+        VALUES ($1, $2, $3, true)
+        ON CONFLICT DO NOTHING
+        `, [id, name, `Categoria generada automaticamente: ${name}`]);
+            await this.dataSource.query(`
+        UPDATE categories
+        SET is_active = true,
+            updated_at = NOW()
+        WHERE id = $1 OR LOWER(name) = LOWER($2)
+        `, [id, name]);
+        }
+    }
 };
 exports.MobileService = MobileService;
-exports.MobileService = MobileService = __decorate([
+exports.MobileService = MobileService = MobileService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [typeorm_1.DataSource,
+    __metadata("design:paramtypes", [config_1.ConfigService,
+        typeorm_1.DataSource,
         storage_service_1.StorageService,
         notifications_service_1.NotificationsService,
         realtime_gateway_1.RealtimeGateway])

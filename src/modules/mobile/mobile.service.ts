@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -16,7 +17,7 @@ type CreateRequestInput = {
   clientUserId: string;
   title: string;
   description: string;
-  category: string;
+  category?: string;
   aiCategories?: Array<{
     id: string;
     name: string;
@@ -33,7 +34,12 @@ type CreateRequestInput = {
 
 @Injectable()
 export class MobileService implements OnModuleInit {
+  private static readonly OFFER_LIFETIME_SECONDS = 120;
+  private static readonly DEFAULT_CATEGORY = 'General';
+  private static readonly GEMINI_TIMEOUT_MS = 9000;
+
   constructor(
+    private readonly configService: ConfigService,
     private readonly dataSource: DataSource,
     private readonly storageService: StorageService,
     private readonly notificationsService: NotificationsService,
@@ -255,15 +261,8 @@ export class MobileService implements OnModuleInit {
     if (!input.clientUserId) {
       throw new BadRequestException('clientUserId is required');
     }
-    if (
-      !input.title ||
-      !input.description ||
-      !input.category ||
-      !input.address
-    ) {
-      throw new BadRequestException(
-        'title, description, category and address are required',
-      );
+    if (!input.title || !input.description || !input.address) {
+      throw new BadRequestException('title, description and address are required');
     }
     if (!Number.isFinite(input.budget) || input.budget <= 0) {
       throw new BadRequestException('budget must be greater than 0');
@@ -272,10 +271,26 @@ export class MobileService implements OnModuleInit {
       throw new BadRequestException('latitude and longitude are required');
     }
     const photos = this.validateBase64Images(input.photosBase64, 5);
+    const fallbackCategory =
+      input.category?.trim() || MobileService.DEFAULT_CATEGORY;
+    const aiCategoriesFromAi = await this.classifyRequestCategoriesWithAi({
+      title: input.title,
+      description: input.description,
+      fallbackCategory,
+    });
+    const aiCategoriesInput = aiCategoriesFromAi.length
+      ? aiCategoriesFromAi
+      : input.aiCategories;
     const aiCategories = this.normalizeAiCategories(
-      input.aiCategories,
-      input.category,
+      aiCategoriesInput,
+      fallbackCategory,
     );
+    const primaryCategory =
+      aiCategories[0]?.name || fallbackCategory || MobileService.DEFAULT_CATEGORY;
+    await this.ensureCategoriesExist([
+      primaryCategory,
+      ...aiCategories.map((item) => item.name),
+    ]);
 
     await this.getUserById(input.clientUserId);
 
@@ -313,7 +328,7 @@ export class MobileService implements OnModuleInit {
         input.clientUserId,
         input.title,
         input.description,
-        input.category,
+        primaryCategory,
         JSON.stringify(aiCategories),
         input.budget,
         input.priceType,
@@ -489,16 +504,24 @@ export class MobileService implements OnModuleInit {
     clientUserId?: string;
   }) {
     const request = await this.resolveRequest(params);
+    await this.expireStaleOffers(request.id);
     const photos = await this.getRequestPhotos(request.id);
 
     const metricRows = await this.dataSource.query<any[]>(
       `
       SELECT
-        COUNT(*)::text AS offers_count,
-        COUNT(*) FILTER (WHERE jo.status = 'accepted')::text AS accepted_count,
+        COUNT(*) FILTER (
+          WHERE jo.status = 'pending'
+            AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
+        )::text AS offers_count,
+        COUNT(*) FILTER (
+          WHERE jo.status = 'accepted'
+        )::text AS accepted_count,
         MIN(
           CASE
-            WHEN u.current_location IS NOT NULL
+            WHEN jo.status = 'pending'
+                 AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
+                 AND u.current_location IS NOT NULL
               THEN ST_Distance(u.current_location, jr.location) / 1000.0
             ELSE NULL
           END
@@ -524,6 +547,8 @@ export class MobileService implements OnModuleInit {
       FROM job_offers jo
       JOIN users u ON u.id = jo.worker_user_id
       WHERE jo.request_id = $1
+        AND jo.status = 'pending'
+        AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
       ORDER BY jo.amount ASC, u.average_rating DESC
       LIMIT 3
       `,
@@ -561,6 +586,7 @@ export class MobileService implements OnModuleInit {
 
   async getOffers(params: { requestId?: string; clientUserId?: string }) {
     const request = await this.resolveRequest(params);
+    await this.expireStaleOffers(request.id);
     const photos = await this.getRequestPhotos(request.id);
 
     const rows = await this.dataSource.query<any[]>(
@@ -573,6 +599,8 @@ export class MobileService implements OnModuleInit {
       SELECT jo.id AS offer_id,
              jo.amount,
              jo.status,
+             jo.expires_at,
+             EXTRACT(EPOCH FROM (jo.expires_at - NOW())) AS seconds_left,
              jo.message,
              u.id AS worker_id,
              u.first_name,
@@ -591,6 +619,8 @@ export class MobileService implements OnModuleInit {
       JOIN job_requests jr ON jr.id = jo.request_id
       LEFT JOIN skill_agg sa ON sa.user_id = u.id
       WHERE jo.request_id = $1
+        AND jo.status = 'pending'
+        AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
       ORDER BY jo.amount ASC, u.average_rating DESC
       `,
       [request.id],
@@ -605,6 +635,11 @@ export class MobileService implements OnModuleInit {
         id: row.offer_id,
         amount: Number(row.amount),
         status: row.status,
+        expiresAt: row.expires_at ?? null,
+        secondsRemaining:
+          row.seconds_left == null
+            ? null
+            : Math.max(0, Math.floor(Number(row.seconds_left))),
         message: row.message ?? '',
         worker: {
           id: row.worker_id,
@@ -617,6 +652,7 @@ export class MobileService implements OnModuleInit {
           distanceKm: row.distance_km == null ? null : Number(row.distance_km),
         },
       })),
+      offerLifetimeSeconds: MobileService.OFFER_LIFETIME_SECONDS,
     };
   }
   async getWorkerProfile(workerId: string) {
@@ -831,6 +867,7 @@ export class MobileService implements OnModuleInit {
   }
 
   async getIncomingRequest(workerUserId: string) {
+    await this.expireStaleOffers();
     await this.getUserById(workerUserId);
 
     const rows = await this.dataSource.query<any[]>(
@@ -851,14 +888,63 @@ export class MobileService implements OnModuleInit {
              c.first_name AS client_first_name,
              c.last_name AS client_last_name,
              jo.id AS offer_id,
-             jo.amount AS offer_amount
+             jo.amount AS offer_amount,
+             jo.status AS offer_status,
+             jo.expires_at AS offer_expires_at,
+             CASE
+               WHEN jo.status = 'pending' AND jo.expires_at IS NOT NULL
+                 THEN EXTRACT(EPOCH FROM (jo.expires_at - NOW()))
+               ELSE NULL
+             END AS offer_seconds_left
       FROM job_requests jr
       JOIN users w ON w.id = $1
       JOIN users c ON c.id = jr.client_user_id
-      LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.worker_user_id = $1
-      WHERE jr.status IN ('searching', 'negotiating')
-        AND jr.client_user_id <> $1
-      ORDER BY distance_km ASC NULLS LAST, jr.created_at DESC
+      LEFT JOIN job_offers jo
+        ON jo.request_id = jr.id
+       AND jo.worker_user_id = $1
+       AND jo.status <> 'expired'
+       AND (jo.status <> 'pending' OR jo.expires_at IS NULL OR jo.expires_at > NOW())
+      WHERE jr.client_user_id <> $1
+        AND (
+          (
+            jr.status IN ('searching', 'negotiating')
+            AND w.current_location IS NOT NULL
+            AND ST_DWithin(
+              jr.location,
+              w.current_location,
+              w.work_radius_km * 1000
+            )
+            AND (
+              NOT EXISTS (SELECT 1 FROM worker_skills ws0 WHERE ws0.user_id = $1)
+              OR EXISTS (
+                SELECT 1
+                FROM worker_skills ws
+                WHERE ws.user_id = $1
+                  AND (
+                    LOWER(ws.skill) = LOWER(jr.category)
+                    OR LOWER(ws.skill) IN (
+                      SELECT LOWER(value->>'name')
+                      FROM jsonb_array_elements(jr.ai_categories) value
+                    )
+                  )
+              )
+            )
+          )
+          OR (
+            jr.status = 'assigned'
+            AND EXISTS (
+              SELECT 1
+              FROM job_offers jo2
+              WHERE jo2.request_id = jr.id
+                AND jo2.worker_user_id = $1
+                AND jo2.status = 'accepted'
+            )
+          )
+        )
+      ORDER BY
+        CASE WHEN jr.status = 'assigned' THEN 0 ELSE 1 END,
+        distance_km ASC NULLS LAST,
+        jr.created_at DESC
       LIMIT 1
       `,
       [workerUserId],
@@ -870,6 +956,7 @@ export class MobileService implements OnModuleInit {
     }
 
     return {
+      offerLifetimeSeconds: MobileService.OFFER_LIFETIME_SECONDS,
       request: {
         id: row.request_id,
         title: row.title,
@@ -884,7 +971,16 @@ export class MobileService implements OnModuleInit {
           name: `${row.client_first_name} ${row.client_last_name ?? ''}`.trim(),
         },
         workerOffer: row.offer_id
-          ? { id: row.offer_id, amount: Number(row.offer_amount ?? 0) }
+          ? {
+              id: row.offer_id,
+              amount: Number(row.offer_amount ?? 0),
+              status: row.offer_status ?? 'pending',
+              expiresAt: row.offer_expires_at ?? null,
+              secondsRemaining:
+                row.offer_seconds_left == null
+                  ? null
+                  : Math.max(0, Math.floor(Number(row.offer_seconds_left))),
+            }
           : null,
       },
     };
@@ -899,8 +995,14 @@ export class MobileService implements OnModuleInit {
       throw new BadRequestException('amount must be greater than 0');
     }
 
+    await this.expireStaleOffers(params.requestId);
     await this.getUserById(params.workerUserId);
     const request = await this.getRequestById(params.requestId);
+    if (!['searching', 'negotiating'].includes(request.status)) {
+      throw new BadRequestException(
+        'La solicitud ya no admite nuevas ofertas',
+      );
+    }
 
     const existingRows = await this.dataSource.query<any[]>(
       `
@@ -921,18 +1023,24 @@ export class MobileService implements OnModuleInit {
         SET amount = $2,
             message = $3,
             status = 'pending',
+            expires_at = NOW() + ($4::int * INTERVAL '1 second'),
             created_at = NOW()
         WHERE id = $1
         RETURNING id
         `,
-        [existingRows[0].id, params.amount, params.message ?? null],
+        [
+          existingRows[0].id,
+          params.amount,
+          params.message ?? null,
+          MobileService.OFFER_LIFETIME_SECONDS,
+        ],
       );
       offerId = rows[0].id;
     } else {
       const rows = await this.dataSource.query<any[]>(
         `
-        INSERT INTO job_offers (request_id, worker_user_id, amount, message, status)
-        VALUES ($1, $2, $3, $4, 'pending')
+        INSERT INTO job_offers (request_id, worker_user_id, amount, message, status, expires_at)
+        VALUES ($1, $2, $3, $4, 'pending', NOW() + ($5::int * INTERVAL '1 second'))
         RETURNING id
         `,
         [
@@ -940,6 +1048,7 @@ export class MobileService implements OnModuleInit {
           params.workerUserId,
           params.amount,
           params.message ?? null,
+          MobileService.OFFER_LIFETIME_SECONDS,
         ],
       );
       offerId = rows[0].id;
@@ -972,6 +1081,7 @@ export class MobileService implements OnModuleInit {
       amount: params.amount,
       message: params.message ?? '',
       status: 'pending',
+      offerLifetimeSeconds: MobileService.OFFER_LIFETIME_SECONDS,
     };
     this.realtimeGateway.emitToUser(request.client_user_id, 'offer.new', offerPayload);
     this.realtimeGateway.emitToUser(params.workerUserId, 'offer.updated', offerPayload);
@@ -989,6 +1099,7 @@ export class MobileService implements OnModuleInit {
   }
 
   async acceptOffer(params: { offerId: string; clientUserId: string }) {
+    await this.expireStaleOffers();
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT jo.id,
@@ -998,6 +1109,8 @@ export class MobileService implements OnModuleInit {
       FROM job_offers jo
       JOIN job_requests jr ON jr.id = jo.request_id
       WHERE jo.id = $1
+        AND jo.status <> 'expired'
+        AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
       LIMIT 1
       `,
       [params.offerId],
@@ -1014,9 +1127,16 @@ export class MobileService implements OnModuleInit {
       );
     }
 
-    await this.dataSource.query(
-      `UPDATE job_offers SET status = 'rejected' WHERE request_id = $1`,
-      [offer.request_id],
+    const rejectedRows = await this.dataSource.query<any[]>(
+      `
+      UPDATE job_offers
+      SET status = 'rejected'
+      WHERE request_id = $1
+        AND id <> $2
+        AND status <> 'expired'
+      RETURNING id, worker_user_id
+      `,
+      [offer.request_id, params.offerId],
     );
     await this.dataSource.query(
       `UPDATE job_offers SET status = 'accepted' WHERE id = $1`,
@@ -1036,6 +1156,16 @@ export class MobileService implements OnModuleInit {
     };
     this.realtimeGateway.emitToUser(offer.client_user_id, 'offer.accepted', payload);
     this.realtimeGateway.emitToUser(offer.worker_user_id, 'offer.accepted', payload);
+    for (const rejected of rejectedRows) {
+      this.realtimeGateway.emitToUser(rejected.worker_user_id, 'offer.rejected', {
+        offerId: rejected.id,
+        requestId: offer.request_id,
+        clientUserId: offer.client_user_id,
+        workerUserId: rejected.worker_user_id,
+        status: 'rejected',
+        reason: 'selected_other_worker',
+      });
+    }
 
     return {
       accepted: true,
@@ -1316,6 +1446,7 @@ export class MobileService implements OnModuleInit {
     const sanitized = [
       ...new Set((skills ?? []).map((item) => item.trim()).filter(Boolean)),
     ].slice(0, 20);
+    await this.ensureCategoriesExist(sanitized);
 
     await this.dataSource.query(
       `DELETE FROM worker_skills WHERE user_id = $1`,
@@ -1495,10 +1626,12 @@ export class MobileService implements OnModuleInit {
         amount NUMERIC(12,2) NOT NULL,
         message TEXT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
+        expires_at TIMESTAMPTZ NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (request_id, worker_user_id)
       );
       `,
+      `ALTER TABLE job_offers ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NULL;`,
       `
       CREATE TABLE IF NOT EXISTS chat_threads (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2104,9 +2237,274 @@ export class MobileService implements OnModuleInit {
       .slice(0, 3);
   }
 
+  private async classifyRequestCategoriesWithAi(params: {
+    title: string;
+    description: string;
+    fallbackCategory: string;
+  }): Promise<Array<{ id: string; name: string; confidence: number }>> {
+    const fallbackCategory =
+      params.fallbackCategory?.trim() || MobileService.DEFAULT_CATEGORY;
+    const catalog = await this.listActiveCategoryCatalogForAi();
+    if (catalog.length === 0) {
+      return [
+        {
+          id: this.toCategoryId(fallbackCategory),
+          name: fallbackCategory,
+          confidence: 0.5,
+        },
+      ];
+    }
+
+    const geminiApiKey =
+      this.configService.get<string>('GEMINI_API_KEY')?.trim() ?? '';
+    if (!geminiApiKey) {
+      return [
+        {
+          id: this.toCategoryId(fallbackCategory),
+          name: fallbackCategory,
+          confidence: 0.5,
+        },
+      ];
+    }
+
+    const geminiModel =
+      this.configService.get<string>('GEMINI_MODEL')?.trim() ||
+      'gemini-2.0-flash';
+
+    const categoryCatalog = catalog
+      .map((item) => `- id: ${item.id}, nombre: ${item.name}`)
+      .join('\n');
+
+    const prompt = `
+Eres un asistente que clasifica solicitudes de trabajo en Bolivia.
+
+Catalogo de categorias permitidas:
+${categoryCatalog}
+
+Entrada del usuario:
+- titulo: ${params.title ?? ''}
+- descripcion: ${params.description ?? ''}
+
+Reglas obligatorias:
+1) Devuelve SOLO JSON valido.
+2) Formato exacto:
+{
+  "categorias": [
+    { "id": "string", "nombre": "string", "confianza": 0.0 }
+  ]
+}
+3) Ordena por confianza descendente.
+4) Maximo 3 categorias.
+5) El "id" y "nombre" deben pertenecer al catalogo permitido.
+6) Si hay duda, incluye "trabajo_general" / "General".
+7) No agregues texto fuera del JSON.
+`.trim();
+
+    const endpoint = new URL(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+        geminiModel,
+      )}:generateContent`,
+    );
+    endpoint.searchParams.set('key', geminiApiKey);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      MobileService.GEMINI_TIMEOUT_MS,
+    );
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: 'application/json',
+            maxOutputTokens: 240,
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        return [
+          {
+            id: this.toCategoryId(fallbackCategory),
+            name: fallbackCategory,
+            confidence: 0.5,
+          },
+        ];
+      }
+
+      const payload = (await response.json()) as {
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{ text?: string }>;
+          };
+        }>;
+      };
+
+      const text =
+        payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+      if (!text) {
+        return [
+          {
+            id: this.toCategoryId(fallbackCategory),
+            name: fallbackCategory,
+            confidence: 0.5,
+          },
+        ];
+      }
+
+      const parsed = this.parseAiCategoriesFromGeminiText({
+        text,
+        catalog,
+        fallbackCategory,
+      });
+      if (parsed.length > 0) {
+        return parsed;
+      }
+
+      return [
+        {
+          id: this.toCategoryId(fallbackCategory),
+          name: fallbackCategory,
+          confidence: 0.5,
+        },
+      ];
+    } catch (_) {
+      return [
+        {
+          id: this.toCategoryId(fallbackCategory),
+          name: fallbackCategory,
+          confidence: 0.5,
+        },
+      ];
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private parseAiCategoriesFromGeminiText(params: {
+    text: string;
+    catalog: Array<{ id: string; name: string }>;
+    fallbackCategory: string;
+  }): Array<{ id: string; name: string; confidence: number }> {
+    const byId = new Map(
+      params.catalog.map((item) => [item.id.trim().toLowerCase(), item]),
+    );
+    const byName = new Map(
+      params.catalog.map((item) => [item.name.trim().toLowerCase(), item]),
+    );
+
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(params.text);
+    } catch (_) {
+      const start = params.text.indexOf('{');
+      const end = params.text.lastIndexOf('}');
+      if (start < 0 || end <= start) {
+        return [];
+      }
+      try {
+        decoded = JSON.parse(params.text.slice(start, end + 1));
+      } catch (_) {
+        return [];
+      }
+    }
+
+    if (!decoded || typeof decoded !== 'object') {
+      return [];
+    }
+    const rawCategories = (decoded as Record<string, unknown>).categorias;
+    if (!Array.isArray(rawCategories)) {
+      return [];
+    }
+
+    const output: Array<{ id: string; name: string; confidence: number }> = [];
+    const seen = new Set<string>();
+    for (const item of rawCategories.slice(0, 3)) {
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+      const row = item as Record<string, unknown>;
+      const rawId = String(row.id ?? '').trim().toLowerCase();
+      const rawName = String(row.nombre ?? row.name ?? '').trim();
+
+      const resolved =
+        (rawId ? byId.get(rawId) : undefined) ??
+        (rawName ? byName.get(rawName.toLowerCase()) : undefined) ??
+        (rawName
+          ? params.catalog.find((category) =>
+              category.name.toLowerCase().includes(rawName.toLowerCase()),
+            )
+          : undefined);
+
+      const name = resolved?.name || rawName || params.fallbackCategory;
+      const id = resolved?.id || rawId || this.toCategoryId(name);
+      if (!id || !name || seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+
+      const confidenceRaw = Number(row.confianza ?? row.confidence ?? 0.5);
+      output.push({
+        id,
+        name,
+        confidence: Number.isFinite(confidenceRaw)
+          ? Math.max(0, Math.min(1, confidenceRaw))
+          : 0.5,
+      });
+    }
+
+    output.sort((a, b) => b.confidence - a.confidence);
+    return output;
+  }
+
+  private async listActiveCategoryCatalogForAi(): Promise<
+    Array<{ id: string; name: string }>
+  > {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT id, name
+      FROM categories
+      WHERE is_active = true
+      ORDER BY name ASC
+      LIMIT 250
+      `,
+    );
+
+    const catalog = rows
+      .map((row) => ({
+        id: String(row.id ?? '').trim().toLowerCase(),
+        name: String(row.name ?? '').trim(),
+      }))
+      .filter((row) => row.id && row.name);
+
+    const hasGeneral = catalog.some(
+      (item) =>
+        item.id === 'trabajo_general' || item.name.toLowerCase() === 'general',
+    );
+    if (!hasGeneral) {
+      catalog.push({ id: 'trabajo_general', name: MobileService.DEFAULT_CATEGORY });
+    }
+    return catalog;
+  }
+
   private toCategoryId(value: string) {
     return (
       value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '_')
@@ -2233,39 +2631,50 @@ export class MobileService implements OnModuleInit {
 
   private async seedOffersForRequest(requestId: string, baseBudget: number) {
     const request = await this.getRequestById(requestId);
+    const normalizedSkills = [
+      ...new Set([
+        request.category,
+        ...(request.aiCategories ?? []).map((item) => item.name),
+      ]),
+    ]
+      .map((value) => String(value ?? '').trim().toLowerCase())
+      .filter(Boolean);
 
     const workers = await this.dataSource.query<any[]>(
       `
-      SELECT u.id
+      SELECT u.id,
+             ST_Distance(u.current_location, $1::geography) / 1000.0 AS distance_km
       FROM users u
       WHERE u.type = 'worker'
         AND u.is_available = true
         AND u.current_location IS NOT NULL
         AND ST_DWithin(u.current_location, $1::geography, u.work_radius_km * 1000)
+        AND (
+          cardinality($2::text[]) = 0
+          OR EXISTS (
+            SELECT 1
+            FROM worker_skills ws
+            WHERE ws.user_id = u.id
+              AND LOWER(ws.skill) = ANY($2::text[])
+          )
+        )
       ORDER BY ST_Distance(u.current_location, $1::geography) ASC
-      LIMIT 5
       `,
-      [request.location],
+      [request.location, normalizedSkills],
     );
 
     for (let index = 0; index < workers.length; index += 1) {
       const worker = workers[index];
-      const multiplier = 0.95 + index * 0.06;
-      const amount = Math.round(baseBudget * multiplier);
-
-      await this.upsertOffer({
-        requestId,
-        workerUserId: worker.id,
-        amount,
-        message: `Hola, puedo comenzar hoy mismo. Oferta inicial Bs ${amount}.`,
-      });
 
       this.realtimeGateway.emitToUser(worker.id, 'request.new', {
         requestId,
         category: request.category,
         title: request.title,
         budget: Number(request.budget ?? baseBudget),
+        distanceKm: Number(worker.distance_km ?? 0),
         address: request.address,
+        description: request.description,
+        aiCategories: request.aiCategories ?? [],
       });
     }
 
@@ -2295,5 +2704,67 @@ export class MobileService implements OnModuleInit {
     }
 
     return workers.length;
+  }
+
+  private async expireStaleOffers(requestId?: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      UPDATE job_offers jo
+      SET status = 'expired'
+      FROM job_requests jr
+      WHERE jo.request_id = jr.id
+        AND jo.status = 'pending'
+        AND jo.expires_at IS NOT NULL
+        AND jo.expires_at < NOW()
+        AND ($1::uuid IS NULL OR jo.request_id = $1::uuid)
+      RETURNING jo.id, jo.request_id, jo.worker_user_id, jr.client_user_id
+      `,
+      [requestId ?? null],
+    );
+
+    for (const row of rows) {
+      const payload = {
+        offerId: row.id,
+        requestId: row.request_id,
+        workerUserId: row.worker_user_id,
+        clientUserId: row.client_user_id,
+        status: 'expired',
+      };
+      this.realtimeGateway.emitToUser(
+        row.worker_user_id,
+        'offer.expired',
+        payload,
+      );
+      this.realtimeGateway.emitToUser(
+        row.client_user_id,
+        'offer.expired',
+        payload,
+      );
+    }
+  }
+
+  private async ensureCategoriesExist(values: string[]) {
+    const sanitized = [...new Set(values.map((item) => item.trim()).filter(Boolean))]
+      .slice(0, 30);
+    for (const name of sanitized) {
+      const id = this.toCategoryId(name);
+      await this.dataSource.query(
+        `
+        INSERT INTO categories (id, name, description, is_active)
+        VALUES ($1, $2, $3, true)
+        ON CONFLICT DO NOTHING
+        `,
+        [id, name, `Categoria generada automaticamente: ${name}`],
+      );
+      await this.dataSource.query(
+        `
+        UPDATE categories
+        SET is_active = true,
+            updated_at = NOW()
+        WHERE id = $1 OR LOWER(name) = LOWER($2)
+        `,
+        [id, name],
+      );
+    }
   }
 }

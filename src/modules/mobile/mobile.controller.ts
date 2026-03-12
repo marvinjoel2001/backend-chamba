@@ -69,7 +69,7 @@ export class MobileController {
     @Body('clientUserId') clientUserId: string,
     @Body('title') title: string,
     @Body('description') description: string,
-    @Body('category') category: string,
+    @Body('category') category: string | undefined,
     @Body('aiCategories')
     aiCategories:
       | Array<{

@@ -72,7 +72,7 @@ export declare class MobileController {
             skills: any;
         }[];
     }>;
-    createRequest(clientUserId: string, title: string, description: string, category: string, aiCategories: Array<{
+    createRequest(clientUserId: string, title: string, description: string, category: string | undefined, aiCategories: Array<{
         id: string;
         name?: string;
         nombre?: string;
@@ -268,6 +268,8 @@ export declare class MobileController {
             id: any;
             amount: number;
             status: any;
+            expiresAt: any;
+            secondsRemaining: number | null;
             message: any;
             worker: {
                 id: any;
@@ -280,6 +282,7 @@ export declare class MobileController {
                 distanceKm: number | null;
             };
         }[];
+        offerLifetimeSeconds: number;
     }>;
     getWorkerProfile(workerId: string): Promise<{
         worker: {
@@ -334,7 +337,9 @@ export declare class MobileController {
     }>;
     getIncomingRequest(workerUserId: string): Promise<{
         request: null;
+        offerLifetimeSeconds?: undefined;
     } | {
+        offerLifetimeSeconds: number;
         request: {
             id: any;
             title: any;
@@ -351,6 +356,9 @@ export declare class MobileController {
             workerOffer: {
                 id: any;
                 amount: number;
+                status: any;
+                expiresAt: any;
+                secondsRemaining: number | null;
             } | null;
         };
     }>;
