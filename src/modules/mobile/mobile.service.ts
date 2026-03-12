@@ -262,7 +262,9 @@ export class MobileService implements OnModuleInit {
       throw new BadRequestException('clientUserId is required');
     }
     if (!input.title || !input.description || !input.address) {
-      throw new BadRequestException('title, description and address are required');
+      throw new BadRequestException(
+        'title, description and address are required',
+      );
     }
     if (!Number.isFinite(input.budget) || input.budget <= 0) {
       throw new BadRequestException('budget must be greater than 0');
@@ -286,7 +288,9 @@ export class MobileService implements OnModuleInit {
       fallbackCategory,
     );
     const primaryCategory =
-      aiCategories[0]?.name || fallbackCategory || MobileService.DEFAULT_CATEGORY;
+      aiCategories[0]?.name ||
+      fallbackCategory ||
+      MobileService.DEFAULT_CATEGORY;
     await this.ensureCategoriesExist([
       primaryCategory,
       ...aiCategories.map((item) => item.name),
@@ -850,10 +854,18 @@ export class MobileService implements OnModuleInit {
     };
     this.realtimeGateway.emitToThread(params.threadId, 'message.new', payload);
     if (thread?.client_user_id) {
-      this.realtimeGateway.emitToUser(thread.client_user_id, 'message.new', payload);
+      this.realtimeGateway.emitToUser(
+        thread.client_user_id,
+        'message.new',
+        payload,
+      );
     }
     if (thread?.worker_user_id) {
-      this.realtimeGateway.emitToUser(thread.worker_user_id, 'message.new', payload);
+      this.realtimeGateway.emitToUser(
+        thread.worker_user_id,
+        'message.new',
+        payload,
+      );
     }
 
     return {
@@ -999,9 +1011,7 @@ export class MobileService implements OnModuleInit {
     await this.getUserById(params.workerUserId);
     const request = await this.getRequestById(params.requestId);
     if (!['searching', 'negotiating'].includes(request.status)) {
-      throw new BadRequestException(
-        'La solicitud ya no admite nuevas ofertas',
-      );
+      throw new BadRequestException('La solicitud ya no admite nuevas ofertas');
     }
 
     const existingRows = await this.dataSource.query<any[]>(
@@ -1083,8 +1093,16 @@ export class MobileService implements OnModuleInit {
       status: 'pending',
       offerLifetimeSeconds: MobileService.OFFER_LIFETIME_SECONDS,
     };
-    this.realtimeGateway.emitToUser(request.client_user_id, 'offer.new', offerPayload);
-    this.realtimeGateway.emitToUser(params.workerUserId, 'offer.updated', offerPayload);
+    this.realtimeGateway.emitToUser(
+      request.client_user_id,
+      'offer.new',
+      offerPayload,
+    );
+    this.realtimeGateway.emitToUser(
+      params.workerUserId,
+      'offer.updated',
+      offerPayload,
+    );
 
     return {
       offer: {
@@ -1154,17 +1172,29 @@ export class MobileService implements OnModuleInit {
       workerUserId: offer.worker_user_id,
       accepted: true,
     };
-    this.realtimeGateway.emitToUser(offer.client_user_id, 'offer.accepted', payload);
-    this.realtimeGateway.emitToUser(offer.worker_user_id, 'offer.accepted', payload);
+    this.realtimeGateway.emitToUser(
+      offer.client_user_id,
+      'offer.accepted',
+      payload,
+    );
+    this.realtimeGateway.emitToUser(
+      offer.worker_user_id,
+      'offer.accepted',
+      payload,
+    );
     for (const rejected of rejectedRows) {
-      this.realtimeGateway.emitToUser(rejected.worker_user_id, 'offer.rejected', {
-        offerId: rejected.id,
-        requestId: offer.request_id,
-        clientUserId: offer.client_user_id,
-        workerUserId: rejected.worker_user_id,
-        status: 'rejected',
-        reason: 'selected_other_worker',
-      });
+      this.realtimeGateway.emitToUser(
+        rejected.worker_user_id,
+        'offer.rejected',
+        {
+          offerId: rejected.id,
+          requestId: offer.request_id,
+          clientUserId: offer.client_user_id,
+          workerUserId: rejected.worker_user_id,
+          status: 'rejected',
+          reason: 'selected_other_worker',
+        },
+      );
     }
 
     return {
@@ -2437,7 +2467,9 @@ Reglas obligatorias:
         continue;
       }
       const row = item as Record<string, unknown>;
-      const rawId = String(row.id ?? '').trim().toLowerCase();
+      const rawId = String(row.id ?? '')
+        .trim()
+        .toLowerCase();
       const rawName = String(row.nombre ?? row.name ?? '').trim();
 
       const resolved =
@@ -2485,7 +2517,9 @@ Reglas obligatorias:
 
     const catalog = rows
       .map((row) => ({
-        id: String(row.id ?? '').trim().toLowerCase(),
+        id: String(row.id ?? '')
+          .trim()
+          .toLowerCase(),
         name: String(row.name ?? '').trim(),
       }))
       .filter((row) => row.id && row.name);
@@ -2495,7 +2529,10 @@ Reglas obligatorias:
         item.id === 'trabajo_general' || item.name.toLowerCase() === 'general',
     );
     if (!hasGeneral) {
-      catalog.push({ id: 'trabajo_general', name: MobileService.DEFAULT_CATEGORY });
+      catalog.push({
+        id: 'trabajo_general',
+        name: MobileService.DEFAULT_CATEGORY,
+      });
     }
     return catalog;
   }
@@ -2637,7 +2674,11 @@ Reglas obligatorias:
         ...(request.aiCategories ?? []).map((item) => item.name),
       ]),
     ]
-      .map((value) => String(value ?? '').trim().toLowerCase())
+      .map((value) =>
+        String(value ?? '')
+          .trim()
+          .toLowerCase(),
+      )
       .filter(Boolean);
 
     const workers = await this.dataSource.query<any[]>(
@@ -2744,8 +2785,9 @@ Reglas obligatorias:
   }
 
   private async ensureCategoriesExist(values: string[]) {
-    const sanitized = [...new Set(values.map((item) => item.trim()).filter(Boolean))]
-      .slice(0, 30);
+    const sanitized = [
+      ...new Set(values.map((item) => item.trim()).filter(Boolean)),
+    ].slice(0, 30);
     for (const name of sanitized) {
       const id = this.toCategoryId(name);
       await this.dataSource.query(

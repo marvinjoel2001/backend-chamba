@@ -224,7 +224,9 @@ let MobileService = class MobileService {
             ? aiCategoriesFromAi
             : input.aiCategories;
         const aiCategories = this.normalizeAiCategories(aiCategoriesInput, fallbackCategory);
-        const primaryCategory = aiCategories[0]?.name || fallbackCategory || MobileService_1.DEFAULT_CATEGORY;
+        const primaryCategory = aiCategories[0]?.name ||
+            fallbackCategory ||
+            MobileService_1.DEFAULT_CATEGORY;
         await this.ensureCategoriesExist([
             primaryCategory,
             ...aiCategories.map((item) => item.name),
@@ -1964,7 +1966,9 @@ Reglas obligatorias:
                 continue;
             }
             const row = item;
-            const rawId = String(row.id ?? '').trim().toLowerCase();
+            const rawId = String(row.id ?? '')
+                .trim()
+                .toLowerCase();
             const rawName = String(row.nombre ?? row.name ?? '').trim();
             const resolved = (rawId ? byId.get(rawId) : undefined) ??
                 (rawName ? byName.get(rawName.toLowerCase()) : undefined) ??
@@ -1999,13 +2003,18 @@ Reglas obligatorias:
       `);
         const catalog = rows
             .map((row) => ({
-            id: String(row.id ?? '').trim().toLowerCase(),
+            id: String(row.id ?? '')
+                .trim()
+                .toLowerCase(),
             name: String(row.name ?? '').trim(),
         }))
             .filter((row) => row.id && row.name);
         const hasGeneral = catalog.some((item) => item.id === 'trabajo_general' || item.name.toLowerCase() === 'general');
         if (!hasGeneral) {
-            catalog.push({ id: 'trabajo_general', name: MobileService_1.DEFAULT_CATEGORY });
+            catalog.push({
+                id: 'trabajo_general',
+                name: MobileService_1.DEFAULT_CATEGORY,
+            });
         }
         return catalog;
     }
@@ -2099,7 +2108,9 @@ Reglas obligatorias:
                 ...(request.aiCategories ?? []).map((item) => item.name),
             ]),
         ]
-            .map((value) => String(value ?? '').trim().toLowerCase())
+            .map((value) => String(value ?? '')
+            .trim()
+            .toLowerCase())
             .filter(Boolean);
         const workers = await this.dataSource.query(`
       SELECT u.id,
@@ -2180,8 +2191,9 @@ Reglas obligatorias:
         }
     }
     async ensureCategoriesExist(values) {
-        const sanitized = [...new Set(values.map((item) => item.trim()).filter(Boolean))]
-            .slice(0, 30);
+        const sanitized = [
+            ...new Set(values.map((item) => item.trim()).filter(Boolean)),
+        ].slice(0, 30);
         for (const name of sanitized) {
             const id = this.toCategoryId(name);
             await this.dataSource.query(`
