@@ -5,10 +5,8 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
-  "packageManager": "pnpm@10.26.0",
   "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=10.0.0 <11"
+    "node": ">=18.17.0"
   },
   "scripts": {
     "build": "nest build",
