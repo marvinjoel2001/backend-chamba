@@ -6,6 +6,9 @@
   "private": true,
   "license": "UNLICENSED",
   "packageManager": "pnpm@10.26.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",

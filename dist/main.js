@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const node_crypto_1 = require("node:crypto");
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const core_1 = require("@nestjs/core");
@@ -11,6 +12,12 @@ const express_session_1 = __importDefault(require("express-session"));
 const swagger_1 = require("@nestjs/swagger");
 const app_module_1 = require("./app.module");
 const redis_constants_1 = require("./infrastructure/redis/redis.constants");
+if (!globalThis.crypto) {
+    Object.defineProperty(globalThis, 'crypto', {
+        value: node_crypto_1.webcrypto,
+        configurable: true,
+    });
+}
 async function bootstrap() {
     const logger = new common_1.Logger('Bootstrap');
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
