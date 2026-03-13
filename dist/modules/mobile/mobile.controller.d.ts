@@ -78,7 +78,10 @@ export declare class MobileController {
         nombre?: string;
         confidence?: number;
         confianza?: number;
-    }> | undefined, budget: number, priceType: string, address: string, latitude: number, longitude: number, scheduledAt?: string, photosBase64?: string[]): Promise<{
+    }> | undefined, budget: number, priceType: string, address: string, latitude: number, longitude: number, scheduledAt?: string, photosBase64?: string[], photos?: Array<{
+        url?: string;
+        publicId?: string;
+    }>): Promise<{
         request: {
             id: any;
             status: any;
@@ -119,7 +122,7 @@ export declare class MobileController {
             updatedAt: any;
         };
     }>;
-    uploadProfilePhoto(userId: string, imageBase64: string): Promise<{
+    uploadProfilePhoto(userId: string, imageBase64?: string, imageUrl?: string, imagePublicId?: string): Promise<{
         user: {
             id: any;
             type: any;

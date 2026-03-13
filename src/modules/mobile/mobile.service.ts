@@ -30,6 +30,10 @@ type CreateRequestInput = {
   longitude: number;
   scheduledAt?: string;
   photosBase64?: string[];
+  photos?: Array<{
+    url: string;
+    publicId: string;
+  }>;
 };
 
 @Injectable()
@@ -237,9 +241,15 @@ export class MobileService implements OnModuleInit {
 
     const activeRequest = await this.findLatestClientRequest(user.id);
 
+    const topCategories = this.extractTopCategories(workerRows);
+    const categories =
+      topCategories.length > 0
+        ? topCategories
+        : await this.listFallbackCategories();
+
     return {
       user,
-      categories: this.extractTopCategories(workerRows),
+      categories,
       activeRequest,
       nearbyWorkers: workerRows.map((row) => ({
         id: row.id,
@@ -273,6 +283,7 @@ export class MobileService implements OnModuleInit {
       throw new BadRequestException('latitude and longitude are required');
     }
     const photos = this.validateBase64Images(input.photosBase64, 5);
+    const uploadedPhotosInput = this.validateUploadedImages(input.photos, 5);
     const fallbackCategory =
       input.category?.trim() || MobileService.DEFAULT_CATEGORY;
     const aiCategoriesFromAi = await this.classifyRequestCategoriesWithAi({
@@ -344,7 +355,13 @@ export class MobileService implements OnModuleInit {
     );
 
     const created = rows[0];
-    const uploadedPhotos = await this.uploadRequestPhotos(created.id, photos);
+    const uploadedPhotos =
+      uploadedPhotosInput.length > 0
+        ? await this.persistUploadedRequestPhotos(
+            created.id,
+            uploadedPhotosInput,
+          )
+        : await this.uploadRequestPhotos(created.id, photos);
     const notifiedWorkers = await this.seedOffersForRequest(
       created.id,
       input.budget,
@@ -365,11 +382,45 @@ export class MobileService implements OnModuleInit {
     };
   }
 
-  async uploadProfilePhoto(params: { userId: string; imageBase64: string }) {
+  async uploadProfilePhoto(params: {
+    userId: string;
+    imageBase64?: string;
+    imageUrl?: string;
+    imagePublicId?: string;
+  }) {
     const user = await this.getUserByIdWithPhotoMeta(params.userId);
+    const incomingUrl = params.imageUrl?.trim();
+    const incomingPublicId = params.imagePublicId?.trim();
+
+    if (incomingUrl) {
+      this.ensureSecureImageUrl(incomingUrl);
+
+      await this.dataSource.query(
+        `
+      UPDATE users
+      SET profile_photo_url = $2,
+          profile_photo_public_id = $3,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+        [params.userId, incomingUrl, incomingPublicId || null],
+      );
+
+      if (
+        user.profilePhotoPublicId &&
+        (!incomingPublicId || user.profilePhotoPublicId !== incomingPublicId)
+      ) {
+        await this.storageService.deleteImage(user.profilePhotoPublicId);
+      }
+
+      return {
+        user: await this.getUserById(params.userId),
+      };
+    }
+
     const payload = params.imageBase64?.trim();
     if (!payload) {
-      throw new BadRequestException('imageBase64 is required');
+      throw new BadRequestException('imageUrl or imageBase64 is required');
     }
     this.ensureDataUri(payload);
 
@@ -456,7 +507,9 @@ export class MobileService implements OnModuleInit {
       `DELETE FROM job_request_photos WHERE id = $1`,
       [params.requestPhotoId],
     );
-    await this.storageService.deleteImage(photo.public_id);
+    if (photo.public_id) {
+      await this.storageService.deleteImage(photo.public_id);
+    }
 
     return {
       deleted: true,
@@ -2030,6 +2083,20 @@ export class MobileService implements OnModuleInit {
       .map(([skill]) => skill);
   }
 
+  private async listFallbackCategories() {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT name
+      FROM categories
+      WHERE is_active = true
+      ORDER BY name ASC
+      LIMIT 8
+      `,
+    );
+
+    return rows.map((row) => String(row.name ?? '').trim()).filter(Boolean);
+  }
+
   private async resolveRequest(params: {
     requestId?: string;
     clientUserId?: string;
@@ -2578,6 +2645,46 @@ Reglas obligatorias:
     }
   }
 
+  private validateUploadedImages(
+    images: Array<{ url?: string; publicId?: string }> | undefined,
+    limit: number,
+  ) {
+    if (!images || images.length === 0) {
+      return [] as Array<{ url: string; publicId: string }>;
+    }
+
+    if (images.length > limit) {
+      throw new BadRequestException(`Maximum ${limit} images are allowed`);
+    }
+
+    return images.map((item, index) => {
+      const url = item?.url?.trim();
+      const publicId = item?.publicId?.trim();
+
+      if (!url || !publicId) {
+        throw new BadRequestException(
+          `photos[${index}] must include url and publicId`,
+        );
+      }
+
+      this.ensureSecureImageUrl(url);
+      return { url, publicId };
+    });
+  }
+
+  private ensureSecureImageUrl(value: string): void {
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol !== 'https:') {
+        throw new UnsupportedMediaTypeException(
+          'Only HTTPS image urls are supported',
+        );
+      }
+    } catch (_) {
+      throw new UnsupportedMediaTypeException('Invalid image URL');
+    }
+  }
+
   private async uploadRequestPhotos(requestId: string, images: string[]) {
     const uploaded: string[] = [];
     for (const base64Data of images) {
@@ -2595,6 +2702,26 @@ Reglas obligatorias:
       );
 
       uploaded.push(result.url);
+    }
+
+    return uploaded;
+  }
+
+  private async persistUploadedRequestPhotos(
+    requestId: string,
+    images: Array<{ url: string; publicId: string }>,
+  ) {
+    const uploaded: string[] = [];
+    for (const image of images) {
+      await this.dataSource.query(
+        `
+        INSERT INTO job_request_photos (request_id, url, public_id)
+        VALUES ($1, $2, $3)
+        `,
+        [requestId, image.url, image.publicId],
+      );
+
+      uploaded.push(image.url);
     }
 
     return uploaded;

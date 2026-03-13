@@ -21,6 +21,10 @@ type CreateRequestInput = {
     longitude: number;
     scheduledAt?: string;
     photosBase64?: string[];
+    photos?: Array<{
+        url: string;
+        publicId: string;
+    }>;
 };
 export declare class MobileService implements OnModuleInit {
     private readonly configService;
@@ -134,7 +138,9 @@ export declare class MobileService implements OnModuleInit {
     }>;
     uploadProfilePhoto(params: {
         userId: string;
-        imageBase64: string;
+        imageBase64?: string;
+        imageUrl?: string;
+        imagePublicId?: string;
     }): Promise<{
         user: {
             id: any;
@@ -548,6 +554,7 @@ export declare class MobileService implements OnModuleInit {
     private seedData;
     private seedDefaultCategories;
     private extractTopCategories;
+    private listFallbackCategories;
     private resolveRequest;
     private findLatestClientRequest;
     private getRequestById;
@@ -561,7 +568,10 @@ export declare class MobileService implements OnModuleInit {
     private toCategoryId;
     private validateBase64Images;
     private ensureDataUri;
+    private validateUploadedImages;
+    private ensureSecureImageUrl;
     private uploadRequestPhotos;
+    private persistUploadedRequestPhotos;
     private getRequestPhotos;
     private ensureThreadExists;
     private ensureThreadAndInitialMessage;

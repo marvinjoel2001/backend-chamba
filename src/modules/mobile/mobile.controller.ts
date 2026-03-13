@@ -87,6 +87,11 @@ export class MobileController {
     @Body('longitude') longitude: number,
     @Body('scheduledAt') scheduledAt?: string,
     @Body('photosBase64') photosBase64?: string[],
+    @Body('photos')
+    photos?: Array<{
+      url?: string;
+      publicId?: string;
+    }>,
   ) {
     return this.mobileService.createRequest({
       clientUserId,
@@ -105,6 +110,11 @@ export class MobileController {
       longitude: Number(longitude),
       scheduledAt,
       photosBase64,
+      photos:
+        photos?.map((item) => ({
+          url: item.url ?? '',
+          publicId: item.publicId ?? '',
+        })) ?? [],
     });
   }
 
@@ -135,9 +145,16 @@ export class MobileController {
   @Post('mobile/profile/photo')
   uploadProfilePhoto(
     @Body('userId') userId: string,
-    @Body('imageBase64') imageBase64: string,
+    @Body('imageBase64') imageBase64?: string,
+    @Body('imageUrl') imageUrl?: string,
+    @Body('imagePublicId') imagePublicId?: string,
   ) {
-    return this.mobileService.uploadProfilePhoto({ userId, imageBase64 });
+    return this.mobileService.uploadProfilePhoto({
+      userId,
+      imageBase64,
+      imageUrl,
+      imagePublicId,
+    });
   }
 
   @Post('mobile/profile/photo/delete')

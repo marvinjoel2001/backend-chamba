@@ -9,6 +9,7 @@ const config_1 = require("@nestjs/config");
 const core_1 = require("@nestjs/core");
 const connect_redis_1 = require("connect-redis");
 const express_session_1 = __importDefault(require("express-session"));
+const express_1 = require("express");
 const swagger_1 = require("@nestjs/swagger");
 const app_module_1 = require("./app.module");
 const redis_constants_1 = require("./infrastructure/redis/redis.constants");
@@ -25,8 +26,11 @@ async function bootstrap() {
     const redisClient = app.get(redis_constants_1.REDIS_CLIENT);
     const sessionTtlSeconds = configService.get('SESSION_TTL_SECONDS', 86400);
     const isProduction = configService.get('NODE_ENV') === 'production';
+    const requestBodyLimit = '15mb';
     app.setGlobalPrefix('api');
     app.enableCors();
+    app.use((0, express_1.json)({ limit: requestBodyLimit }));
+    app.use((0, express_1.urlencoded)({ extended: true, limit: requestBodyLimit }));
     app.useGlobalPipes(new common_1.ValidationPipe({
         whitelist: true,
         transform: true,

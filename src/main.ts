@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { RedisStore } from 'connect-redis';
 import session from 'express-session';
+import { json, urlencoded } from 'express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { REDIS_CLIENT } from './infrastructure/redis/redis.constants';
@@ -27,9 +28,12 @@ async function bootstrap() {
     86400,
   );
   const isProduction = configService.get<string>('NODE_ENV') === 'production';
+  const requestBodyLimit = '15mb';
 
   app.setGlobalPrefix('api');
   app.enableCors();
+  app.use(json({ limit: requestBodyLimit }));
+  app.use(urlencoded({ extended: true, limit: requestBodyLimit }));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

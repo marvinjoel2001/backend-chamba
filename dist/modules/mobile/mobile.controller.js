@@ -48,7 +48,7 @@ let MobileController = class MobileController {
             radiusKm: parseNumber(radiusKm),
         });
     }
-    createRequest(clientUserId, title, description, category, aiCategories, budget, priceType, address, latitude, longitude, scheduledAt, photosBase64) {
+    createRequest(clientUserId, title, description, category, aiCategories, budget, priceType, address, latitude, longitude, scheduledAt, photosBase64, photos) {
         return this.mobileService.createRequest({
             clientUserId,
             title,
@@ -66,6 +66,10 @@ let MobileController = class MobileController {
             longitude: Number(longitude),
             scheduledAt,
             photosBase64,
+            photos: photos?.map((item) => ({
+                url: item.url ?? '',
+                publicId: item.publicId ?? '',
+            })) ?? [],
         });
     }
     getCategories() {
@@ -81,8 +85,13 @@ let MobileController = class MobileController {
             active,
         });
     }
-    uploadProfilePhoto(userId, imageBase64) {
-        return this.mobileService.uploadProfilePhoto({ userId, imageBase64 });
+    uploadProfilePhoto(userId, imageBase64, imageUrl, imagePublicId) {
+        return this.mobileService.uploadProfilePhoto({
+            userId,
+            imageBase64,
+            imageUrl,
+            imagePublicId,
+        });
     }
     removeProfilePhoto(userId) {
         return this.mobileService.removeProfilePhoto(userId);
@@ -208,8 +217,9 @@ __decorate([
     __param(9, (0, common_1.Body)('longitude')),
     __param(10, (0, common_1.Body)('scheduledAt')),
     __param(11, (0, common_1.Body)('photosBase64')),
+    __param(12, (0, common_1.Body)('photos')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, Object, Object, Number, String, String, Number, Number, String, Array]),
+    __metadata("design:paramtypes", [String, String, String, Object, Object, Number, String, String, Number, Number, String, Array, Array]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "createRequest", null);
 __decorate([
@@ -234,8 +244,10 @@ __decorate([
     (0, common_1.Post)('mobile/profile/photo'),
     __param(0, (0, common_1.Body)('userId')),
     __param(1, (0, common_1.Body)('imageBase64')),
+    __param(2, (0, common_1.Body)('imageUrl')),
+    __param(3, (0, common_1.Body)('imagePublicId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:paramtypes", [String, String, String, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "uploadProfilePhoto", null);
 __decorate([
