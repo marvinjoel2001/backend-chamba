@@ -21,6 +21,9 @@ const placeholders_module_1 = require("./modules/placeholders/placeholders.modul
 const queues_module_1 = require("./modules/queues/queues.module");
 const realtime_module_1 = require("./modules/realtime/realtime.module");
 const users_module_1 = require("./modules/users/users.module");
+const envFilePath = process.env.NODE_ENV === 'production'
+    ? ['.env.production', '.env']
+    : ['.env.local', '.env'];
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -29,7 +32,7 @@ exports.AppModule = AppModule = __decorate([
         imports: [
             config_1.ConfigModule.forRoot({
                 isGlobal: true,
-                envFilePath: ['.env.local', '.env'],
+                envFilePath,
                 validationSchema: env_validation_1.envValidationSchema,
                 validationOptions: {
                     allowUnknown: true,
