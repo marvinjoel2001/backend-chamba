@@ -13,11 +13,16 @@ import { QueuesModule } from './modules/queues/queues.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { UsersModule } from './modules/users/users.module';
 
+const envFilePath =
+  process.env.NODE_ENV === 'production'
+    ? ['.env.production', '.env']
+    : ['.env.local', '.env'];
+
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env'],
+      envFilePath,
       validationSchema: envValidationSchema,
       validationOptions: {
         allowUnknown: true,

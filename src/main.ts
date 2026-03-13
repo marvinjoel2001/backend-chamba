@@ -64,8 +64,11 @@ async function bootstrap() {
     }),
   );
 
-  const port = configService.get<number>('PORT', 3000);
-  await app.listen(port);
+  const port = Number(
+    process.env.PORT ?? configService.get<number>('PORT', 3000),
+  );
+  const host = '0.0.0.0';
+  await app.listen(port, host);
   logger.log(`Backend disponible en http://localhost:${port}/api`);
   logger.log(`Swagger disponible en http://localhost:${port}/api/docs`);
 }
