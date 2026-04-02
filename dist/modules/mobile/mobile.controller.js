@@ -40,6 +40,9 @@ let MobileController = class MobileController {
     login(identifier, password) {
         return this.mobileService.login(identifier, password);
     }
+    checkIdentifier(identifier) {
+        return this.mobileService.checkIdentifier(identifier);
+    }
     getExploreData(userId, lat, lng, radiusKm) {
         return this.mobileService.getExploreData({
             userId,
@@ -193,6 +196,13 @@ __decorate([
     __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "login", null);
+__decorate([
+    (0, common_1.Post)('auth/check-identifier'),
+    __param(0, (0, common_1.Body)('identifier')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "checkIdentifier", null);
 __decorate([
     (0, common_1.Get)('mobile/explore'),
     __param(0, (0, common_1.Query)('userId')),

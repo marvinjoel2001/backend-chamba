@@ -9,6 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 var MobileService_1;
+var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MobileService = void 0;
 const common_1 = require("@nestjs/common");
@@ -55,14 +56,17 @@ let MobileService = class MobileService {
         if (!password || password.length < 4) {
             throw new common_1.BadRequestException('password must be at least 4 characters');
         }
-        const phone = input.phone?.trim() || null;
+        const phone = this.normalizePhone(input.phone);
         const lastName = input.lastName?.trim() || null;
         return this.dataSource.transaction(async (manager) => {
             const existing = await manager.query(`
         SELECT id
         FROM users
         WHERE LOWER(email) = LOWER($1)
-           OR ($2::text IS NOT NULL AND phone = $2)
+           OR (
+             $2::text IS NOT NULL
+             AND regexp_replace(COALESCE(phone, ''), '[^0-9]+', '', 'g') = $2
+           )
         LIMIT 1
         `, [email, phone]);
             if (existing[0]) {
@@ -102,6 +106,8 @@ let MobileService = class MobileService {
         if (!identifier?.trim() || !password?.trim()) {
             throw new common_1.BadRequestException('identifier and password are required');
         }
+        const normalizedEmail = identifier.trim().toLowerCase();
+        const normalizedPhone = this.normalizePhone(identifier);
         const rows = await this.dataSource.query(`
       SELECT u.id,
              u.type,
@@ -112,10 +118,16 @@ let MobileService = class MobileService {
              u.profile_photo_url
       FROM users u
       JOIN auth_credentials c ON c.user_id = u.id
-      WHERE (LOWER(u.email) = LOWER($1) OR u.phone = $1)
-        AND c.password = $2
+      WHERE (
+          LOWER(u.email) = LOWER($1)
+          OR (
+            $2::text IS NOT NULL
+            AND regexp_replace(COALESCE(u.phone, ''), '[^0-9]+', '', 'g') = $2
+          )
+        )
+        AND c.password = $3
       LIMIT 1
-      `, [identifier.trim(), password.trim()]);
+      `, [normalizedEmail, normalizedPhone, password.trim()]);
         const row = rows[0];
         if (!row) {
             throw new common_1.UnauthorizedException('Credenciales invalidas');
@@ -130,6 +142,27 @@ let MobileService = class MobileService {
                 phone: row.phone ?? null,
                 profilePhotoUrl: row.profile_photo_url ?? null,
             },
+        };
+    }
+    async checkIdentifier(identifier) {
+        const normalized = identifier?.trim();
+        if (!normalized) {
+            throw new common_1.BadRequestException('identifier is required');
+        }
+        const normalizedEmail = normalized.toLowerCase();
+        const normalizedPhone = this.normalizePhone(normalized);
+        const rows = await this.dataSource.query(`
+      SELECT id
+      FROM users
+      WHERE LOWER(email) = LOWER($1)
+         OR (
+           $2::text IS NOT NULL
+           AND regexp_replace(COALESCE(phone, ''), '[^0-9]+', '', 'g') = $2
+         )
+      LIMIT 1
+      `, [normalizedEmail, normalizedPhone]);
+        return {
+            exists: Boolean(rows[0]),
         };
     }
     async getExploreData(params) {
@@ -1777,6 +1810,19 @@ let MobileService = class MobileService {
     async getUserByIdWithPhotoMeta(userId) {
         return this.getUserById(userId);
     }
+    normalizePhone(value) {
+        const digits = String(value ?? '').replace(/\D+/g, '');
+        if (!digits) {
+            return null;
+        }
+        if (digits.length === 9 && digits.startsWith('0')) {
+            return digits.slice(1);
+        }
+        if (digits.length > 8 && digits.startsWith('591')) {
+            return digits.slice(-8);
+        }
+        return digits;
+    }
     normalizeAiCategories(input, fallbackCategory) {
         if (!Array.isArray(input) || input.length === 0) {
             return [
@@ -2290,9 +2336,7 @@ Reglas obligatorias:
 exports.MobileService = MobileService;
 exports.MobileService = MobileService = MobileService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [config_1.ConfigService,
-        typeorm_1.DataSource,
-        storage_service_1.StorageService,
+    __metadata("design:paramtypes", [typeof (_a = typeof config_1.ConfigService !== "undefined" && config_1.ConfigService) === "function" ? _a : Object, typeof (_b = typeof typeorm_1.DataSource !== "undefined" && typeorm_1.DataSource) === "function" ? _b : Object, storage_service_1.StorageService,
         notifications_service_1.NotificationsService,
         realtime_gateway_1.RealtimeGateway])
 ], MobileService);

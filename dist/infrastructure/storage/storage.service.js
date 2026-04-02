@@ -9,6 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 var StorageService_1;
+var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StorageService = void 0;
 const node_crypto_1 = require("node:crypto");
@@ -104,6 +105,6 @@ let StorageService = StorageService_1 = class StorageService {
 exports.StorageService = StorageService;
 exports.StorageService = StorageService = StorageService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [config_1.ConfigService])
+    __metadata("design:paramtypes", [typeof (_a = typeof config_1.ConfigService !== "undefined" && config_1.ConfigService) === "function" ? _a : Object])
 ], StorageService);
 //# sourceMappingURL=storage.service.js.map

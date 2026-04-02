@@ -10,11 +10,11 @@ export declare class HealthService {
         dependencies: {
             postgres: {
                 connected: boolean;
-                dbTime: string;
+                dbTime: any;
             };
             postgis: {
                 enabled: boolean;
-                version: string;
+                version: any;
             };
             redis: {
                 connected: boolean;

@@ -44,17 +44,7 @@ export declare class MobileService implements OnModuleInit {
         firstName: string;
         lastName?: string;
         password: string;
-    }): Promise<{
-        user: {
-            id: any;
-            type: any;
-            firstName: any;
-            lastName: any;
-            email: any;
-            phone: any;
-            profilePhotoUrl: any;
-        };
-    }>;
+    }): Promise<any>;
     login(identifier: string, password: string): Promise<{
         user: {
             id: any;
@@ -65,6 +55,9 @@ export declare class MobileService implements OnModuleInit {
             phone: any;
             profilePhotoUrl: any;
         };
+    }>;
+    checkIdentifier(identifier: string): Promise<{
+        exists: boolean;
     }>;
     getExploreData(params: {
         userId: string;
@@ -86,7 +79,7 @@ export declare class MobileService implements OnModuleInit {
             currentLatitude: number | null;
             currentLongitude: number | null;
         };
-        categories: string[];
+        categories: any;
         activeRequest: {
             id: any;
             clientUserId: any;
@@ -104,20 +97,7 @@ export declare class MobileService implements OnModuleInit {
             status: any;
             createdAt: any;
         } | null;
-        nearbyWorkers: {
-            id: any;
-            firstName: any;
-            lastName: any;
-            profilePhotoUrl: any;
-            averageRating: number;
-            completedJobs: number;
-            isAvailable: any;
-            workRadiusKm: number;
-            latitude: number;
-            longitude: number;
-            distanceKm: number;
-            skills: any;
-        }[];
+        nearbyWorkers: any;
     }>;
     createRequest(input: CreateRequestInput): Promise<{
         request: {
@@ -134,7 +114,7 @@ export declare class MobileService implements OnModuleInit {
             createdAt: any;
             photos: string[];
         };
-        notifiedWorkers: number;
+        notifiedWorkers: any;
     }>;
     uploadProfilePhoto(params: {
         userId: string;
@@ -193,11 +173,7 @@ export declare class MobileService implements OnModuleInit {
         clientUserId?: string;
     }): Promise<{
         request: {
-            photos: {
-                id: any;
-                url: any;
-                createdAt: any;
-            }[];
+            photos: any;
             id: any;
             clientUserId: any;
             title: any;
@@ -214,11 +190,7 @@ export declare class MobileService implements OnModuleInit {
             status: any;
             createdAt: any;
         } | {
-            photos: {
-                id: any;
-                url: any;
-                createdAt: any;
-            }[];
+            photos: any;
             id: any;
             client_user_id: any;
             title: any;
@@ -241,26 +213,14 @@ export declare class MobileService implements OnModuleInit {
             acceptedCount: number;
             estimatedMinutes: number | null;
         };
-        topOffers: {
-            id: any;
-            amount: number;
-            status: any;
-            workerId: any;
-            workerName: string;
-            averageRating: number;
-            completedJobs: number;
-        }[];
+        topOffers: any;
     }>;
     getOffers(params: {
         requestId?: string;
         clientUserId?: string;
     }): Promise<{
         request: {
-            photos: {
-                id: any;
-                url: any;
-                createdAt: any;
-            }[];
+            photos: any;
             id: any;
             clientUserId: any;
             title: any;
@@ -277,11 +237,7 @@ export declare class MobileService implements OnModuleInit {
             status: any;
             createdAt: any;
         } | {
-            photos: {
-                id: any;
-                url: any;
-                createdAt: any;
-            }[];
+            photos: any;
             id: any;
             client_user_id: any;
             title: any;
@@ -299,24 +255,7 @@ export declare class MobileService implements OnModuleInit {
             location: any;
             created_at: any;
         };
-        offers: {
-            id: any;
-            amount: number;
-            status: any;
-            expiresAt: any;
-            secondsRemaining: number | null;
-            message: any;
-            worker: {
-                id: any;
-                firstName: any;
-                lastName: any;
-                profilePhotoUrl: any;
-                averageRating: number;
-                completedJobs: number;
-                skills: any;
-                distanceKm: number | null;
-            };
-        }[];
+        offers: any;
         offerLifetimeSeconds: number;
     }>;
     getWorkerProfile(workerId: string): Promise<{
@@ -328,39 +267,18 @@ export declare class MobileService implements OnModuleInit {
             averageRating: number;
             completedJobs: number;
             workRadiusKm: number;
-            skills: any[];
+            skills: any;
             bio: string;
-            gallery: any[];
+            gallery: any;
         };
-        reviews: {
-            stars: number;
-            comment: any;
-            createdAt: any;
-            clientName: string;
-        }[];
+        reviews: any;
     }>;
     getMessages(userId: string): Promise<{
-        threads: {
-            id: any;
-            requestId: any;
-            counterpart: {
-                id: any;
-                firstName: any;
-                lastName: any;
-                profilePhotoUrl: any;
-            };
-            lastMessage: any;
-            lastMessageAt: any;
-        }[];
+        threads: any;
     }>;
     getThreadMessages(threadId: string): Promise<{
         threadId: string;
-        messages: {
-            id: any;
-            senderUserId: any;
-            content: any;
-            createdAt: any;
-        }[];
+        messages: any;
     }>;
     sendMessage(params: {
         threadId: string;
@@ -463,7 +381,7 @@ export declare class MobileService implements OnModuleInit {
             earningsToday: number;
             nearbyRequests: number;
         };
-        skills: any[];
+        skills: any;
     }>;
     setWorkerAvailability(workerUserId: string, available: boolean): Promise<{
         workerId: any;
@@ -480,19 +398,10 @@ export declare class MobileService implements OnModuleInit {
     }>;
     getWorkerSkills(workerUserId: string): Promise<{
         workerUserId: string;
-        skills: any[];
+        skills: any;
     }>;
     listCategories(): Promise<{
-        categories: {
-            id: any;
-            name: any;
-            description: any;
-            icon: any;
-            parentId: any;
-            active: any;
-            createdAt: any;
-            updatedAt: any;
-        }[];
+        categories: any;
     }>;
     createCategory(input: {
         id?: string;
@@ -519,24 +428,7 @@ export declare class MobileService implements OnModuleInit {
     }>;
     getWorkerHistory(workerUserId: string): Promise<{
         workerUserId: string;
-        jobs: {
-            offerId: any;
-            requestId: any;
-            title: any;
-            description: any;
-            category: any;
-            address: any;
-            amount: number;
-            status: any;
-            acceptedAt: any;
-            threadId: any;
-            client: {
-                id: any;
-                firstName: any;
-                lastName: any;
-                profilePhotoUrl: any;
-            };
-        }[];
+        jobs: any;
     }>;
     createReview(params: {
         requestId: string;
@@ -560,6 +452,7 @@ export declare class MobileService implements OnModuleInit {
     private getRequestById;
     private getUserById;
     private getUserByIdWithPhotoMeta;
+    private normalizePhone;
     private normalizeAiCategories;
     private parseAiCategories;
     private classifyRequestCategoriesWithAi;

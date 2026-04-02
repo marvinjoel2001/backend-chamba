@@ -83,7 +83,7 @@ export class MobileService implements OnModuleInit {
       throw new BadRequestException('password must be at least 4 characters');
     }
 
-    const phone = input.phone?.trim() || null;
+    const phone = this.normalizePhone(input.phone);
     const lastName = input.lastName?.trim() || null;
 
     return this.dataSource.transaction(async (manager) => {
@@ -92,7 +92,10 @@ export class MobileService implements OnModuleInit {
         SELECT id
         FROM users
         WHERE LOWER(email) = LOWER($1)
-           OR ($2::text IS NOT NULL AND phone = $2)
+           OR (
+             $2::text IS NOT NULL
+             AND regexp_replace(COALESCE(phone, ''), '[^0-9]+', '', 'g') = $2
+           )
         LIMIT 1
         `,
         [email, phone],
@@ -146,6 +149,9 @@ export class MobileService implements OnModuleInit {
       throw new BadRequestException('identifier and password are required');
     }
 
+    const normalizedEmail = identifier.trim().toLowerCase();
+    const normalizedPhone = this.normalizePhone(identifier);
+
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT u.id,
@@ -157,11 +163,17 @@ export class MobileService implements OnModuleInit {
              u.profile_photo_url
       FROM users u
       JOIN auth_credentials c ON c.user_id = u.id
-      WHERE (LOWER(u.email) = LOWER($1) OR u.phone = $1)
-        AND c.password = $2
+      WHERE (
+          LOWER(u.email) = LOWER($1)
+          OR (
+            $2::text IS NOT NULL
+            AND regexp_replace(COALESCE(u.phone, ''), '[^0-9]+', '', 'g') = $2
+          )
+        )
+        AND c.password = $3
       LIMIT 1
       `,
-      [identifier.trim(), password.trim()],
+      [normalizedEmail, normalizedPhone, password.trim()],
     );
 
     const row = rows[0];
@@ -181,6 +193,35 @@ export class MobileService implements OnModuleInit {
       },
     };
   }
+
+  async checkIdentifier(identifier: string) {
+    const normalized = identifier?.trim();
+    if (!normalized) {
+      throw new BadRequestException('identifier is required');
+    }
+
+    const normalizedEmail = normalized.toLowerCase();
+    const normalizedPhone = this.normalizePhone(normalized);
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT id
+      FROM users
+      WHERE LOWER(email) = LOWER($1)
+         OR (
+           $2::text IS NOT NULL
+           AND regexp_replace(COALESCE(phone, ''), '[^0-9]+', '', 'g') = $2
+         )
+      LIMIT 1
+      `,
+      [normalizedEmail, normalizedPhone],
+    );
+
+    return {
+      exists: Boolean(rows[0]),
+    };
+  }
+
   async getExploreData(params: {
     userId: string;
     latitude?: number;
@@ -2249,6 +2290,20 @@ export class MobileService implements OnModuleInit {
 
   private async getUserByIdWithPhotoMeta(userId: string) {
     return this.getUserById(userId);
+  }
+
+  private normalizePhone(value?: string | null): string | null {
+    const digits = String(value ?? '').replace(/\D+/g, '');
+    if (!digits) {
+      return null;
+    }
+    if (digits.length === 9 && digits.startsWith('0')) {
+      return digits.slice(1);
+    }
+    if (digits.length > 8 && digits.startsWith('591')) {
+      return digits.slice(-8);
+    }
+    return digits;
   }
 
   private normalizeAiCategories(

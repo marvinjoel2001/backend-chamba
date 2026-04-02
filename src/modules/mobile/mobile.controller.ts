@@ -49,6 +49,11 @@ export class MobileController {
     return this.mobileService.login(identifier, password);
   }
 
+  @Post('auth/check-identifier')
+  checkIdentifier(@Body('identifier') identifier: string) {
+    return this.mobileService.checkIdentifier(identifier);
+  }
+
   @Get('mobile/explore')
   getExploreData(
     @Query('userId') userId: string,
