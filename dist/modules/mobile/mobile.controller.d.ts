@@ -2,7 +2,17 @@ import { MobileService } from './mobile.service';
 export declare class MobileController {
     private readonly mobileService;
     constructor(mobileService: MobileService);
-    register(type: string, email: string, phone: string | undefined, firstName: string, lastName: string | undefined, password: string): Promise<any>;
+    register(type: string, email: string, phone: string | undefined, firstName: string, lastName: string | undefined, password: string): Promise<{
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+        };
+    }>;
     login(identifier: string, password: string): Promise<{
         user: {
             id: any;
@@ -32,7 +42,7 @@ export declare class MobileController {
             currentLatitude: number | null;
             currentLongitude: number | null;
         };
-        categories: any;
+        categories: string[];
         activeRequest: {
             id: any;
             clientUserId: any;
@@ -50,7 +60,29 @@ export declare class MobileController {
             status: any;
             createdAt: any;
         } | null;
-        nearbyWorkers: any;
+        nearbyWorkers: {
+            id: any;
+            firstName: any;
+            lastName: any;
+            profilePhotoUrl: any;
+            averageRating: number;
+            completedJobs: number;
+            isAvailable: any;
+            workRadiusKm: number;
+            latitude: number;
+            longitude: number;
+            distanceKm: number;
+            skills: any;
+        }[];
+    }>;
+    previewRequestCategories(title: string | undefined, description: string, category: string | undefined): Promise<{
+        title: string;
+        category: string;
+        aiCategories: {
+            id: string;
+            name: string;
+            confidence: number;
+        }[];
     }>;
     createRequest(clientUserId: string, title: string, description: string, category: string | undefined, aiCategories: Array<{
         id: string;
@@ -76,10 +108,19 @@ export declare class MobileController {
             createdAt: any;
             photos: string[];
         };
-        notifiedWorkers: any;
+        notifiedWorkers: number;
     }>;
     getCategories(): Promise<{
-        categories: any;
+        categories: {
+            id: any;
+            name: any;
+            description: any;
+            icon: any;
+            parentId: any;
+            active: any;
+            createdAt: any;
+            updatedAt: any;
+        }[];
     }>;
     createCategory(id: string | undefined, name: string, description?: string, icon?: string, parentId?: string, active?: boolean): Promise<{
         category: {
@@ -135,7 +176,11 @@ export declare class MobileController {
     }>;
     getRequestStatus(requestId?: string, clientUserId?: string): Promise<{
         request: {
-            photos: any;
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
             id: any;
             clientUserId: any;
             title: any;
@@ -152,7 +197,11 @@ export declare class MobileController {
             status: any;
             createdAt: any;
         } | {
-            photos: any;
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
             id: any;
             client_user_id: any;
             title: any;
@@ -175,11 +224,23 @@ export declare class MobileController {
             acceptedCount: number;
             estimatedMinutes: number | null;
         };
-        topOffers: any;
+        topOffers: {
+            id: any;
+            amount: number;
+            status: any;
+            workerId: any;
+            workerName: string;
+            averageRating: number;
+            completedJobs: number;
+        }[];
     }>;
     getOffers(requestId?: string, clientUserId?: string): Promise<{
         request: {
-            photos: any;
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
             id: any;
             clientUserId: any;
             title: any;
@@ -196,7 +257,11 @@ export declare class MobileController {
             status: any;
             createdAt: any;
         } | {
-            photos: any;
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
             id: any;
             client_user_id: any;
             title: any;
@@ -214,7 +279,24 @@ export declare class MobileController {
             location: any;
             created_at: any;
         };
-        offers: any;
+        offers: {
+            id: any;
+            amount: number;
+            status: any;
+            expiresAt: any;
+            secondsRemaining: number | null;
+            message: any;
+            worker: {
+                id: any;
+                firstName: any;
+                lastName: any;
+                profilePhotoUrl: any;
+                averageRating: number;
+                completedJobs: number;
+                skills: any;
+                distanceKm: number | null;
+            };
+        }[];
         offerLifetimeSeconds: number;
     }>;
     getWorkerProfile(workerId: string): Promise<{
@@ -226,18 +308,39 @@ export declare class MobileController {
             averageRating: number;
             completedJobs: number;
             workRadiusKm: number;
-            skills: any;
+            skills: any[];
             bio: string;
-            gallery: any;
+            gallery: any[];
         };
-        reviews: any;
+        reviews: {
+            stars: number;
+            comment: any;
+            createdAt: any;
+            clientName: string;
+        }[];
     }>;
     getMessages(userId: string): Promise<{
-        threads: any;
+        threads: {
+            id: any;
+            requestId: any;
+            counterpart: {
+                id: any;
+                firstName: any;
+                lastName: any;
+                profilePhotoUrl: any;
+            };
+            lastMessage: any;
+            lastMessageAt: any;
+        }[];
     }>;
     getThreadMessages(threadId: string): Promise<{
         threadId: string;
-        messages: any;
+        messages: {
+            id: any;
+            senderUserId: any;
+            content: any;
+            createdAt: any;
+        }[];
     }>;
     sendThreadMessage(threadId: string, senderUserId: string, content: string): Promise<{
         message: {
@@ -328,7 +431,7 @@ export declare class MobileController {
             earningsToday: number;
             nearbyRequests: number;
         };
-        skills: any;
+        skills: any[];
     }>;
     setWorkerAvailability(workerUserId: string, available: boolean): Promise<{
         workerId: any;
@@ -341,11 +444,28 @@ export declare class MobileController {
     }>;
     getWorkerSkills(workerUserId: string): Promise<{
         workerUserId: string;
-        skills: any;
+        skills: any[];
     }>;
     getWorkerHistory(workerUserId: string): Promise<{
         workerUserId: string;
-        jobs: any;
+        jobs: {
+            offerId: any;
+            requestId: any;
+            title: any;
+            description: any;
+            category: any;
+            address: any;
+            amount: number;
+            status: any;
+            acceptedAt: any;
+            threadId: any;
+            client: {
+                id: any;
+                firstName: any;
+                lastName: any;
+                profilePhotoUrl: any;
+            };
+        }[];
     }>;
     updateWorkerSkills(workerUserId: string, skills: string[]): Promise<{
         workerUserId: string;

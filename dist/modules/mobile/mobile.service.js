@@ -9,7 +9,6 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 var MobileService_1;
-var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MobileService = void 0;
 const common_1 = require("@nestjs/common");
@@ -237,6 +236,28 @@ let MobileService = class MobileService {
             })),
         };
     }
+    async previewRequestCategories(input) {
+        const description = input.description?.trim();
+        if (!description) {
+            throw new common_1.BadRequestException('description is required');
+        }
+        const fallbackCategory = input.category?.trim() || MobileService_1.DEFAULT_CATEGORY;
+        const title = this.buildRequestTitle({
+            title: input.title,
+            description,
+            fallbackCategory,
+        });
+        const aiCategories = this.normalizeAiCategories(await this.classifyRequestCategoriesWithAi({
+            title,
+            description,
+            fallbackCategory,
+        }), fallbackCategory);
+        return {
+            title,
+            category: aiCategories[0]?.name ?? fallbackCategory,
+            aiCategories,
+        };
+    }
     async createRequest(input) {
         if (!input.clientUserId) {
             throw new common_1.BadRequestException('clientUserId is required');
@@ -253,14 +274,13 @@ let MobileService = class MobileService {
         const photos = this.validateBase64Images(input.photosBase64, 5);
         const uploadedPhotosInput = this.validateUploadedImages(input.photos, 5);
         const fallbackCategory = input.category?.trim() || MobileService_1.DEFAULT_CATEGORY;
-        const aiCategoriesFromAi = await this.classifyRequestCategoriesWithAi({
-            title: input.title,
-            description: input.description,
-            fallbackCategory,
-        });
-        const aiCategoriesInput = aiCategoriesFromAi.length
-            ? aiCategoriesFromAi
-            : input.aiCategories;
+        const aiCategoriesInput = Array.isArray(input.aiCategories) && input.aiCategories.length > 0
+            ? input.aiCategories
+            : await this.classifyRequestCategoriesWithAi({
+                title: input.title,
+                description: input.description,
+                fallbackCategory,
+            });
         const aiCategories = this.normalizeAiCategories(aiCategoriesInput, fallbackCategory);
         const primaryCategory = aiCategories[0]?.name ||
             fallbackCategory ||
@@ -1823,6 +1843,20 @@ let MobileService = class MobileService {
         }
         return digits;
     }
+    buildRequestTitle(params) {
+        const explicitTitle = params.title?.trim();
+        if (explicitTitle) {
+            return explicitTitle;
+        }
+        const description = params.description?.trim() ?? '';
+        if (description) {
+            if (description.length <= 64) {
+                return description;
+            }
+            return `${description.slice(0, 61).trim()}...`;
+        }
+        return `Solicitud de ${params.fallbackCategory.toLowerCase()}`;
+    }
     normalizeAiCategories(input, fallbackCategory) {
         if (!Array.isArray(input) || input.length === 0) {
             return [
@@ -1834,7 +1868,8 @@ let MobileService = class MobileService {
             ];
         }
         const normalized = [];
-        for (const item of input.slice(0, 3)) {
+        const seen = new Set();
+        for (const item of input) {
             if (!item || typeof item !== 'object') {
                 continue;
             }
@@ -1844,9 +1879,14 @@ let MobileService = class MobileService {
             const rawId = String(data.id ?? this.toCategoryId(safeName))
                 .trim()
                 .toLowerCase();
+            const id = rawId || this.toCategoryId(safeName);
+            if (!id || seen.has(id)) {
+                continue;
+            }
+            seen.add(id);
             const confidence = Number(data.confidence ?? data.confianza ?? 0.5);
             normalized.push({
-                id: rawId || this.toCategoryId(safeName),
+                id,
                 name: safeName,
                 confidence: Number.isFinite(confidence)
                     ? Math.max(0, Math.min(1, confidence))
@@ -1888,8 +1928,7 @@ let MobileService = class MobileService {
             name: String(item.name ?? '').trim(),
             confidence: Number(item.confidence ?? 0),
         }))
-            .filter((item) => Boolean(item.id) && Boolean(item.name))
-            .slice(0, 3);
+            .filter((item) => Boolean(item.id) && Boolean(item.name));
     }
     async classifyRequestCategoriesWithAi(params) {
         const fallbackCategory = params.fallbackCategory?.trim() || MobileService_1.DEFAULT_CATEGORY;
@@ -1937,7 +1976,7 @@ Reglas obligatorias:
   ]
 }
 3) Ordena por confianza descendente.
-4) Maximo 3 categorias.
+4) Devuelve una o varias categorias segun corresponda, sin limite fijo.
 5) El "id" y "nombre" deben pertenecer al catalogo permitido.
 6) Si hay duda, incluye "trabajo_general" / "General".
 7) No agregues texto fuera del JSON.
@@ -1962,7 +2001,7 @@ Reglas obligatorias:
                     generationConfig: {
                         temperature: 0,
                         responseMimeType: 'application/json',
-                        maxOutputTokens: 240,
+                        maxOutputTokens: 480,
                     },
                 }),
                 signal: controller.signal,
@@ -2045,7 +2084,7 @@ Reglas obligatorias:
         }
         const output = [];
         const seen = new Set();
-        for (const item of rawCategories.slice(0, 3)) {
+        for (const item of rawCategories) {
             if (!item || typeof item !== 'object') {
                 continue;
             }
@@ -2059,16 +2098,14 @@ Reglas obligatorias:
                 (rawName
                     ? params.catalog.find((category) => category.name.toLowerCase().includes(rawName.toLowerCase()))
                     : undefined);
-            const name = resolved?.name || rawName || params.fallbackCategory;
-            const id = resolved?.id || rawId || this.toCategoryId(name);
-            if (!id || !name || seen.has(id)) {
+            if (!resolved || seen.has(resolved.id)) {
                 continue;
             }
-            seen.add(id);
+            seen.add(resolved.id);
             const confidenceRaw = Number(row.confianza ?? row.confidence ?? 0.5);
             output.push({
-                id,
-                name,
+                id: resolved.id,
+                name: resolved.name,
                 confidence: Number.isFinite(confidenceRaw)
                     ? Math.max(0, Math.min(1, confidenceRaw))
                     : 0.5,
@@ -2336,7 +2373,9 @@ Reglas obligatorias:
 exports.MobileService = MobileService;
 exports.MobileService = MobileService = MobileService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [typeof (_a = typeof config_1.ConfigService !== "undefined" && config_1.ConfigService) === "function" ? _a : Object, typeof (_b = typeof typeorm_1.DataSource !== "undefined" && typeorm_1.DataSource) === "function" ? _b : Object, storage_service_1.StorageService,
+    __metadata("design:paramtypes", [config_1.ConfigService,
+        typeorm_1.DataSource,
+        storage_service_1.StorageService,
         notifications_service_1.NotificationsService,
         realtime_gateway_1.RealtimeGateway])
 ], MobileService);

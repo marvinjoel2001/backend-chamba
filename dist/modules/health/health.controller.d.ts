@@ -8,11 +8,11 @@ export declare class HealthController {
         dependencies: {
             postgres: {
                 connected: boolean;
-                dbTime: any;
+                dbTime: string;
             };
             postgis: {
                 enabled: boolean;
-                version: any;
+                version: string;
             };
             redis: {
                 connected: boolean;

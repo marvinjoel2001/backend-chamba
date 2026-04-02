@@ -51,6 +51,13 @@ let MobileController = class MobileController {
             radiusKm: parseNumber(radiusKm),
         });
     }
+    previewRequestCategories(title, description, category) {
+        return this.mobileService.previewRequestCategories({
+            title,
+            description,
+            category,
+        });
+    }
     createRequest(clientUserId, title, description, category, aiCategories, budget, priceType, address, latitude, longitude, scheduledAt, photosBase64, photos) {
         return this.mobileService.createRequest({
             clientUserId,
@@ -213,6 +220,15 @@ __decorate([
     __metadata("design:paramtypes", [String, String, String, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getExploreData", null);
+__decorate([
+    (0, common_1.Post)('mobile/request-categories/preview'),
+    __param(0, (0, common_1.Body)('title')),
+    __param(1, (0, common_1.Body)('description')),
+    __param(2, (0, common_1.Body)('category')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "previewRequestCategories", null);
 __decorate([
     (0, common_1.Post)('mobile/requests'),
     __param(0, (0, common_1.Body)('clientUserId')),

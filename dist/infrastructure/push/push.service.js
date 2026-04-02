@@ -9,7 +9,6 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 var PushService_1;
-var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PushService = void 0;
 const common_1 = require("@nestjs/common");
@@ -84,6 +83,6 @@ let PushService = PushService_1 = class PushService {
 exports.PushService = PushService;
 exports.PushService = PushService = PushService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [typeof (_a = typeof config_1.ConfigService !== "undefined" && config_1.ConfigService) === "function" ? _a : Object])
+    __metadata("design:paramtypes", [config_1.ConfigService])
 ], PushService);
 //# sourceMappingURL=push.service.js.map

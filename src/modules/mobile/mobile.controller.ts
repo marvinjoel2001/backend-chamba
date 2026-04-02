@@ -69,6 +69,19 @@ export class MobileController {
     });
   }
 
+  @Post('mobile/request-categories/preview')
+  previewRequestCategories(
+    @Body('title') title: string | undefined,
+    @Body('description') description: string,
+    @Body('category') category: string | undefined,
+  ) {
+    return this.mobileService.previewRequestCategories({
+      title,
+      description,
+      category,
+    });
+  }
+
   @Post('mobile/requests')
   createRequest(
     @Body('clientUserId') clientUserId: string,

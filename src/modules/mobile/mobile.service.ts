@@ -308,6 +308,41 @@ export class MobileService implements OnModuleInit {
       })),
     };
   }
+
+  async previewRequestCategories(input: {
+    title?: string;
+    description: string;
+    category?: string;
+  }) {
+    const description = input.description?.trim();
+    if (!description) {
+      throw new BadRequestException('description is required');
+    }
+
+    const fallbackCategory =
+      input.category?.trim() || MobileService.DEFAULT_CATEGORY;
+    const title = this.buildRequestTitle({
+      title: input.title,
+      description,
+      fallbackCategory,
+    });
+
+    const aiCategories = this.normalizeAiCategories(
+      await this.classifyRequestCategoriesWithAi({
+        title,
+        description,
+        fallbackCategory,
+      }),
+      fallbackCategory,
+    );
+
+    return {
+      title,
+      category: aiCategories[0]?.name ?? fallbackCategory,
+      aiCategories,
+    };
+  }
+
   async createRequest(input: CreateRequestInput) {
     if (!input.clientUserId) {
       throw new BadRequestException('clientUserId is required');
@@ -327,14 +362,14 @@ export class MobileService implements OnModuleInit {
     const uploadedPhotosInput = this.validateUploadedImages(input.photos, 5);
     const fallbackCategory =
       input.category?.trim() || MobileService.DEFAULT_CATEGORY;
-    const aiCategoriesFromAi = await this.classifyRequestCategoriesWithAi({
-      title: input.title,
-      description: input.description,
-      fallbackCategory,
-    });
-    const aiCategoriesInput = aiCategoriesFromAi.length
-      ? aiCategoriesFromAi
-      : input.aiCategories;
+    const aiCategoriesInput =
+      Array.isArray(input.aiCategories) && input.aiCategories.length > 0
+        ? input.aiCategories
+        : await this.classifyRequestCategoriesWithAi({
+            title: input.title,
+            description: input.description,
+            fallbackCategory,
+          });
     const aiCategories = this.normalizeAiCategories(
       aiCategoriesInput,
       fallbackCategory,
@@ -2306,6 +2341,27 @@ export class MobileService implements OnModuleInit {
     return digits;
   }
 
+  private buildRequestTitle(params: {
+    title?: string | null;
+    description?: string | null;
+    fallbackCategory: string;
+  }) {
+    const explicitTitle = params.title?.trim();
+    if (explicitTitle) {
+      return explicitTitle;
+    }
+
+    const description = params.description?.trim() ?? '';
+    if (description) {
+      if (description.length <= 64) {
+        return description;
+      }
+      return `${description.slice(0, 61).trim()}...`;
+    }
+
+    return `Solicitud de ${params.fallbackCategory.toLowerCase()}`;
+  }
+
   private normalizeAiCategories(
     input: unknown,
     fallbackCategory: string,
@@ -2322,7 +2378,8 @@ export class MobileService implements OnModuleInit {
 
     const normalized: Array<{ id: string; name: string; confidence: number }> =
       [];
-    for (const item of input.slice(0, 3)) {
+    const seen = new Set<string>();
+    for (const item of input) {
       if (!item || typeof item !== 'object') {
         continue;
       }
@@ -2334,9 +2391,14 @@ export class MobileService implements OnModuleInit {
       const rawId = String(data.id ?? this.toCategoryId(safeName))
         .trim()
         .toLowerCase();
+      const id = rawId || this.toCategoryId(safeName);
+      if (!id || seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
       const confidence = Number(data.confidence ?? data.confianza ?? 0.5);
       normalized.push({
-        id: rawId || this.toCategoryId(safeName),
+        id,
         name: safeName,
         confidence: Number.isFinite(confidence)
           ? Math.max(0, Math.min(1, confidence))
@@ -2385,8 +2447,7 @@ export class MobileService implements OnModuleInit {
         name: String(item.name ?? '').trim(),
         confidence: Number(item.confidence ?? 0),
       }))
-      .filter((item) => Boolean(item.id) && Boolean(item.name))
-      .slice(0, 3);
+      .filter((item) => Boolean(item.id) && Boolean(item.name));
   }
 
   private async classifyRequestCategoriesWithAi(params: {
@@ -2446,7 +2507,7 @@ Reglas obligatorias:
   ]
 }
 3) Ordena por confianza descendente.
-4) Maximo 3 categorias.
+4) Devuelve una o varias categorias segun corresponda, sin limite fijo.
 5) El "id" y "nombre" deben pertenecer al catalogo permitido.
 6) Si hay duda, incluye "trabajo_general" / "General".
 7) No agregues texto fuera del JSON.
@@ -2481,7 +2542,7 @@ Reglas obligatorias:
           generationConfig: {
             temperature: 0,
             responseMimeType: 'application/json',
-            maxOutputTokens: 240,
+            maxOutputTokens: 480,
           },
         }),
         signal: controller.signal,
@@ -2584,7 +2645,7 @@ Reglas obligatorias:
 
     const output: Array<{ id: string; name: string; confidence: number }> = [];
     const seen = new Set<string>();
-    for (const item of rawCategories.slice(0, 3)) {
+    for (const item of rawCategories) {
       if (!item || typeof item !== 'object') {
         continue;
       }
@@ -2603,17 +2664,15 @@ Reglas obligatorias:
             )
           : undefined);
 
-      const name = resolved?.name || rawName || params.fallbackCategory;
-      const id = resolved?.id || rawId || this.toCategoryId(name);
-      if (!id || !name || seen.has(id)) {
+      if (!resolved || seen.has(resolved.id)) {
         continue;
       }
-      seen.add(id);
+      seen.add(resolved.id);
 
       const confidenceRaw = Number(row.confianza ?? row.confidence ?? 0.5);
       output.push({
-        id,
-        name,
+        id: resolved.id,
+        name: resolved.name,
         confidence: Number.isFinite(confidenceRaw)
           ? Math.max(0, Math.min(1, confidenceRaw))
           : 0.5,
