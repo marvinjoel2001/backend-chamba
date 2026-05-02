@@ -24,6 +24,7 @@ let MobileService = class MobileService {
     storageService;
     notificationsService;
     realtimeGateway;
+    logger = new common_1.Logger(MobileService_1.name);
     static OFFER_LIFETIME_SECONDS = 120;
     static DEFAULT_CATEGORY = 'General';
     static GEMINI_TIMEOUT_MS = 9000;
@@ -1934,6 +1935,7 @@ let MobileService = class MobileService {
         const fallbackCategory = params.fallbackCategory?.trim() || MobileService_1.DEFAULT_CATEGORY;
         const catalog = await this.listActiveCategoryCatalogForAi();
         if (catalog.length === 0) {
+            this.logger.warn('[Gemini] Catálogo vacío, usando fallback');
             return [
                 {
                     id: this.toCategoryId(fallbackCategory),
@@ -1944,6 +1946,9 @@ let MobileService = class MobileService {
         }
         const geminiApiKey = this.configService.get('GEMINI_API_KEY')?.trim() ?? '';
         if (!geminiApiKey) {
+            this.logger.warn('[Gemini] GEMINI_API_KEY no configurada → usando fallback "' +
+                fallbackCategory +
+                '". Configúrala en backend/.env (https://aistudio.google.com/app/apikey)');
             return [
                 {
                     id: this.toCategoryId(fallbackCategory),
@@ -1954,6 +1959,7 @@ let MobileService = class MobileService {
         }
         const geminiModel = this.configService.get('GEMINI_MODEL')?.trim() ||
             'gemini-2.0-flash';
+        this.logger.log(`[Gemini] Clasificando: "${params.title}" | "${params.description.slice(0, 60)}…"`);
         const categoryCatalog = catalog
             .map((item) => `- id: ${item.id}, nombre: ${item.name}`)
             .join('\n');
@@ -2007,6 +2013,8 @@ Reglas obligatorias:
                 signal: controller.signal,
             });
             if (!response.ok) {
+                const errBody = await response.text().catch(() => '');
+                this.logger.error(`[Gemini] HTTP ${response.status} → fallback "${fallbackCategory}" | detalle: ${errBody.slice(0, 300)}`);
                 return [
                     {
                         id: this.toCategoryId(fallbackCategory),
@@ -2018,6 +2026,7 @@ Reglas obligatorias:
             const payload = (await response.json());
             const text = payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
             if (!text) {
+                this.logger.warn('[Gemini] Respuesta vacía → fallback');
                 return [
                     {
                         id: this.toCategoryId(fallbackCategory),
@@ -2032,8 +2041,10 @@ Reglas obligatorias:
                 fallbackCategory,
             });
             if (parsed.length > 0) {
+                this.logger.log(`[Gemini] Categorías detectadas: ${parsed.map((c) => c.name).join(', ')}`);
                 return parsed;
             }
+            this.logger.warn('[Gemini] No se pudo parsear respuesta → fallback');
             return [
                 {
                     id: this.toCategoryId(fallbackCategory),
@@ -2042,7 +2053,9 @@ Reglas obligatorias:
                 },
             ];
         }
-        catch (_) {
+        catch (err) {
+            const msg = err?.message ?? String(err);
+            this.logger.error(`[Gemini] Error: ${msg} → fallback "${fallbackCategory}"`);
             return [
                 {
                     id: this.toCategoryId(fallbackCategory),
@@ -2272,6 +2285,8 @@ Reglas obligatorias:
             .trim()
             .toLowerCase())
             .filter(Boolean);
+        const isGeneral = normalizedSkills.length === 0 ||
+            normalizedSkills.every((s) => s === 'general');
         const workers = await this.dataSource.query(`
       SELECT u.id,
              ST_Distance(u.current_location, $1::geography) / 1000.0 AS distance_km
@@ -2281,18 +2296,49 @@ Reglas obligatorias:
         AND u.current_location IS NOT NULL
         AND ST_DWithin(u.current_location, $1::geography, u.work_radius_km * 1000)
         AND (
-          cardinality($2::text[]) = 0
+          $2::boolean = true
+          OR cardinality($3::text[]) = 0
           OR EXISTS (
             SELECT 1
             FROM worker_skills ws
             WHERE ws.user_id = u.id
-              AND LOWER(ws.skill) = ANY($2::text[])
+              AND LOWER(ws.skill) = ANY($3::text[])
+          )
+          OR NOT EXISTS (
+            SELECT 1 FROM worker_skills ws2 WHERE ws2.user_id = u.id
           )
         )
       ORDER BY ST_Distance(u.current_location, $1::geography) ASC
-      `, [request.location, normalizedSkills]);
-        for (let index = 0; index < workers.length; index += 1) {
-            const worker = workers[index];
+      `, [request.location, isGeneral, normalizedSkills]);
+        const targetWorkers = workers.length > 0
+            ? workers
+            : await this.dataSource.query(`
+            SELECT u.id,
+                   0.0 AS distance_km
+            FROM users u
+            WHERE u.type = 'worker'
+              AND u.is_available = true
+              AND (
+                $1::boolean = true
+                OR cardinality($2::text[]) = 0
+                OR EXISTS (
+                  SELECT 1
+                  FROM worker_skills ws
+                  WHERE ws.user_id = u.id
+                    AND LOWER(ws.skill) = ANY($2::text[])
+                )
+                OR NOT EXISTS (
+                  SELECT 1 FROM worker_skills ws2 WHERE ws2.user_id = u.id
+                )
+              )
+            ORDER BY u.created_at ASC
+            `, [isGeneral, normalizedSkills]);
+        if (workers.length === 0 && targetWorkers.length > 0) {
+            this.logger.warn(`[seedOffers] Sin workers en rango geográfico → fallback a ${targetWorkers.length} worker(s) disponibles`);
+        }
+        for (let index = 0; index < targetWorkers.length; index += 1) {
+            const worker = targetWorkers[index];
+            this.logger.log(`[request.new] Notificando worker ${worker.id} (${Number(worker.distance_km ?? 0).toFixed(1)} km) para solicitud ${requestId}`);
             this.realtimeGateway.emitToUser(worker.id, 'request.new', {
                 requestId,
                 category: request.category,
@@ -2304,7 +2350,7 @@ Reglas obligatorias:
                 aiCategories: request.aiCategories ?? [],
             });
         }
-        const workerIds = workers.map((worker) => worker.id).filter(Boolean);
+        const workerIds = targetWorkers.map((worker) => worker.id).filter(Boolean);
         if (workerIds.length > 0) {
             const tokenRows = await this.dataSource.query(`
         SELECT token
@@ -2324,7 +2370,8 @@ Reglas obligatorias:
                 });
             }
         }
-        return workers.length;
+        this.logger.log(`[seedOffers] Solicitud ${requestId}: ${targetWorkers.length} worker(s) notificados (isGeneral=${isGeneral}, enRango=${workers.length}, skills=${JSON.stringify(normalizedSkills)})`);
+        return targetWorkers.length;
     }
     async expireStaleOffers(requestId) {
         const rows = await this.dataSource.query(`

@@ -9,6 +9,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { REDIS_CLIENT } from './infrastructure/redis/redis.constants';
 import type { RedisClient } from './infrastructure/redis/redis.types';
+import { HttpLoggerInterceptor } from './common/interceptors/http-logger.interceptor';
 
 if (!globalThis.crypto) {
   Object.defineProperty(globalThis, 'crypto', {
@@ -41,6 +42,7 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+  app.useGlobalInterceptors(new HttpLoggerInterceptor());
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Chamba Backend API')

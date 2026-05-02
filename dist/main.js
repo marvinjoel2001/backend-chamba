@@ -13,6 +13,7 @@ const express_1 = require("express");
 const swagger_1 = require("@nestjs/swagger");
 const app_module_1 = require("./app.module");
 const redis_constants_1 = require("./infrastructure/redis/redis.constants");
+const http_logger_interceptor_1 = require("./common/interceptors/http-logger.interceptor");
 if (!globalThis.crypto) {
     Object.defineProperty(globalThis, 'crypto', {
         value: node_crypto_1.webcrypto,
@@ -36,6 +37,7 @@ async function bootstrap() {
         transform: true,
         forbidNonWhitelisted: true,
     }));
+    app.useGlobalInterceptors(new http_logger_interceptor_1.HttpLoggerInterceptor());
     const swaggerConfig = new swagger_1.DocumentBuilder()
         .setTitle('Chamba Backend API')
         .setDescription('Documentación de endpoints HTTP de Chamba')

@@ -32,6 +32,7 @@ export declare class MobileService implements OnModuleInit {
     private readonly storageService;
     private readonly notificationsService;
     private readonly realtimeGateway;
+    private readonly logger;
     private static readonly OFFER_LIFETIME_SECONDS;
     private static readonly DEFAULT_CATEGORY;
     private static readonly GEMINI_TIMEOUT_MS;
