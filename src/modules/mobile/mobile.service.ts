@@ -1345,6 +1345,8 @@ export class MobileService implements OnModuleInit {
              jr.worker_arrived,
              jr.client_confirmed_arrival,
              jr.completed_at,
+             jr.work_started_at,
+             jr.price_type,
              ST_Y(jr.location::geometry) AS dest_lat,
              ST_X(jr.location::geometry) AS dest_lng,
              w.id AS worker_id,
@@ -1385,9 +1387,16 @@ export class MobileService implements OnModuleInit {
       title: row.title,
       address: row.request_address,
       status: row.request_status,
+      priceType: row.price_type,
       workerArrived: row.worker_arrived ?? false,
       clientConfirmedArrival: row.client_confirmed_arrival ?? false,
       completedAt: row.completed_at ?? null,
+      workStartedAt: row.work_started_at ?? null,
+      workElapsedSeconds: row.work_started_at
+        ? Math.floor(
+            (Date.now() - new Date(row.work_started_at).getTime()) / 1000,
+          )
+        : null,
       distanceKm,
       etaMinutes:
         distanceKm == null ? null : Math.max(5, Math.ceil(distanceKm / 0.5)),
@@ -1452,9 +1461,11 @@ export class MobileService implements OnModuleInit {
     const rows = await this.dataSource.query<any[]>(
       `
       UPDATE job_requests
-      SET client_confirmed_arrival = true, updated_at = NOW()
+      SET client_confirmed_arrival = true,
+          work_started_at = NOW(),
+          updated_at = NOW()
       WHERE id = $1 AND client_user_id = $2
-      RETURNING id, worker_arrived, client_confirmed_arrival
+      RETURNING id, worker_arrived, client_confirmed_arrival, work_started_at
       `,
       [params.requestId, params.clientUserId],
     );
@@ -1940,6 +1951,7 @@ export class MobileService implements OnModuleInit {
       `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS worker_arrived BOOLEAN NOT NULL DEFAULT false;`,
       `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS client_confirmed_arrival BOOLEAN NOT NULL DEFAULT false;`,
       `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NULL;`,
+      `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS work_started_at TIMESTAMPTZ NULL;`,
       `
       CREATE TABLE IF NOT EXISTS job_offers (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

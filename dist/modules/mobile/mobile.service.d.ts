@@ -446,9 +446,12 @@ export declare class MobileService implements OnModuleInit {
         title: any;
         address: any;
         status: any;
+        priceType: any;
         workerArrived: any;
         clientConfirmedArrival: any;
         completedAt: any;
+        workStartedAt: any;
+        workElapsedSeconds: number | null;
         distanceKm: number | null;
         etaMinutes: number | null;
         agreedAmount: number;
