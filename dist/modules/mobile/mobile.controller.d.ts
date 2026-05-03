@@ -394,7 +394,12 @@ export declare class MobileController {
     }>;
     getTracking(requestId: string): Promise<{
         requestId: any;
+        title: any;
         address: any;
+        status: any;
+        workerArrived: any;
+        clientConfirmedArrival: any;
+        completedAt: any;
         distanceKm: number | null;
         etaMinutes: number | null;
         agreedAmount: number;
@@ -403,7 +408,31 @@ export declare class MobileController {
             firstName: any;
             lastName: any;
             profilePhotoUrl: any;
+            latitude: number | null;
+            longitude: number | null;
         };
+        client: {
+            id: any;
+            firstName: any;
+            lastName: any;
+            profilePhotoUrl: any;
+        };
+    }>;
+    workerMarkArrived(requestId: string, workerUserId: string): Promise<{
+        requestId: string;
+        workerArrived: boolean;
+    }>;
+    clientConfirmArrival(requestId: string, clientUserId: string): Promise<{
+        requestId: string;
+        clientConfirmedArrival: boolean;
+    }>;
+    completeJob(requestId: string, workerUserId: string): Promise<{
+        requestId: string;
+        status: string;
+    }>;
+    cancelJob(requestId: string, userId: string): Promise<{
+        requestId: string;
+        status: string;
     }>;
     getWorkerRadar(workerUserId: string): Promise<{
         worker: {

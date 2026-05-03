@@ -150,6 +150,18 @@ let MobileController = class MobileController {
     getTracking(requestId) {
         return this.mobileService.getTracking(requestId);
     }
+    workerMarkArrived(requestId, workerUserId) {
+        return this.mobileService.workerMarkArrived({ requestId, workerUserId });
+    }
+    clientConfirmArrival(requestId, clientUserId) {
+        return this.mobileService.clientConfirmArrival({ requestId, clientUserId });
+    }
+    completeJob(requestId, workerUserId) {
+        return this.mobileService.completeJob({ requestId, workerUserId });
+    }
+    cancelJob(requestId, userId) {
+        return this.mobileService.cancelJob({ requestId, userId });
+    }
     getWorkerRadar(workerUserId) {
         return this.mobileService.getWorkerRadar(workerUserId);
     }
@@ -378,6 +390,38 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getTracking", null);
+__decorate([
+    (0, common_1.Post)('mobile/tracking/worker-arrived'),
+    __param(0, (0, common_1.Body)('requestId')),
+    __param(1, (0, common_1.Body)('workerUserId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "workerMarkArrived", null);
+__decorate([
+    (0, common_1.Post)('mobile/tracking/client-confirm'),
+    __param(0, (0, common_1.Body)('requestId')),
+    __param(1, (0, common_1.Body)('clientUserId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "clientConfirmArrival", null);
+__decorate([
+    (0, common_1.Post)('mobile/tracking/complete'),
+    __param(0, (0, common_1.Body)('requestId')),
+    __param(1, (0, common_1.Body)('workerUserId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "completeJob", null);
+__decorate([
+    (0, common_1.Post)('mobile/tracking/cancel'),
+    __param(0, (0, common_1.Body)('requestId')),
+    __param(1, (0, common_1.Body)('userId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "cancelJob", null);
 __decorate([
     (0, common_1.Get)('mobile/worker/radar'),
     __param(0, (0, common_1.Query)('workerUserId')),

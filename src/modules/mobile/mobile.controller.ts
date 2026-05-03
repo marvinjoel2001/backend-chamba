@@ -273,6 +273,38 @@ export class MobileController {
     return this.mobileService.getTracking(requestId);
   }
 
+  @Post('mobile/tracking/worker-arrived')
+  workerMarkArrived(
+    @Body('requestId') requestId: string,
+    @Body('workerUserId') workerUserId: string,
+  ) {
+    return this.mobileService.workerMarkArrived({ requestId, workerUserId });
+  }
+
+  @Post('mobile/tracking/client-confirm')
+  clientConfirmArrival(
+    @Body('requestId') requestId: string,
+    @Body('clientUserId') clientUserId: string,
+  ) {
+    return this.mobileService.clientConfirmArrival({ requestId, clientUserId });
+  }
+
+  @Post('mobile/tracking/complete')
+  completeJob(
+    @Body('requestId') requestId: string,
+    @Body('workerUserId') workerUserId: string,
+  ) {
+    return this.mobileService.completeJob({ requestId, workerUserId });
+  }
+
+  @Post('mobile/tracking/cancel')
+  cancelJob(
+    @Body('requestId') requestId: string,
+    @Body('userId') userId: string,
+  ) {
+    return this.mobileService.cancelJob({ requestId, userId });
+  }
+
   @Get('mobile/worker/radar')
   getWorkerRadar(@Query('workerUserId') workerUserId: string) {
     return this.mobileService.getWorkerRadar(workerUserId);

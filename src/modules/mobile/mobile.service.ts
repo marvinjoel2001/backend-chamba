@@ -1339,20 +1339,32 @@ export class MobileService implements OnModuleInit {
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT jr.id AS request_id,
+             jr.title,
              jr.address AS request_address,
+             jr.status AS request_status,
+             jr.worker_arrived,
+             jr.client_confirmed_arrival,
+             jr.completed_at,
              w.id AS worker_id,
              w.first_name AS worker_first_name,
              w.last_name AS worker_last_name,
              w.profile_photo_url AS worker_photo,
+             ST_Y(w.current_location::geometry) AS worker_lat,
+             ST_X(w.current_location::geometry) AS worker_lng,
              CASE
                WHEN w.current_location IS NOT NULL
                  THEN ST_Distance(w.current_location, jr.location) / 1000.0
                ELSE NULL
              END AS distance_km,
-             jo.amount
+             jo.amount,
+             c.id AS client_id,
+             c.first_name AS client_first_name,
+             c.last_name AS client_last_name,
+             c.profile_photo_url AS client_photo
       FROM job_requests jr
       JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
       JOIN users w ON w.id = jo.worker_user_id
+      JOIN users c ON c.id = jr.client_user_id
       WHERE jr.id = $1
       LIMIT 1
       `,
@@ -1368,7 +1380,12 @@ export class MobileService implements OnModuleInit {
 
     return {
       requestId: row.request_id,
+      title: row.title,
       address: row.request_address,
+      status: row.request_status,
+      workerArrived: row.worker_arrived ?? false,
+      clientConfirmedArrival: row.client_confirmed_arrival ?? false,
+      completedAt: row.completed_at ?? null,
       distanceKm,
       etaMinutes:
         distanceKm == null ? null : Math.max(5, Math.ceil(distanceKm / 0.5)),
@@ -1378,8 +1395,143 @@ export class MobileService implements OnModuleInit {
         firstName: row.worker_first_name,
         lastName: row.worker_last_name ?? '',
         profilePhotoUrl: row.worker_photo ?? null,
+        latitude: row.worker_lat ? Number(row.worker_lat) : null,
+        longitude: row.worker_lng ? Number(row.worker_lng) : null,
+      },
+      client: {
+        id: row.client_id,
+        firstName: row.client_first_name,
+        lastName: row.client_last_name ?? '',
+        profilePhotoUrl: row.client_photo ?? null,
       },
     };
+  }
+
+  async workerMarkArrived(params: { requestId: string; workerUserId: string }) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      UPDATE job_requests
+      SET worker_arrived = true, updated_at = NOW()
+      WHERE id = $1
+        AND EXISTS (
+          SELECT 1 FROM job_offers jo
+          WHERE jo.request_id = $1
+            AND jo.worker_user_id = $2
+            AND jo.status = 'accepted'
+        )
+      RETURNING id, worker_arrived, client_confirmed_arrival
+      `,
+      [params.requestId, params.workerUserId],
+    );
+    if (!rows[0]) throw new NotFoundException('Request not found or not authorized');
+
+    this.realtimeGateway.emitToUser(params.workerUserId, 'job.worker_arrived', {
+      requestId: params.requestId,
+    });
+    // Notificar al cliente
+    const clientRows = await this.dataSource.query<any[]>(
+      `SELECT client_user_id FROM job_requests WHERE id = $1`,
+      [params.requestId],
+    );
+    if (clientRows[0]) {
+      this.realtimeGateway.emitToUser(clientRows[0].client_user_id, 'job.worker_arrived', {
+        requestId: params.requestId,
+      });
+    }
+
+    return { requestId: params.requestId, workerArrived: true };
+  }
+
+  async clientConfirmArrival(params: { requestId: string; clientUserId: string }) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      UPDATE job_requests
+      SET client_confirmed_arrival = true, updated_at = NOW()
+      WHERE id = $1 AND client_user_id = $2
+      RETURNING id, worker_arrived, client_confirmed_arrival
+      `,
+      [params.requestId, params.clientUserId],
+    );
+    if (!rows[0]) throw new NotFoundException('Request not found or not authorized');
+
+    // Notificar al worker que puede marcar como completado
+    const offerRows = await this.dataSource.query<any[]>(
+      `SELECT worker_user_id FROM job_offers WHERE request_id = $1 AND status = 'accepted' LIMIT 1`,
+      [params.requestId],
+    );
+    if (offerRows[0]) {
+      this.realtimeGateway.emitToUser(offerRows[0].worker_user_id, 'job.client_confirmed', {
+        requestId: params.requestId,
+      });
+    }
+
+    return { requestId: params.requestId, clientConfirmedArrival: true };
+  }
+
+  async completeJob(params: { requestId: string; workerUserId: string }) {
+    // Solo se puede completar si el cliente confirmó la llegada
+    const checkRows = await this.dataSource.query<any[]>(
+      `
+      SELECT jr.id, jr.client_confirmed_arrival, jr.client_user_id
+      FROM job_requests jr
+      JOIN job_offers jo ON jo.request_id = jr.id AND jo.worker_user_id = $2 AND jo.status = 'accepted'
+      WHERE jr.id = $1
+      LIMIT 1
+      `,
+      [params.requestId, params.workerUserId],
+    );
+    const req = checkRows[0];
+    if (!req) throw new NotFoundException('Request not found or not authorized');
+    if (!req.client_confirmed_arrival) {
+      throw new BadRequestException('El cliente aún no ha confirmado tu llegada');
+    }
+
+    await this.dataSource.query(
+      `
+      UPDATE job_requests
+      SET status = 'completed', completed_at = NOW(), updated_at = NOW()
+      WHERE id = $1
+      `,
+      [params.requestId],
+    );
+
+    // Notificar a ambos
+    this.realtimeGateway.emitToUser(params.workerUserId, 'job.completed', { requestId: params.requestId });
+    this.realtimeGateway.emitToUser(req.client_user_id, 'job.completed', { requestId: params.requestId });
+
+    this.logger.log(`[completeJob] Trabajo ${params.requestId} completado por worker ${params.workerUserId}`);
+
+    return { requestId: params.requestId, status: 'completed' };
+  }
+
+  async cancelJob(params: { requestId: string; userId: string }) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT jr.id, jr.client_user_id, jo.worker_user_id
+      FROM job_requests jr
+      LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
+      WHERE jr.id = $1
+        AND (jr.client_user_id = $2 OR jo.worker_user_id = $2)
+      LIMIT 1
+      `,
+      [params.requestId, params.userId],
+    );
+    const req = rows[0];
+    if (!req) throw new NotFoundException('Request not found or not authorized');
+
+    await this.dataSource.query(
+      `UPDATE job_requests SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+      [params.requestId],
+    );
+
+    if (req.client_user_id) {
+      this.realtimeGateway.emitToUser(req.client_user_id, 'job.cancelled', { requestId: params.requestId });
+    }
+    if (req.worker_user_id) {
+      this.realtimeGateway.emitToUser(req.worker_user_id, 'job.cancelled', { requestId: params.requestId });
+    }
+
+    return { requestId: params.requestId, status: 'cancelled' };
   }
 
   async getWorkerRadar(workerUserId: string) {
@@ -1779,6 +1931,9 @@ export class MobileService implements OnModuleInit {
       );
       `,
       `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS ai_categories JSONB NOT NULL DEFAULT '[]'::jsonb;`,
+      `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS worker_arrived BOOLEAN NOT NULL DEFAULT false;`,
+      `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS client_confirmed_arrival BOOLEAN NOT NULL DEFAULT false;`,
+      `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NULL;`,
       `
       CREATE TABLE IF NOT EXISTS job_offers (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

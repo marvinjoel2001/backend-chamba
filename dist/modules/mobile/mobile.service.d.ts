@@ -443,7 +443,12 @@ export declare class MobileService implements OnModuleInit {
     }>;
     getTracking(requestId: string): Promise<{
         requestId: any;
+        title: any;
         address: any;
+        status: any;
+        workerArrived: any;
+        clientConfirmedArrival: any;
+        completedAt: any;
         distanceKm: number | null;
         etaMinutes: number | null;
         agreedAmount: number;
@@ -452,7 +457,43 @@ export declare class MobileService implements OnModuleInit {
             firstName: any;
             lastName: any;
             profilePhotoUrl: any;
+            latitude: number | null;
+            longitude: number | null;
         };
+        client: {
+            id: any;
+            firstName: any;
+            lastName: any;
+            profilePhotoUrl: any;
+        };
+    }>;
+    workerMarkArrived(params: {
+        requestId: string;
+        workerUserId: string;
+    }): Promise<{
+        requestId: string;
+        workerArrived: boolean;
+    }>;
+    clientConfirmArrival(params: {
+        requestId: string;
+        clientUserId: string;
+    }): Promise<{
+        requestId: string;
+        clientConfirmedArrival: boolean;
+    }>;
+    completeJob(params: {
+        requestId: string;
+        workerUserId: string;
+    }): Promise<{
+        requestId: string;
+        status: string;
+    }>;
+    cancelJob(params: {
+        requestId: string;
+        userId: string;
+    }): Promise<{
+        requestId: string;
+        status: string;
     }>;
     getWorkerRadar(workerUserId: string): Promise<{
         worker: {
