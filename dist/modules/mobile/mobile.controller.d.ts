@@ -403,6 +403,10 @@ export declare class MobileController {
         distanceKm: number | null;
         etaMinutes: number | null;
         agreedAmount: number;
+        destination: {
+            latitude: number | null;
+            longitude: number | null;
+        };
         worker: {
             id: any;
             firstName: any;

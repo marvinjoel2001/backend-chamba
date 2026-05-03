@@ -1024,6 +1024,8 @@ let MobileService = class MobileService {
              jr.worker_arrived,
              jr.client_confirmed_arrival,
              jr.completed_at,
+             ST_Y(jr.location::geometry) AS dest_lat,
+             ST_X(jr.location::geometry) AS dest_lng,
              w.id AS worker_id,
              w.first_name AS worker_first_name,
              w.last_name AS worker_last_name,
@@ -1063,6 +1065,10 @@ let MobileService = class MobileService {
             distanceKm,
             etaMinutes: distanceKm == null ? null : Math.max(5, Math.ceil(distanceKm / 0.5)),
             agreedAmount: Number(row.amount),
+            destination: {
+                latitude: row.dest_lat ? Number(row.dest_lat) : null,
+                longitude: row.dest_lng ? Number(row.dest_lng) : null,
+            },
             worker: {
                 id: row.worker_id,
                 firstName: row.worker_first_name,
