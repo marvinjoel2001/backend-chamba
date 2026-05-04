@@ -592,7 +592,8 @@ export declare class MobileService implements OnModuleInit {
             category: any;
             address: any;
             amount: number;
-            status: any;
+            offerStatus: any;
+            requestStatus: any;
             acceptedAt: any;
             threadId: any;
             client: {

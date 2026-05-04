@@ -926,9 +926,10 @@ let MobileService = class MobileService {
         await this.dataSource.query(`
       UPDATE job_requests
       SET status = CASE WHEN status = 'searching' THEN 'negotiating' ELSE status END,
+          budget = $2,
           updated_at = NOW()
       WHERE id = $1
-      `, [params.requestId]);
+      `, [params.requestId, params.amount]);
         await this.ensureThreadAndInitialMessage({
             requestId: params.requestId,
             clientUserId: request.client_user_id,
@@ -945,9 +946,24 @@ let MobileService = class MobileService {
             message: params.message ?? '',
             status: 'pending',
             offerLifetimeSeconds: MobileService_1.OFFER_LIFETIME_SECONDS,
+            newBudget: params.amount,
         };
         this.realtimeGateway.emitToUser(request.client_user_id, 'offer.new', offerPayload);
         this.realtimeGateway.emitToUser(params.workerUserId, 'offer.updated', offerPayload);
+        const otherWorkerRows = await this.dataSource.query(`
+      SELECT DISTINCT worker_user_id
+      FROM job_offers
+      WHERE request_id = $1
+        AND worker_user_id <> $2
+        AND status = 'pending'
+        AND (expires_at IS NULL OR expires_at > NOW())
+      `, [params.requestId, params.workerUserId]);
+        for (const row of otherWorkerRows) {
+            this.realtimeGateway.emitToUser(row.worker_user_id, 'offer.updated', {
+                ...offerPayload,
+                workerUserId: row.worker_user_id,
+            });
+        }
         return {
             offer: {
                 id: offerId,
@@ -990,6 +1006,8 @@ let MobileService = class MobileService {
       `, [offer.request_id, params.offerId]);
         await this.dataSource.query(`UPDATE job_offers SET status = 'accepted' WHERE id = $1`, [params.offerId]);
         await this.dataSource.query(`UPDATE job_requests SET status = 'assigned', updated_at = NOW() WHERE id = $1`, [offer.request_id]);
+        await this.dataSource.query(`UPDATE users SET is_available = false, updated_at = NOW() WHERE id = $1`, [offer.worker_user_id]);
+        this.logger.log(`[acceptOffer] Worker ${offer.worker_user_id} marcado como no disponible (trabajo en curso)`);
         const payload = {
             offerId: params.offerId,
             requestId: offer.request_id,
@@ -1156,6 +1174,8 @@ let MobileService = class MobileService {
       SET status = 'completed', completed_at = NOW(), updated_at = NOW()
       WHERE id = $1
       `, [params.requestId]);
+        await this.dataSource.query(`UPDATE users SET is_available = true, updated_at = NOW() WHERE id = $1`, [params.workerUserId]);
+        this.logger.log(`[completeJob] Worker ${params.workerUserId} restaurado como disponible`);
         this.realtimeGateway.emitToUser(params.workerUserId, 'job.completed', { requestId: params.requestId });
         this.realtimeGateway.emitToUser(req.client_user_id, 'job.completed', { requestId: params.requestId });
         this.logger.log(`[completeJob] Trabajo ${params.requestId} completado por worker ${params.workerUserId}`);
@@ -1174,6 +1194,10 @@ let MobileService = class MobileService {
         if (!req)
             throw new common_1.NotFoundException('Request not found or not authorized');
         await this.dataSource.query(`UPDATE job_requests SET status = 'cancelled', updated_at = NOW() WHERE id = $1`, [params.requestId]);
+        if (req.worker_user_id) {
+            await this.dataSource.query(`UPDATE users SET is_available = true, updated_at = NOW() WHERE id = $1`, [req.worker_user_id]);
+            this.logger.log(`[cancelJob] Worker ${req.worker_user_id} restaurado como disponible`);
+        }
         if (req.client_user_id) {
             this.realtimeGateway.emitToUser(req.client_user_id, 'job.cancelled', { requestId: params.requestId });
         }
@@ -1365,13 +1389,14 @@ let MobileService = class MobileService {
         const rows = await this.dataSource.query(`
       SELECT jo.id AS offer_id,
              jo.amount,
-             jo.status,
+             jo.status AS offer_status,
              jo.created_at AS accepted_at,
              jr.id AS request_id,
              jr.title,
              jr.description,
              jr.category,
              jr.address,
+             jr.status AS request_status,
              c.id AS client_id,
              c.first_name AS client_first_name,
              c.last_name AS client_last_name,
@@ -1385,7 +1410,8 @@ let MobileService = class MobileService {
        AND ct.worker_user_id = jo.worker_user_id
        AND ct.client_user_id = jr.client_user_id
       WHERE jo.worker_user_id = $1
-        AND jo.status = 'accepted'
+        AND jo.status IN ('accepted', 'rejected')
+        AND jr.status IN ('assigned', 'completed', 'cancelled')
       ORDER BY jo.created_at DESC
       LIMIT 80
       `, [workerUserId]);
@@ -1399,7 +1425,8 @@ let MobileService = class MobileService {
                 category: row.category,
                 address: row.address,
                 amount: Number(row.amount),
-                status: row.status,
+                offerStatus: row.offer_status,
+                requestStatus: row.request_status,
                 acceptedAt: row.accepted_at,
                 threadId: row.thread_id ?? null,
                 client: {

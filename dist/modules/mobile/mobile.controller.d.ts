@@ -492,7 +492,8 @@ export declare class MobileController {
             category: any;
             address: any;
             amount: number;
-            status: any;
+            offerStatus: any;
+            requestStatus: any;
             acceptedAt: any;
             threadId: any;
             client: {
