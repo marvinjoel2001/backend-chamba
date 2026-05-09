@@ -26,6 +26,7 @@ let MobileService = class MobileService {
     realtimeGateway;
     logger = new common_1.Logger(MobileService_1.name);
     static OFFER_LIFETIME_SECONDS = 120;
+    static OFFER_LIFETIME_CONFIG_KEY = 'offer_lifetime_by_price_type';
     static DEFAULT_CATEGORY = 'General';
     static GEMINI_TIMEOUT_MS = 9000;
     constructor(configService, dataSource, storageService, notificationsService, realtimeGateway) {
@@ -538,6 +539,7 @@ let MobileService = class MobileService {
     }
     async getOffers(params) {
         const request = await this.resolveRequest(params);
+        const offerLifetimeSeconds = await this.getOfferLifetimeSeconds(request.priceType ?? request.price_type);
         await this.expireStaleOffers(request.id);
         const photos = await this.getRequestPhotos(request.id);
         const rows = await this.dataSource.query(`
@@ -571,8 +573,9 @@ let MobileService = class MobileService {
       WHERE jo.request_id = $1
         AND jo.status = 'pending'
         AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
+        AND jo.worker_user_id <> $2
       ORDER BY jo.amount ASC, u.average_rating DESC
-      `, [request.id]);
+      `, [request.id, request.clientUserId ?? request.client_user_id]);
         return {
             request: {
                 ...request,
@@ -598,7 +601,7 @@ let MobileService = class MobileService {
                     distanceKm: row.distance_km == null ? null : Number(row.distance_km),
                 },
             })),
-            offerLifetimeSeconds: MobileService_1.OFFER_LIFETIME_SECONDS,
+            offerLifetimeSeconds,
         };
     }
     async getWorkerProfile(workerId) {
@@ -771,6 +774,7 @@ let MobileService = class MobileService {
              jr.description,
              jr.category,
              jr.budget,
+             jr.price_type,
              jr.address,
              jr.status,
              CASE
@@ -845,14 +849,16 @@ let MobileService = class MobileService {
         if (!row) {
             return { request: null };
         }
+        const offerLifetimeSeconds = await this.getOfferLifetimeSeconds(row.price_type);
         return {
-            offerLifetimeSeconds: MobileService_1.OFFER_LIFETIME_SECONDS,
+            offerLifetimeSeconds,
             request: {
                 id: row.request_id,
                 title: row.title,
                 description: row.description,
                 category: row.category,
                 budget: Number(row.budget),
+                priceType: row.price_type,
                 address: row.address,
                 status: row.status,
                 distanceKm: row.distance_km == null ? null : Number(row.distance_km),
@@ -881,8 +887,13 @@ let MobileService = class MobileService {
         await this.expireStaleOffers(params.requestId);
         await this.getUserById(params.workerUserId);
         const request = await this.getRequestById(params.requestId);
+        const offerLifetimeSeconds = await this.getOfferLifetimeSeconds(request.price_type);
         if (!['searching', 'negotiating'].includes(request.status)) {
             throw new common_1.BadRequestException('La solicitud ya no admite nuevas ofertas');
+        }
+        const currentBudget = Number(request.budget);
+        if (params.amount < currentBudget) {
+            throw new common_1.BadRequestException(`Tu oferta (Bs ${params.amount}) no puede ser menor al precio actual del cliente (Bs ${currentBudget})`);
         }
         const existingRows = await this.dataSource.query(`
       SELECT id
@@ -905,7 +916,7 @@ let MobileService = class MobileService {
                 existingRows[0].id,
                 params.amount,
                 params.message ?? null,
-                MobileService_1.OFFER_LIFETIME_SECONDS,
+                offerLifetimeSeconds,
             ]);
             offerId = rows[0].id;
         }
@@ -919,17 +930,16 @@ let MobileService = class MobileService {
                 params.workerUserId,
                 params.amount,
                 params.message ?? null,
-                MobileService_1.OFFER_LIFETIME_SECONDS,
+                offerLifetimeSeconds,
             ]);
             offerId = rows[0].id;
         }
         await this.dataSource.query(`
       UPDATE job_requests
       SET status = CASE WHEN status = 'searching' THEN 'negotiating' ELSE status END,
-          budget = $2,
           updated_at = NOW()
       WHERE id = $1
-      `, [params.requestId, params.amount]);
+      `, [params.requestId]);
         await this.ensureThreadAndInitialMessage({
             requestId: params.requestId,
             clientUserId: request.client_user_id,
@@ -945,10 +955,11 @@ let MobileService = class MobileService {
             amount: params.amount,
             message: params.message ?? '',
             status: 'pending',
-            offerLifetimeSeconds: MobileService_1.OFFER_LIFETIME_SECONDS,
-            newBudget: params.amount,
+            offerLifetimeSeconds,
+            currentBudget,
         };
         this.realtimeGateway.emitToUser(request.client_user_id, 'offer.new', offerPayload);
+        this.realtimeGateway.emitToUser(request.client_user_id, 'offer.updated', offerPayload);
         this.realtimeGateway.emitToUser(params.workerUserId, 'offer.updated', offerPayload);
         const otherWorkerRows = await this.dataSource.query(`
       SELECT DISTINCT worker_user_id
@@ -1032,6 +1043,92 @@ let MobileService = class MobileService {
             requestId: offer.request_id,
             workerUserId: offer.worker_user_id,
         };
+    }
+    async discardOffer(params) {
+        await this.dataSource.query(`
+      UPDATE job_offers
+      SET status = 'expired', expires_at = NOW()
+      WHERE request_id = $1
+        AND worker_user_id = $2
+        AND status = 'pending'
+      `, [params.requestId, params.workerUserId]);
+        this.logger.log(`[discardOffer] Worker ${params.workerUserId} descartó su oferta en solicitud ${params.requestId}`);
+        return { discarded: true, requestId: params.requestId };
+    }
+    async declineOffer(params) {
+        const request = await this.getRequestById(params.requestId);
+        const result = await this.dataSource.query(`
+      UPDATE job_offers
+      SET status = 'declined', expires_at = NULL
+      WHERE request_id = $1
+        AND worker_user_id = $2
+        AND status IN ('pending', 'active')
+      RETURNING id
+      `, [params.requestId, params.workerUserId]);
+        if (!result[0]) {
+            const budget = Number(request.budget ?? 0);
+            await this.dataSource.query(`
+        INSERT INTO job_offers (request_id, worker_user_id, amount, status, expires_at)
+        VALUES ($1, $2, $3, 'declined', NULL)
+        ON CONFLICT (request_id, worker_user_id) DO UPDATE
+          SET status = 'declined', expires_at = NULL
+        `, [params.requestId, params.workerUserId, budget]);
+        }
+        const payload = {
+            requestId: params.requestId,
+            workerUserId: params.workerUserId,
+            clientUserId: request.client_user_id,
+            status: 'declined',
+        };
+        this.realtimeGateway.emitToUser(params.workerUserId, 'offer.updated', payload);
+        this.realtimeGateway.emitToUser(request.client_user_id, 'offer.updated', payload);
+        this.logger.log(`[declineOffer] Worker ${params.workerUserId} declinó solicitud ${params.requestId}`);
+        return { declined: true, requestId: params.requestId };
+    }
+    async reactivateOffer(params) {
+        await this.dataSource.query(`
+      UPDATE job_offers
+      SET status = 'expired', expires_at = NULL
+      WHERE request_id = $1
+        AND worker_user_id = $2
+        AND status = 'declined'
+      `, [params.requestId, params.workerUserId]);
+        this.logger.log(`[reactivateOffer] Worker ${params.workerUserId} reactivó solicitud ${params.requestId}`);
+        return { reactivated: true, requestId: params.requestId };
+    }
+    async clientCounterOffer(params) {
+        if (!Number.isFinite(params.amount) || params.amount <= 0) {
+            throw new common_1.BadRequestException('El monto debe ser mayor a 0');
+        }
+        const request = await this.getRequestById(params.requestId);
+        if (request.client_user_id !== params.clientUserId) {
+            throw new common_1.UnauthorizedException('Solo el cliente puede contraofertar');
+        }
+        if (!['searching', 'negotiating'].includes(request.status)) {
+            throw new common_1.BadRequestException('La solicitud ya no admite contraofertas');
+        }
+        const currentBudget = Number(request.budget);
+        if (params.amount <= currentBudget) {
+            throw new common_1.BadRequestException(`Tu nueva oferta (Bs ${params.amount}) debe ser mayor a tu oferta actual (Bs ${currentBudget})`);
+        }
+        await this.dataSource.query(`UPDATE job_requests SET budget = $2, status = 'negotiating', updated_at = NOW() WHERE id = $1`, [params.requestId, params.amount]);
+        const workerRows = await this.dataSource.query(`
+      UPDATE job_offers
+      SET status = 'expired', expires_at = NOW()
+      WHERE request_id = $1
+        AND status = 'pending'
+      RETURNING worker_user_id
+      `, [params.requestId]);
+        const payload = {
+            requestId: params.requestId,
+            newBudget: params.amount,
+            clientUserId: params.clientUserId,
+        };
+        for (const row of workerRows) {
+            this.realtimeGateway.emitToUser(row.worker_user_id, 'offer.client_counter', payload);
+        }
+        this.logger.log(`[clientCounterOffer] Cliente ${params.clientUserId} contraofertó Bs ${params.amount} en solicitud ${params.requestId}`);
+        return { requestId: params.requestId, newBudget: params.amount };
     }
     async getTracking(requestId) {
         const rows = await this.dataSource.query(`
@@ -1598,6 +1695,13 @@ let MobileService = class MobileService {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       `,
+            `
+      CREATE TABLE IF NOT EXISTS app_config (
+        key TEXT PRIMARY KEY,
+        value_json JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      `,
             `CREATE INDEX IF NOT EXISTS idx_job_requests_location ON job_requests USING GIST(location);`,
             `CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_created ON chat_messages(thread_id, created_at DESC);`,
             `CREATE INDEX IF NOT EXISTS idx_job_offers_request ON job_offers(request_id);`,
@@ -1610,6 +1714,7 @@ let MobileService = class MobileService {
         }
     }
     async seedData() {
+        await this.seedDefaultConfig();
         await this.seedDefaultCategories();
         const demoUsers = [
             {
@@ -1842,6 +1947,20 @@ let MobileService = class MobileService {
         `, [category.id, category.name, category.description]);
         }
     }
+    async seedDefaultConfig() {
+        await this.dataSource.query(`
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ($1, $2::jsonb, NOW())
+      ON CONFLICT (key) DO NOTHING
+      `, [
+            MobileService_1.OFFER_LIFETIME_CONFIG_KEY,
+            JSON.stringify({
+                fixed: 120,
+                hour: 180,
+                day: 300,
+            }),
+        ]);
+    }
     extractTopCategories(workerRows) {
         const counter = new Map();
         for (const row of workerRows) {
@@ -1863,6 +1982,44 @@ let MobileService = class MobileService {
       LIMIT 8
       `);
         return rows.map((row) => String(row.name ?? '').trim()).filter(Boolean);
+    }
+    normalizePriceTypeKey(priceType) {
+        const normalized = String(priceType ?? '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim();
+        if (normalized.includes('hora') || normalized.includes('hour')) {
+            return 'hour';
+        }
+        if (normalized.includes('dia') || normalized.includes('day')) {
+            return 'day';
+        }
+        return 'fixed';
+    }
+    async getOfferLifetimeSeconds(priceType) {
+        const rows = await this.dataSource.query(`
+      SELECT value_json
+      FROM app_config
+      WHERE key = $1
+      LIMIT 1
+      `, [MobileService_1.OFFER_LIFETIME_CONFIG_KEY]);
+        const fallback = MobileService_1.OFFER_LIFETIME_SECONDS;
+        const config = rows[0]?.value_json;
+        if (!config || typeof config !== 'object') {
+            return fallback;
+        }
+        const key = this.normalizePriceTypeKey(priceType);
+        const candidate = key === 'hour'
+            ? config.hour
+            : key === 'day'
+                ? config.day
+                : config.fixed;
+        const parsed = Number(candidate);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            return fallback;
+        }
+        return Math.floor(parsed);
     }
     async resolveRequest(params) {
         if (params.requestId) {

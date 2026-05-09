@@ -361,6 +361,7 @@ export declare class MobileController {
             description: any;
             category: any;
             budget: number;
+            priceType: any;
             address: any;
             status: any;
             distanceKm: number | null;
@@ -391,6 +392,22 @@ export declare class MobileController {
         accepted: boolean;
         requestId: any;
         workerUserId: any;
+    }>;
+    discardOffer(requestId: string, workerUserId: string): Promise<{
+        discarded: boolean;
+        requestId: string;
+    }>;
+    declineOffer(requestId: string, workerUserId: string): Promise<{
+        declined: boolean;
+        requestId: string;
+    }>;
+    reactivateOffer(requestId: string, workerUserId: string): Promise<{
+        reactivated: boolean;
+        requestId: string;
+    }>;
+    clientCounterOffer(requestId: string, clientUserId: string, amount: number): Promise<{
+        requestId: string;
+        newBudget: number;
     }>;
     getTracking(requestId: string): Promise<{
         requestId: any;

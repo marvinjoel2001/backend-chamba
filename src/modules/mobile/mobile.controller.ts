@@ -268,6 +268,43 @@ export class MobileController {
     return this.mobileService.acceptOffer({ offerId, clientUserId });
   }
 
+  @Post('mobile/offers/discard')
+  discardOffer(
+    @Body('requestId') requestId: string,
+    @Body('workerUserId') workerUserId: string,
+  ) {
+    return this.mobileService.discardOffer({ requestId, workerUserId });
+  }
+
+  @Post('mobile/offers/decline')
+  declineOffer(
+    @Body('requestId') requestId: string,
+    @Body('workerUserId') workerUserId: string,
+  ) {
+    return this.mobileService.declineOffer({ requestId, workerUserId });
+  }
+
+  @Post('mobile/offers/reactivate')
+  reactivateOffer(
+    @Body('requestId') requestId: string,
+    @Body('workerUserId') workerUserId: string,
+  ) {
+    return this.mobileService.reactivateOffer({ requestId, workerUserId });
+  }
+
+  @Post('mobile/offers/client-counter')
+  clientCounterOffer(
+    @Body('requestId') requestId: string,
+    @Body('clientUserId') clientUserId: string,
+    @Body('amount') amount: number,
+  ) {
+    return this.mobileService.clientCounterOffer({
+      requestId,
+      clientUserId,
+      amount: Number(amount),
+    });
+  }
+
   @Get('mobile/tracking')
   getTracking(@Query('requestId') requestId: string) {
     return this.mobileService.getTracking(requestId);

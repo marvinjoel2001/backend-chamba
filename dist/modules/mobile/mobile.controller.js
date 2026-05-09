@@ -147,6 +147,22 @@ let MobileController = class MobileController {
     acceptOffer(offerId, clientUserId) {
         return this.mobileService.acceptOffer({ offerId, clientUserId });
     }
+    discardOffer(requestId, workerUserId) {
+        return this.mobileService.discardOffer({ requestId, workerUserId });
+    }
+    declineOffer(requestId, workerUserId) {
+        return this.mobileService.declineOffer({ requestId, workerUserId });
+    }
+    reactivateOffer(requestId, workerUserId) {
+        return this.mobileService.reactivateOffer({ requestId, workerUserId });
+    }
+    clientCounterOffer(requestId, clientUserId, amount) {
+        return this.mobileService.clientCounterOffer({
+            requestId,
+            clientUserId,
+            amount: Number(amount),
+        });
+    }
     getTracking(requestId) {
         return this.mobileService.getTracking(requestId);
     }
@@ -383,6 +399,39 @@ __decorate([
     __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "acceptOffer", null);
+__decorate([
+    (0, common_1.Post)('mobile/offers/discard'),
+    __param(0, (0, common_1.Body)('requestId')),
+    __param(1, (0, common_1.Body)('workerUserId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "discardOffer", null);
+__decorate([
+    (0, common_1.Post)('mobile/offers/decline'),
+    __param(0, (0, common_1.Body)('requestId')),
+    __param(1, (0, common_1.Body)('workerUserId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "declineOffer", null);
+__decorate([
+    (0, common_1.Post)('mobile/offers/reactivate'),
+    __param(0, (0, common_1.Body)('requestId')),
+    __param(1, (0, common_1.Body)('workerUserId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "reactivateOffer", null);
+__decorate([
+    (0, common_1.Post)('mobile/offers/client-counter'),
+    __param(0, (0, common_1.Body)('requestId')),
+    __param(1, (0, common_1.Body)('clientUserId')),
+    __param(2, (0, common_1.Body)('amount')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Number]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "clientCounterOffer", null);
 __decorate([
     (0, common_1.Get)('mobile/tracking'),
     __param(0, (0, common_1.Query)('requestId')),

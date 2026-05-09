@@ -34,6 +34,7 @@ export declare class MobileService implements OnModuleInit {
     private readonly realtimeGateway;
     private readonly logger;
     private static readonly OFFER_LIFETIME_SECONDS;
+    private static readonly OFFER_LIFETIME_CONFIG_KEY;
     private static readonly DEFAULT_CATEGORY;
     private static readonly GEMINI_TIMEOUT_MS;
     constructor(configService: ConfigService, dataSource: DataSource, storageService: StorageService, notificationsService: NotificationsService, realtimeGateway: RealtimeGateway);
@@ -402,6 +403,7 @@ export declare class MobileService implements OnModuleInit {
             description: any;
             category: any;
             budget: number;
+            priceType: any;
             address: any;
             status: any;
             distanceKm: number | null;
@@ -440,6 +442,35 @@ export declare class MobileService implements OnModuleInit {
         accepted: boolean;
         requestId: any;
         workerUserId: any;
+    }>;
+    discardOffer(params: {
+        requestId: string;
+        workerUserId: string;
+    }): Promise<{
+        discarded: boolean;
+        requestId: string;
+    }>;
+    declineOffer(params: {
+        requestId: string;
+        workerUserId: string;
+    }): Promise<{
+        declined: boolean;
+        requestId: string;
+    }>;
+    reactivateOffer(params: {
+        requestId: string;
+        workerUserId: string;
+    }): Promise<{
+        reactivated: boolean;
+        requestId: string;
+    }>;
+    clientCounterOffer(params: {
+        requestId: string;
+        clientUserId: string;
+        amount: number;
+    }): Promise<{
+        requestId: string;
+        newBudget: number;
     }>;
     getTracking(requestId: string): Promise<{
         requestId: any;
@@ -619,8 +650,11 @@ export declare class MobileService implements OnModuleInit {
     private ensureSchema;
     private seedData;
     private seedDefaultCategories;
+    private seedDefaultConfig;
     private extractTopCategories;
     private listFallbackCategories;
+    private normalizePriceTypeKey;
+    private getOfferLifetimeSeconds;
     private resolveRequest;
     private findLatestClientRequest;
     private getRequestById;

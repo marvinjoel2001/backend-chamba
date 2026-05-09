@@ -41,6 +41,8 @@ type CreateRequestInput = {
 export class MobileService implements OnModuleInit {
   private readonly logger = new Logger(MobileService.name);
   private static readonly OFFER_LIFETIME_SECONDS = 120;
+  private static readonly OFFER_LIFETIME_CONFIG_KEY =
+    'offer_lifetime_by_price_type';
   private static readonly DEFAULT_CATEGORY = 'General';
   private static readonly GEMINI_TIMEOUT_MS = 9000;
 
@@ -721,6 +723,9 @@ export class MobileService implements OnModuleInit {
 
   async getOffers(params: { requestId?: string; clientUserId?: string }) {
     const request = await this.resolveRequest(params);
+    const offerLifetimeSeconds = await this.getOfferLifetimeSeconds(
+      (request as any).priceType ?? (request as any).price_type,
+    );
     await this.expireStaleOffers(request.id);
     const photos = await this.getRequestPhotos(request.id);
 
@@ -756,9 +761,10 @@ export class MobileService implements OnModuleInit {
       WHERE jo.request_id = $1
         AND jo.status = 'pending'
         AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
+        AND jo.worker_user_id <> $2
       ORDER BY jo.amount ASC, u.average_rating DESC
       `,
-      [request.id],
+      [request.id, (request as any).clientUserId ?? (request as any).client_user_id],
     );
 
     return {
@@ -787,7 +793,7 @@ export class MobileService implements OnModuleInit {
           distanceKm: row.distance_km == null ? null : Number(row.distance_km),
         },
       })),
-      offerLifetimeSeconds: MobileService.OFFER_LIFETIME_SECONDS,
+      offerLifetimeSeconds,
     };
   }
   async getWorkerProfile(workerId: string) {
@@ -1020,6 +1026,7 @@ export class MobileService implements OnModuleInit {
              jr.description,
              jr.category,
              jr.budget,
+             jr.price_type,
              jr.address,
              jr.status,
              CASE
@@ -1098,14 +1105,19 @@ export class MobileService implements OnModuleInit {
       return { request: null };
     }
 
+    const offerLifetimeSeconds = await this.getOfferLifetimeSeconds(
+      row.price_type,
+    );
+
     return {
-      offerLifetimeSeconds: MobileService.OFFER_LIFETIME_SECONDS,
+      offerLifetimeSeconds,
       request: {
         id: row.request_id,
         title: row.title,
         description: row.description,
         category: row.category,
         budget: Number(row.budget),
+        priceType: row.price_type,
         address: row.address,
         status: row.status,
         distanceKm: row.distance_km == null ? null : Number(row.distance_km),
@@ -1141,8 +1153,19 @@ export class MobileService implements OnModuleInit {
     await this.expireStaleOffers(params.requestId);
     await this.getUserById(params.workerUserId);
     const request = await this.getRequestById(params.requestId);
+    const offerLifetimeSeconds = await this.getOfferLifetimeSeconds(
+      request.price_type,
+    );
     if (!['searching', 'negotiating'].includes(request.status)) {
       throw new BadRequestException('La solicitud ya no admite nuevas ofertas');
+    }
+
+    // El worker solo puede ofertar >= al budget actual del cliente
+    const currentBudget = Number(request.budget);
+    if (params.amount < currentBudget) {
+      throw new BadRequestException(
+        `Tu oferta (Bs ${params.amount}) no puede ser menor al precio actual del cliente (Bs ${currentBudget})`,
+      );
     }
 
     const existingRows = await this.dataSource.query<any[]>(
@@ -1173,7 +1196,7 @@ export class MobileService implements OnModuleInit {
           existingRows[0].id,
           params.amount,
           params.message ?? null,
-          MobileService.OFFER_LIFETIME_SECONDS,
+          offerLifetimeSeconds,
         ],
       );
       offerId = rows[0].id;
@@ -1189,21 +1212,22 @@ export class MobileService implements OnModuleInit {
           params.workerUserId,
           params.amount,
           params.message ?? null,
-          MobileService.OFFER_LIFETIME_SECONDS,
+          offerLifetimeSeconds,
         ],
       );
       offerId = rows[0].id;
     }
 
+    // El budget de la solicitud NO cambia cuando el worker oferta.
+    // Solo cambia cuando el cliente hace contraoferta.
     await this.dataSource.query(
       `
       UPDATE job_requests
       SET status = CASE WHEN status = 'searching' THEN 'negotiating' ELSE status END,
-          budget = $2,
           updated_at = NOW()
       WHERE id = $1
       `,
-      [params.requestId, params.amount],
+      [params.requestId],
     );
 
     await this.ensureThreadAndInitialMessage({
@@ -1223,8 +1247,8 @@ export class MobileService implements OnModuleInit {
       amount: params.amount,
       message: params.message ?? '',
       status: 'pending',
-      offerLifetimeSeconds: MobileService.OFFER_LIFETIME_SECONDS,
-      newBudget: params.amount, // el budget de la solicitud se actualizó
+      offerLifetimeSeconds,
+      currentBudget,
     };
     this.realtimeGateway.emitToUser(
       request.client_user_id,
@@ -1232,12 +1256,17 @@ export class MobileService implements OnModuleInit {
       offerPayload,
     );
     this.realtimeGateway.emitToUser(
+      request.client_user_id,
+      'offer.updated',
+      offerPayload,
+    );
+    this.realtimeGateway.emitToUser(
       params.workerUserId,
       'offer.updated',
       offerPayload,
     );
-    // Notificar a todos los workers con oferta pendiente en esta solicitud
-    // para que vean el nuevo precio del cliente
+    // Notificar a otros workers con oferta pendiente para que refresquen
+    // el estado de negociación de esta solicitud.
     const otherWorkerRows = await this.dataSource.query<any[]>(
       `
       SELECT DISTINCT worker_user_id
@@ -1362,6 +1391,165 @@ export class MobileService implements OnModuleInit {
       requestId: offer.request_id,
       workerUserId: offer.worker_user_id,
     };
+  }
+
+  // Worker descarta su oferta pendiente → vuelve al estado "sin oferta"
+  async discardOffer(params: { requestId: string; workerUserId: string }) {
+    await this.dataSource.query(
+      `
+      UPDATE job_offers
+      SET status = 'expired', expires_at = NOW()
+      WHERE request_id = $1
+        AND worker_user_id = $2
+        AND status = 'pending'
+      `,
+      [params.requestId, params.workerUserId],
+    );
+
+    this.logger.log(
+      `[discardOffer] Worker ${params.workerUserId} descartó su oferta en solicitud ${params.requestId}`,
+    );
+
+    return { discarded: true, requestId: params.requestId };
+  }
+
+  // Worker marca oferta como "no me interesa" (declined) → sigue visible pero inactiva
+  async declineOffer(params: { requestId: string; workerUserId: string }) {
+    const request = await this.getRequestById(params.requestId);
+
+    // Intentar actualizar oferta existente
+    const result = await this.dataSource.query<any[]>(
+      `
+      UPDATE job_offers
+      SET status = 'declined', expires_at = NULL
+      WHERE request_id = $1
+        AND worker_user_id = $2
+        AND status IN ('pending', 'active')
+      RETURNING id
+      `,
+      [params.requestId, params.workerUserId],
+    );
+
+    // Si no existe oferta previa, insertarla directamente como declined
+    if (!result[0]) {
+      const budget = Number(request.budget ?? 0);
+      await this.dataSource.query(
+        `
+        INSERT INTO job_offers (request_id, worker_user_id, amount, status, expires_at)
+        VALUES ($1, $2, $3, 'declined', NULL)
+        ON CONFLICT (request_id, worker_user_id) DO UPDATE
+          SET status = 'declined', expires_at = NULL
+        `,
+        [params.requestId, params.workerUserId, budget],
+      );
+    }
+
+    const payload = {
+      requestId: params.requestId,
+      workerUserId: params.workerUserId,
+      clientUserId: request.client_user_id,
+      status: 'declined',
+    };
+    this.realtimeGateway.emitToUser(
+      params.workerUserId,
+      'offer.updated',
+      payload,
+    );
+    this.realtimeGateway.emitToUser(
+      request.client_user_id,
+      'offer.updated',
+      payload,
+    );
+
+    this.logger.log(
+      `[declineOffer] Worker ${params.workerUserId} declinó solicitud ${params.requestId}`,
+    );
+
+    return { declined: true, requestId: params.requestId };
+  }
+
+  // Worker reactiva una oferta marcada como declined → vuelve al estado sin oferta activa
+  async reactivateOffer(params: { requestId: string; workerUserId: string }) {
+    await this.dataSource.query(
+      `
+      UPDATE job_offers
+      SET status = 'expired', expires_at = NULL
+      WHERE request_id = $1
+        AND worker_user_id = $2
+        AND status = 'declined'
+      `,
+      [params.requestId, params.workerUserId],
+    );
+
+    this.logger.log(
+      `[reactivateOffer] Worker ${params.workerUserId} reactivó solicitud ${params.requestId}`,
+    );
+
+    return { reactivated: true, requestId: params.requestId };
+  }
+
+  // Cliente hace contraoferta: actualiza el budget de la solicitud
+  // El nuevo monto debe ser >= su oferta anterior (budget actual)
+  async clientCounterOffer(params: {
+    requestId: string;
+    clientUserId: string;
+    amount: number;
+  }) {
+    if (!Number.isFinite(params.amount) || params.amount <= 0) {
+      throw new BadRequestException('El monto debe ser mayor a 0');
+    }
+
+    const request = await this.getRequestById(params.requestId);
+    if (request.client_user_id !== params.clientUserId) {
+      throw new UnauthorizedException('Solo el cliente puede contraofertar');
+    }
+    if (!['searching', 'negotiating'].includes(request.status)) {
+      throw new BadRequestException('La solicitud ya no admite contraofertas');
+    }
+
+    // El cliente solo puede subir su propio precio (budget actual)
+    const currentBudget = Number(request.budget);
+    if (params.amount <= currentBudget) {
+      throw new BadRequestException(
+        `Tu nueva oferta (Bs ${params.amount}) debe ser mayor a tu oferta actual (Bs ${currentBudget})`,
+      );
+    }
+
+    // Actualizar el budget de la solicitud
+    await this.dataSource.query(
+      `UPDATE job_requests SET budget = $2, status = 'negotiating', updated_at = NOW() WHERE id = $1`,
+      [params.requestId, params.amount],
+    );
+
+    // Expirar todas las ofertas pendientes del worker.
+    // job_offers.amount es lo que pide el worker; el cliente actualiza solo el budget.
+    // El worker verá el nuevo budget del cliente y podrá aceptar u ofertar de nuevo.
+    const workerRows = await this.dataSource.query<any[]>(
+      `
+      UPDATE job_offers
+      SET status = 'expired', expires_at = NOW()
+      WHERE request_id = $1
+        AND status = 'pending'
+      RETURNING worker_user_id
+      `,
+      [params.requestId],
+    );
+
+    const payload = {
+      requestId: params.requestId,
+      newBudget: params.amount,
+      clientUserId: params.clientUserId,
+    };
+
+    for (const row of workerRows) {
+      this.realtimeGateway.emitToUser(row.worker_user_id, 'offer.client_counter', payload);
+    }
+
+    this.logger.log(
+      `[clientCounterOffer] Cliente ${params.clientUserId} contraofertó Bs ${params.amount} en solicitud ${params.requestId}`,
+    );
+
+    return { requestId: params.requestId, newBudget: params.amount };
   }
 
   async getTracking(requestId: string) {
@@ -2085,6 +2273,13 @@ export class MobileService implements OnModuleInit {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       `,
+      `
+      CREATE TABLE IF NOT EXISTS app_config (
+        key TEXT PRIMARY KEY,
+        value_json JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      `,
       `CREATE INDEX IF NOT EXISTS idx_job_requests_location ON job_requests USING GIST(location);`,
       `CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_created ON chat_messages(thread_id, created_at DESC);`,
       `CREATE INDEX IF NOT EXISTS idx_job_offers_request ON job_offers(request_id);`,
@@ -2099,6 +2294,7 @@ export class MobileService implements OnModuleInit {
   }
 
   private async seedData(): Promise<void> {
+    await this.seedDefaultConfig();
     await this.seedDefaultCategories();
 
     const demoUsers = [
@@ -2367,6 +2563,24 @@ export class MobileService implements OnModuleInit {
     }
   }
 
+  private async seedDefaultConfig() {
+    await this.dataSource.query(
+      `
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ($1, $2::jsonb, NOW())
+      ON CONFLICT (key) DO NOTHING
+      `,
+      [
+        MobileService.OFFER_LIFETIME_CONFIG_KEY,
+        JSON.stringify({
+          fixed: 120,
+          hour: 180,
+          day: 300,
+        }),
+      ],
+    );
+  }
+
   private extractTopCategories(
     workerRows: Array<{ skills?: string[] | null }>,
   ) {
@@ -2396,6 +2610,57 @@ export class MobileService implements OnModuleInit {
     );
 
     return rows.map((row) => String(row.name ?? '').trim()).filter(Boolean);
+  }
+
+  private normalizePriceTypeKey(
+    priceType?: string | null,
+  ): 'fixed' | 'hour' | 'day' {
+    const normalized = String(priceType ?? '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+
+    if (normalized.includes('hora') || normalized.includes('hour')) {
+      return 'hour';
+    }
+    if (normalized.includes('dia') || normalized.includes('day')) {
+      return 'day';
+    }
+    return 'fixed';
+  }
+
+  private async getOfferLifetimeSeconds(
+    priceType?: string | null,
+  ): Promise<number> {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT value_json
+      FROM app_config
+      WHERE key = $1
+      LIMIT 1
+      `,
+      [MobileService.OFFER_LIFETIME_CONFIG_KEY],
+    );
+
+    const fallback = MobileService.OFFER_LIFETIME_SECONDS;
+    const config = rows[0]?.value_json;
+    if (!config || typeof config !== 'object') {
+      return fallback;
+    }
+
+    const key = this.normalizePriceTypeKey(priceType);
+    const candidate =
+      key === 'hour'
+        ? config.hour
+        : key === 'day'
+          ? config.day
+          : config.fixed;
+    const parsed = Number(candidate);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return fallback;
+    }
+    return Math.floor(parsed);
   }
 
   private async resolveRequest(params: {
