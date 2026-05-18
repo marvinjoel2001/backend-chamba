@@ -17,6 +17,12 @@ export enum UserType {
   WORKER = 'worker',
 }
 
+export enum VerificationStatus {
+  NOT_VERIFIED = 'not_verified',
+  PENDING = 'pending',
+  VERIFIED = 'verified',
+}
+
 @Entity({ name: 'users' })
 export class User {
   @ApiProperty({ format: 'uuid' })
@@ -31,9 +37,29 @@ export class User {
   @Column({ unique: true })
   email: string;
 
-  @ApiPropertyOptional({ example: '+59170000000' })
-  @Column({ unique: true, nullable: true })
+  @ApiPropertyOptional({ example: '70000000' })
+  @Column({ nullable: true })
   phone?: string;
+
+  @ApiPropertyOptional({ example: '+591' })
+  @Column({ name: 'country_code', nullable: true })
+  countryCode?: string;
+
+  @ApiPropertyOptional({ example: '12345678' })
+  @Column({ name: 'ci_number', nullable: true })
+  ciNumber?: string;
+
+  @ApiPropertyOptional({ enum: VerificationStatus, example: VerificationStatus.NOT_VERIFIED })
+  @Column({ name: 'verification_status', type: 'enum', enum: VerificationStatus, default: VerificationStatus.NOT_VERIFIED })
+  verificationStatus: VerificationStatus;
+
+  @ApiPropertyOptional({ example: 'https://cdn.chamba.com/id-photo.jpg' })
+  @Column({ name: 'id_photo_url', nullable: true })
+  idPhotoUrl?: string;
+
+  @ApiPropertyOptional({ example: 'https://cdn.chamba.com/face-photo.jpg' })
+  @Column({ name: 'face_photo_url', nullable: true })
+  facePhotoUrl?: string;
 
   @ApiProperty({ example: 'Juan' })
   @Column({ name: 'first_name' })

@@ -20,10 +20,20 @@ export class CreateUserDto {
   @IsEmail()
   email: string;
 
-  @ApiPropertyOptional({ example: '+59170000000' })
+  @ApiPropertyOptional({ example: '70000000' })
   @IsOptional()
-  @Matches(/^[+0-9\\s-]{7,20}$/)
+  @Matches(/^[0-9\\s-]{7,15}$/)
   phone?: string;
+
+  @ApiPropertyOptional({ example: '+591' })
+  @IsOptional()
+  @Matches(/^[+][0-9]{1,4}$/)
+  countryCode?: string;
+
+  @ApiPropertyOptional({ example: '12345678' })
+  @IsOptional()
+  @Matches(/^[0-9]{5,15}$/)
+  ciNumber?: string;
 
   @ApiProperty({ example: 'Juan' })
   @IsString()

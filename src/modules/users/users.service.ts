@@ -10,7 +10,7 @@ import { RedisService } from '../../infrastructure/redis/redis.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { User, UserType } from './entities/user.entity';
+import { User, UserType, VerificationStatus } from './entities/user.entity';
 
 const USERS_ALL_CACHE_KEY = 'users:all';
 const USER_CACHE_PREFIX = 'users:';
@@ -146,5 +146,31 @@ export class UsersService {
       )
       .setParameters({ latitude, longitude })
       .getMany();
+  }
+
+  async uploadVerificationPhotos(
+    userId: string,
+    idPhoto: any, // any en lugar de Express.Multer.File
+    facePhotoUrl?: string,
+  ): Promise<User> {
+    const user = await this.findOne(userId);
+
+    // TODO: Implementar subida a Cloudinary aquí
+    // Por ahora, simulamos URLs
+    const idPhotoUrl = `https://res.cloudinary.com/demo/image/upload/${idPhoto.originalname}`;
+    
+    const updateData: Partial<User> = {
+      idPhotoUrl,
+      facePhotoUrl: facePhotoUrl || idPhotoUrl, // Temporalmente usamos la misma si no se proporciona
+      verificationStatus: VerificationStatus.PENDING, // Usar el enum correctamente
+    };
+
+    const merged = this.usersRepository.merge(user, updateData);
+    const updated = await this.usersRepository.save(merged);
+
+    await this.redisService.del(USERS_ALL_CACHE_KEY);
+    await this.redisService.del(`${USER_CACHE_PREFIX}${userId}`);
+
+    return updated;
   }
 }

@@ -7,7 +7,12 @@ import {
   Patch,
   Post,
   Query,
+  UseInterceptors,
+  UploadedFile,
+  UseGuards,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+// import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'; // Comentado hasta que exista
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -87,5 +92,20 @@ export class UsersController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(id, updateUserDto);
+  }
+
+  @ApiOperation({ summary: 'Subir fotos de verificación de identidad' })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOkResponse({ type: User })
+  @ApiNotFoundResponse({ description: 'Usuario no encontrado' })
+  // @UseGuards(JwtAuthGuard) // Descomentar cuando JwtAuthGuard esté disponible
+  @UseInterceptors(FileInterceptor('idPhoto'))
+  @Post(':id/verification-photos')
+  uploadVerificationPhotos(
+    @Param('id') id: string,
+    @UploadedFile() idPhoto: any, // any en lugar de Express.Multer.File
+    @Body() body: { facePhotoUrl?: string },
+  ) {
+    return this.usersService.uploadVerificationPhotos(id, idPhoto, body.facePhotoUrl);
   }
 }
