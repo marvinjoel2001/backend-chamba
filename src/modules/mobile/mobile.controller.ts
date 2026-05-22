@@ -347,6 +347,18 @@ export class MobileController {
     return this.mobileService.getWorkerRadar(workerUserId);
   }
 
+  @Get('mobile/admin/map-snapshot')
+  getAdminMapSnapshot(@Query('since') since?: string) {
+    return this.mobileService.getAdminMapSnapshot({ since });
+  }
+
+  @Get('mobile/admin/wallet')
+  getAdminWallet(@Query('period') period?: string) {
+    return this.mobileService.getAdminWallet({
+      period: period === 'day' || period === 'week' || period === 'month' ? period : undefined,
+    });
+  }
+
   @Post('mobile/worker/availability')
   setWorkerAvailability(
     @Body('workerUserId') workerUserId: string,

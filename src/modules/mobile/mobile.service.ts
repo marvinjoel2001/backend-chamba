@@ -447,6 +447,17 @@ export class MobileService implements OnModuleInit {
       input.budget,
     );
 
+    this.realtimeGateway.server.emit('request.published', {
+      requestId: created.id,
+      status: created.status,
+      title: created.title,
+      budget: Number(created.budget),
+      address: created.address,
+      latitude: Number(input.latitude),
+      longitude: Number(input.longitude),
+      timestamp: new Date().toISOString(),
+    });
+
     return {
       request: {
         id: created.id,
@@ -1229,6 +1240,11 @@ export class MobileService implements OnModuleInit {
       `,
       [params.requestId],
     );
+    this.realtimeGateway.server.emit('request.status.updated', {
+      requestId: params.requestId,
+      status: 'negotiating',
+      timestamp: new Date().toISOString(),
+    });
 
     await this.ensureThreadAndInitialMessage({
       requestId: params.requestId,
@@ -1345,6 +1361,11 @@ export class MobileService implements OnModuleInit {
       `UPDATE job_requests SET status = 'assigned', updated_at = NOW() WHERE id = $1`,
       [offer.request_id],
     );
+    this.realtimeGateway.server.emit('request.status.updated', {
+      requestId: offer.request_id,
+      status: 'assigned',
+      timestamp: new Date().toISOString(),
+    });
     // Marcar al worker como NO disponible mientras tiene trabajo en curso
     await this.dataSource.query(
       `UPDATE users SET is_available = false, updated_at = NOW() WHERE id = $1`,
@@ -1728,6 +1749,11 @@ export class MobileService implements OnModuleInit {
       `,
       [params.requestId],
     );
+    this.realtimeGateway.server.emit('request.status.updated', {
+      requestId: params.requestId,
+      status: 'completed',
+      timestamp: new Date().toISOString(),
+    });
     // Restaurar disponibilidad del worker al completar
     await this.dataSource.query(
       `UPDATE users SET is_available = true, updated_at = NOW() WHERE id = $1`,
@@ -1765,6 +1791,11 @@ export class MobileService implements OnModuleInit {
       `UPDATE job_requests SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
       [params.requestId],
     );
+    this.realtimeGateway.server.emit('request.status.updated', {
+      requestId: params.requestId,
+      status: 'cancelled',
+      timestamp: new Date().toISOString(),
+    });
     // Restaurar disponibilidad del worker si había uno asignado
     if (req.worker_user_id) {
       await this.dataSource.query(
@@ -1834,6 +1865,156 @@ export class MobileService implements OnModuleInit {
     };
   }
 
+  async getAdminMapSnapshot(params: { since?: string }) {
+    const sinceIso =
+      params.since && !Number.isNaN(Date.parse(params.since))
+        ? new Date(params.since).toISOString()
+        : null;
+
+    const workers = await this.dataSource.query<any[]>(
+      `
+      SELECT u.id,
+             u.first_name,
+             u.last_name,
+             u.is_available,
+             u.average_rating,
+             u.completed_jobs,
+             u.updated_at,
+             ST_Y(u.current_location::geometry) AS latitude,
+             ST_X(u.current_location::geometry) AS longitude
+      FROM users u
+      WHERE u.type = 'worker'
+        AND u.current_location IS NOT NULL
+        AND ($1::timestamptz IS NULL OR u.updated_at >= $1::timestamptz)
+      ORDER BY u.updated_at DESC
+      LIMIT 10000
+      `,
+      [sinceIso],
+    );
+
+    const clients = await this.dataSource.query<any[]>(
+      `
+      SELECT u.id,
+             u.first_name,
+             u.last_name,
+             u.updated_at,
+             ST_Y(u.current_location::geometry) AS latitude,
+             ST_X(u.current_location::geometry) AS longitude
+      FROM users u
+      WHERE u.type = 'client'
+        AND u.current_location IS NOT NULL
+        AND ($1::timestamptz IS NULL OR u.updated_at >= $1::timestamptz)
+      ORDER BY u.updated_at DESC
+      LIMIT 5000
+      `,
+      [sinceIso],
+    );
+
+    const requests = await this.dataSource.query<any[]>(
+      `
+      SELECT jr.id,
+             jr.title,
+             jr.status,
+             jr.budget,
+             jr.address,
+             jr.updated_at,
+             u.first_name AS client_first_name,
+             u.last_name AS client_last_name,
+             ST_Y(jr.location::geometry) AS latitude,
+             ST_X(jr.location::geometry) AS longitude
+      FROM job_requests jr
+      JOIN users u ON u.id = jr.client_user_id
+      WHERE jr.location IS NOT NULL
+        AND ($1::timestamptz IS NULL OR jr.updated_at >= $1::timestamptz)
+      ORDER BY jr.updated_at DESC
+      LIMIT 5000
+      `,
+      [sinceIso],
+    );
+
+    return {
+      serverTime: new Date().toISOString(),
+      workers: workers.map((row) => ({
+        id: row.id,
+        firstName: row.first_name,
+        lastName: row.last_name ?? '',
+        isAvailable: row.is_available,
+        averageRating: Number(row.average_rating ?? 0),
+        completedJobs: Number(row.completed_jobs ?? 0),
+        latitude: Number(row.latitude),
+        longitude: Number(row.longitude),
+        updatedAt: row.updated_at,
+      })),
+      clients: clients.map((row) => ({
+        id: row.id,
+        firstName: row.first_name,
+        lastName: row.last_name ?? '',
+        latitude: Number(row.latitude),
+        longitude: Number(row.longitude),
+        updatedAt: row.updated_at,
+      })),
+      requests: requests.map((row) => ({
+        id: row.id,
+        title: row.title,
+        status: row.status,
+        budget: Number(row.budget ?? 0),
+        address: row.address,
+        clientName: `${row.client_first_name ?? ''} ${row.client_last_name ?? ''}`.trim(),
+        latitude: Number(row.latitude),
+        longitude: Number(row.longitude),
+        updatedAt: row.updated_at,
+      })),
+    };
+  }
+
+  async getAdminWallet(params: { period?: 'day' | 'week' | 'month' }) {
+    const period = params.period ?? 'week';
+    const interval =
+      period === 'day'
+        ? `NOW() - INTERVAL '1 day'`
+        : period === 'month'
+          ? `NOW() - INTERVAL '1 month'`
+          : `NOW() - INTERVAL '7 days'`;
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT u.id,
+             u.first_name,
+             u.last_name,
+             COUNT(*)::int AS jobs_completed,
+             COALESCE(SUM(jo.amount), 0)::numeric AS earnings
+      FROM job_offers jo
+      JOIN users u ON u.id = jo.worker_user_id
+      JOIN job_requests jr ON jr.id = jo.request_id
+      WHERE jo.status = 'accepted'
+        AND jr.created_at >= ${interval}
+      GROUP BY u.id, u.first_name, u.last_name
+      ORDER BY earnings DESC
+      LIMIT 500
+      `,
+    );
+
+    const totals = rows.reduce(
+      (acc, row) => {
+        acc.totalEarnings += Number(row.earnings ?? 0);
+        acc.totalJobs += Number(row.jobs_completed ?? 0);
+        return acc;
+      },
+      { totalEarnings: 0, totalJobs: 0 },
+    );
+
+    return {
+      period,
+      totals,
+      workers: rows.map((row) => ({
+        id: row.id,
+        name: `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim(),
+        jobsCompleted: Number(row.jobs_completed ?? 0),
+        earnings: Number(row.earnings ?? 0),
+      })),
+    };
+  }
+
   async setWorkerAvailability(workerUserId: string, available: boolean) {
     const rows = await this.dataSource.query<any[]>(
       `
@@ -1885,10 +2066,16 @@ export class MobileService implements OnModuleInit {
       throw new NotFoundException('Worker not found');
     }
 
-    return {
+    const payload = {
       workerId: rows[0].id,
       latitude: Number(rows[0].latitude),
       longitude: Number(rows[0].longitude),
+      timestamp: new Date().toISOString(),
+    };
+    this.realtimeGateway.server.emit('worker.location.updated', payload);
+
+    return {
+      ...payload,
     };
   }
 
