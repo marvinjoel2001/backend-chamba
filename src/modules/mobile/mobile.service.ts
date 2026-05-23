@@ -45,6 +45,8 @@ export class MobileService implements OnModuleInit {
     'offer_lifetime_by_price_type';
   private static readonly WORKER_NOTIFICATION_RADIUS_CONFIG_KEY =
     'worker_notification_radius_km';
+  private static readonly WORKER_NOTIFICATION_WAVE_SIZE = 5;
+  private static readonly WORKER_NOTIFICATION_WAVE_DELAY_MS = 7000;
   private static readonly DEFAULT_CATEGORY = 'General';
   private static readonly GEMINI_TIMEOUT_MS = 9000;
 
@@ -3824,56 +3826,138 @@ Reglas obligatorias:
       [request.location, isGeneral, normalizedSkills, notificationRadiusKm],
     );
 
-    const targetWorkers = workers;
-    for (let index = 0; index < targetWorkers.length; index += 1) {
-      const worker = targetWorkers[index];
+    const targetWorkers = workers.map((worker, index) => ({
+      workerId: String(worker.id),
+      distanceKm: Number(worker.distance_km ?? 0),
+      queuePosition: index + 1,
+    }));
+    const waveSize = MobileService.WORKER_NOTIFICATION_WAVE_SIZE;
+    const totalWaves = Math.ceil(targetWorkers.length / waveSize);
 
-      this.logger.log(
-        `[request.new] Notificando worker ${worker.id} (${Number(worker.distance_km ?? 0).toFixed(1)} km) para solicitud ${requestId}`,
-      );
-
-      this.realtimeGateway.emitToUser(worker.id, 'request.new', {
-        requestId,
-        category: request.category,
-        title: request.title,
-        budget: Number(request.budget ?? baseBudget),
-        distanceKm: Number(worker.distance_km ?? 0),
-        address: request.address,
-        description: request.description,
-        aiCategories: request.aiCategories ?? [],
-      });
-    }
-
-    const workerIds = targetWorkers.map((worker) => worker.id).filter(Boolean);
-    if (workerIds.length > 0) {
-      const tokenRows = await this.dataSource.query<any[]>(
-        `
-        SELECT token
-        FROM push_tokens
-        WHERE user_id = ANY($1::uuid[])
-        `,
-        [workerIds],
-      );
-
-      const tokens = tokenRows
-        .map((row) => String(row.token ?? ''))
-        .filter(Boolean);
-      if (tokens.length > 0) {
-        await this.notificationsService.notifyWorkersForJobWave({
-          tokens,
-          jobId: requestId,
-          category: request.category,
-          offeredPrice: `Bs ${Math.round(baseBudget)}`,
-          distanceKm: 'cerca de ti',
-        });
+    for (let waveIndex = 0; waveIndex < totalWaves; waveIndex += 1) {
+      const from = waveIndex * waveSize;
+      const to = from + waveSize;
+      const waveWorkers = targetWorkers.slice(from, to);
+      if (waveWorkers.length === 0) {
+        continue;
       }
+
+      if (waveIndex === 0) {
+        await this.dispatchWorkerNotificationWave({
+          requestId,
+          category: request.category,
+          title: request.title,
+          budget: Number(request.budget ?? baseBudget),
+          address: request.address,
+          description: request.description,
+          aiCategories: request.aiCategories ?? [],
+          waveWorkers,
+        });
+        continue;
+      }
+
+      const delayMs = waveIndex * MobileService.WORKER_NOTIFICATION_WAVE_DELAY_MS;
+      setTimeout(() => {
+        void this.dispatchWorkerNotificationWave({
+          requestId,
+          category: request.category,
+          title: request.title,
+          budget: Number(request.budget ?? baseBudget),
+          address: request.address,
+          description: request.description,
+          aiCategories: request.aiCategories ?? [],
+          waveWorkers,
+        }).catch((error: unknown) => {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          this.logger.error(
+            `[request.new] Error enviando ola ${waveIndex + 1} para ${requestId}: ${message}`,
+          );
+        });
+      }, delayMs);
     }
 
     this.logger.log(
-      `[seedOffers] Solicitud ${requestId}: ${targetWorkers.length} worker(s) notificados (radioConfigKm=${notificationRadiusKm}, skills=${JSON.stringify(normalizedSkills)})`,
+      `[seedOffers] Solicitud ${requestId}: ${targetWorkers.length} worker(s) en pila por cercania (radioConfigKm=${notificationRadiusKm}, waveSize=${waveSize}, waveDelayMs=${MobileService.WORKER_NOTIFICATION_WAVE_DELAY_MS}, skills=${JSON.stringify(normalizedSkills)})`,
     );
 
     return targetWorkers.length;
+  }
+
+  private async dispatchWorkerNotificationWave(params: {
+    requestId: string;
+    category: string;
+    title: string;
+    budget: number;
+    address: string;
+    description: string;
+    aiCategories: Array<{ id: string; name: string; confidence: number }>;
+    waveWorkers: Array<{
+      workerId: string;
+      distanceKm: number;
+      queuePosition: number;
+    }>;
+  }) {
+    const requestRows = await this.dataSource.query<any[]>(
+      `
+      SELECT status
+      FROM job_requests
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [params.requestId],
+    );
+    const currentStatus = String(requestRows[0]?.status ?? '');
+    if (currentStatus !== 'searching') {
+      this.logger.log(
+        `[request.new] Ola cancelada para ${params.requestId}: estado actual ${currentStatus}`,
+      );
+      return;
+    }
+
+    for (const worker of params.waveWorkers) {
+      this.logger.log(
+        `[request.new] Notificando worker ${worker.workerId} (${worker.distanceKm.toFixed(1)} km) [posicion ${worker.queuePosition}] solicitud ${params.requestId}`,
+      );
+
+      this.realtimeGateway.emitToUser(worker.workerId, 'request.new', {
+        requestId: params.requestId,
+        category: params.category,
+        title: params.title,
+        budget: params.budget,
+        distanceKm: worker.distanceKm,
+        address: params.address,
+        description: params.description,
+        aiCategories: params.aiCategories,
+        queuePosition: worker.queuePosition,
+      });
+    }
+
+    const workerIds = params.waveWorkers.map((worker) => worker.workerId);
+    const tokenRows = await this.dataSource.query<any[]>(
+      `
+      SELECT token
+      FROM push_tokens
+      WHERE user_id = ANY($1::uuid[])
+      `,
+      [workerIds],
+    );
+
+    const tokens = tokenRows.map((row) => String(row.token ?? '')).filter(Boolean);
+    if (tokens.length === 0) {
+      return;
+    }
+
+    const nearestDistance = Math.min(
+      ...params.waveWorkers.map((worker) => worker.distanceKm),
+    );
+    await this.notificationsService.notifyWorkersForJobWave({
+      tokens,
+      jobId: params.requestId,
+      category: params.category,
+      offeredPrice: `Bs ${Math.round(params.budget)}`,
+      distanceKm: nearestDistance.toFixed(1),
+    });
   }
 
   private async expireStaleOffers(requestId?: string) {
