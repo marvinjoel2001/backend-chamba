@@ -66,6 +66,14 @@ export class PushService {
         body: params.body,
       },
       data: params.data,
+      android: {
+        priority: 'high',
+      },
+      apns: {
+        headers: {
+          'apns-priority': '10',
+        },
+      },
     });
   }
 
@@ -86,6 +94,24 @@ export class PushService {
         body: params.body,
       },
       data: params.data,
+      android: {
+        priority: 'high',
+        notification: {
+          priority: 'max',
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+      },
+      apns: {
+        headers: {
+          'apns-priority': '10',
+        },
+        payload: {
+          aps: {
+            sound: 'default',
+          },
+        },
+      },
     });
 
     return response.successCount;

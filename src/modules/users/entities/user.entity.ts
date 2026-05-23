@@ -61,6 +61,22 @@ export class User {
   @Column({ name: 'face_photo_url', nullable: true })
   facePhotoUrl?: string;
 
+  @ApiPropertyOptional({ example: true, nullable: true })
+  @Column({ name: 'id_photo_verified', type: 'boolean', nullable: true })
+  idPhotoVerified?: boolean | null;
+
+  @ApiPropertyOptional({ example: false, nullable: true })
+  @Column({ name: 'face_photo_verified', type: 'boolean', nullable: true })
+  facePhotoVerified?: boolean | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '2026-05-23T18:12:00.000Z',
+  })
+  @Column({ name: 'verification_reviewed_at', type: 'timestamptz', nullable: true })
+  verificationReviewedAt?: Date | null;
+
   @ApiProperty({ example: 'Juan' })
   @Column({ name: 'first_name' })
   firstName: string;

@@ -1,5 +1,5 @@
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEnum } from 'class-validator';
+import { IsOptional, IsString, IsEnum, IsBoolean } from 'class-validator';
 import { CreateUserDto } from './create-user.dto';
 import { VerificationStatus } from '../entities/user.entity';
 
@@ -23,4 +23,14 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   @IsString()
   facePhotoUrl?: string;
+
+  @ApiPropertyOptional({ example: true, nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  idPhotoVerified?: boolean | null;
+
+  @ApiPropertyOptional({ example: false, nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  facePhotoVerified?: boolean | null;
 }

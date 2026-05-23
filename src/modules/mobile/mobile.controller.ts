@@ -180,6 +180,19 @@ export class MobileController {
     return this.mobileService.removeProfilePhoto(userId);
   }
 
+  @Post('mobile/worker/verification')
+  submitWorkerVerification(
+    @Body('workerUserId') workerUserId: string,
+    @Body('idPhotoBase64') idPhotoBase64: string,
+    @Body('facePhotoBase64') facePhotoBase64: string,
+  ) {
+    return this.mobileService.submitWorkerVerification({
+      workerUserId,
+      idPhotoBase64,
+      facePhotoBase64,
+    });
+  }
+
   @Post('mobile/requests/photos/delete')
   deleteRequestPhoto(
     @Body('requestPhotoId') requestPhotoId: string,
@@ -356,6 +369,18 @@ export class MobileController {
   getAdminWallet(@Query('period') period?: string) {
     return this.mobileService.getAdminWallet({
       period: period === 'day' || period === 'week' || period === 'month' ? period : undefined,
+    });
+  }
+
+  @Get('mobile/admin/worker-notification-settings')
+  getAdminWorkerNotificationSettings() {
+    return this.mobileService.getAdminWorkerNotificationSettings();
+  }
+
+  @Post('mobile/admin/worker-notification-settings')
+  updateAdminWorkerNotificationSettings(@Body('radiusKm') radiusKm: number) {
+    return this.mobileService.updateAdminWorkerNotificationSettings({
+      radiusKm: Number(radiusKm),
     });
   }
 

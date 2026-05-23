@@ -43,6 +43,8 @@ export class MobileService implements OnModuleInit {
   private static readonly OFFER_LIFETIME_SECONDS = 120;
   private static readonly OFFER_LIFETIME_CONFIG_KEY =
     'offer_lifetime_by_price_type';
+  private static readonly WORKER_NOTIFICATION_RADIUS_CONFIG_KEY =
+    'worker_notification_radius_km';
   private static readonly DEFAULT_CATEGORY = 'General';
   private static readonly GEMINI_TIMEOUT_MS = 9000;
 
@@ -120,7 +122,9 @@ export class MobileService implements OnModuleInit {
           is_available
         )
         VALUES ($1, $2, $3, $4, $5, false)
-        RETURNING id, type, first_name, last_name, email, phone, profile_photo_url
+        RETURNING id, type, first_name, last_name, email, phone, profile_photo_url,
+                  verification_status, id_photo_url, face_photo_url,
+                  id_photo_verified, face_photo_verified
         `,
         [type, email, phone, firstName, lastName],
       );
@@ -143,6 +147,11 @@ export class MobileService implements OnModuleInit {
           email: created.email,
           phone: created.phone ?? null,
           profilePhotoUrl: created.profile_photo_url ?? null,
+          verificationStatus: created.verification_status ?? 'not_verified',
+          idPhotoUrl: created.id_photo_url ?? null,
+          facePhotoUrl: created.face_photo_url ?? null,
+          idPhotoVerified: created.id_photo_verified ?? null,
+          facePhotoVerified: created.face_photo_verified ?? null,
         },
       };
     });
@@ -164,7 +173,12 @@ export class MobileService implements OnModuleInit {
              u.last_name,
              u.email,
              u.phone,
-             u.profile_photo_url
+             u.profile_photo_url,
+             u.verification_status,
+             u.id_photo_url,
+             u.face_photo_url,
+             u.id_photo_verified,
+             u.face_photo_verified
       FROM users u
       JOIN auth_credentials c ON c.user_id = u.id
       WHERE (
@@ -194,6 +208,11 @@ export class MobileService implements OnModuleInit {
         email: row.email,
         phone: row.phone ?? null,
         profilePhotoUrl: row.profile_photo_url ?? null,
+        verificationStatus: row.verification_status ?? 'not_verified',
+        idPhotoUrl: row.id_photo_url ?? null,
+        facePhotoUrl: row.face_photo_url ?? null,
+        idPhotoVerified: row.id_photo_verified ?? null,
+        facePhotoVerified: row.face_photo_verified ?? null,
       },
     };
   }
@@ -563,6 +582,75 @@ export class MobileService implements OnModuleInit {
 
     return {
       user: await this.getUserById(userId),
+    };
+  }
+
+  async submitWorkerVerification(params: {
+    workerUserId: string;
+    idPhotoBase64: string;
+    facePhotoBase64: string;
+  }) {
+    if (!params.workerUserId?.trim()) {
+      throw new BadRequestException('workerUserId is required');
+    }
+
+    const user = await this.getUserById(params.workerUserId);
+    if (user.type !== 'worker') {
+      throw new BadRequestException('Only workers can submit verification');
+    }
+
+    const idPhotoBase64 = params.idPhotoBase64?.trim();
+    const facePhotoBase64 = params.facePhotoBase64?.trim();
+    if (!idPhotoBase64 || !facePhotoBase64) {
+      throw new BadRequestException(
+        'idPhotoBase64 and facePhotoBase64 are required',
+      );
+    }
+
+    this.ensureDataUri(idPhotoBase64);
+    this.ensureDataUri(facePhotoBase64);
+
+    const idUpload = await this.storageService.uploadBase64Image({
+      base64Data: idPhotoBase64,
+      folder: 'chamba/verification/id',
+    });
+    const faceUpload = await this.storageService.uploadBase64Image({
+      base64Data: facePhotoBase64,
+      folder: 'chamba/verification/face',
+    });
+
+    await this.dataSource.query(
+      `
+      UPDATE users
+      SET id_photo_url = $2,
+          face_photo_url = $3,
+          verification_status = 'pending',
+          id_photo_verified = NULL,
+          face_photo_verified = NULL,
+          verification_reviewed_at = NULL,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [params.workerUserId, idUpload.url, faceUpload.url],
+    );
+
+    const updatedUser = await this.getUserById(params.workerUserId);
+
+    this.realtimeGateway.emitToUser(
+      params.workerUserId,
+      'user.verification.updated',
+      {
+        verificationStatus: 'pending',
+        idPhotoVerified: null,
+        facePhotoVerified: null,
+        reviewedAt: null,
+        message: 'Recibimos tus fotos. Nuestro equipo las esta revisando.',
+      },
+    );
+
+    return {
+      submitted: true,
+      user: updatedUser,
     };
   }
 
@@ -2348,6 +2436,12 @@ export class MobileService implements OnModuleInit {
       `CREATE EXTENSION IF NOT EXISTS postgis;`,
       `CREATE EXTENSION IF NOT EXISTS pgcrypto;`,
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_public_id TEXT NULL;`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'not_verified';`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS id_photo_url TEXT NULL;`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS face_photo_url TEXT NULL;`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS id_photo_verified BOOLEAN NULL;`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS face_photo_verified BOOLEAN NULL;`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_reviewed_at TIMESTAMPTZ NULL;`,
       `
       CREATE TABLE IF NOT EXISTS auth_credentials (
         user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -2766,6 +2860,50 @@ export class MobileService implements OnModuleInit {
         }),
       ],
     );
+
+    await this.dataSource.query(
+      `
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ($1, $2::jsonb, NOW())
+      ON CONFLICT (key) DO NOTHING
+      `,
+      [
+        MobileService.WORKER_NOTIFICATION_RADIUS_CONFIG_KEY,
+        JSON.stringify({
+          radiusKm: 5,
+        }),
+      ],
+    );
+  }
+
+  async getAdminWorkerNotificationSettings() {
+    const radiusKm = await this.getWorkerNotificationRadiusKm();
+    return {
+      radiusKm,
+    };
+  }
+
+  async updateAdminWorkerNotificationSettings(params: { radiusKm: number }) {
+    const parsed = Number(params.radiusKm);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new BadRequestException('radiusKm must be greater than 0');
+    }
+
+    const radiusKm = Math.min(50, Math.max(0.5, parsed));
+    await this.dataSource.query(
+      `
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ($1, $2::jsonb, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
+      `,
+      [
+        MobileService.WORKER_NOTIFICATION_RADIUS_CONFIG_KEY,
+        JSON.stringify({ radiusKm }),
+      ],
+    );
+
+    return { radiusKm };
   }
 
   private extractTopCategories(
@@ -2848,6 +2986,25 @@ export class MobileService implements OnModuleInit {
       return fallback;
     }
     return Math.floor(parsed);
+  }
+
+  private async getWorkerNotificationRadiusKm(): Promise<number> {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT value_json
+      FROM app_config
+      WHERE key = $1
+      LIMIT 1
+      `,
+      [MobileService.WORKER_NOTIFICATION_RADIUS_CONFIG_KEY],
+    );
+
+    const config = rows[0]?.value_json;
+    const candidate = Number(config?.radiusKm);
+    if (!Number.isFinite(candidate) || candidate <= 0) {
+      return 5;
+    }
+    return Math.min(50, Math.max(0.5, candidate));
   }
 
   private async resolveRequest(params: {
@@ -2966,6 +3123,12 @@ export class MobileService implements OnModuleInit {
              phone,
              profile_photo_url,
              profile_photo_public_id,
+             verification_status,
+             id_photo_url,
+             face_photo_url,
+             id_photo_verified,
+             face_photo_verified,
+             verification_reviewed_at,
              is_available,
              work_radius_km,
              ST_Y(current_location::geometry) AS current_latitude,
@@ -2991,6 +3154,12 @@ export class MobileService implements OnModuleInit {
       phone: row.phone ?? null,
       profilePhotoUrl: row.profile_photo_url ?? null,
       profilePhotoPublicId: row.profile_photo_public_id ?? null,
+      verificationStatus: row.verification_status ?? 'not_verified',
+      idPhotoUrl: row.id_photo_url ?? null,
+      facePhotoUrl: row.face_photo_url ?? null,
+      idPhotoVerified: row.id_photo_verified ?? null,
+      facePhotoVerified: row.face_photo_verified ?? null,
+      verificationReviewedAt: row.verification_reviewed_at ?? null,
       isAvailable: row.is_available,
       workRadiusKm: Number(row.work_radius_km ?? 0),
       currentLatitude:
@@ -3607,6 +3776,7 @@ Reglas obligatorias:
 
   private async seedOffersForRequest(requestId: string, baseBudget: number) {
     const request = await this.getRequestById(requestId);
+    const notificationRadiusKm = await this.getWorkerNotificationRadiusKm();
     const normalizedSkills = [
       ...new Set([
         request.category,
@@ -3634,6 +3804,7 @@ Reglas obligatorias:
       WHERE u.type = 'worker'
         AND u.is_available = true
         AND u.current_location IS NOT NULL
+        AND ST_DWithin(u.current_location, $1::geography, $4::float8 * 1000)
         AND ST_DWithin(u.current_location, $1::geography, u.work_radius_km * 1000)
         AND (
           $2::boolean = true
@@ -3650,45 +3821,10 @@ Reglas obligatorias:
         )
       ORDER BY ST_Distance(u.current_location, $1::geography) ASC
       `,
-      [request.location, isGeneral, normalizedSkills],
+      [request.location, isGeneral, normalizedSkills, notificationRadiusKm],
     );
 
-    // Fallback: si no hay workers en rango (ej. en desarrollo con ubicaciones
-    // de prueba distintas), notificar a todos los workers disponibles
-    const targetWorkers =
-      workers.length > 0
-        ? workers
-        : await this.dataSource.query<any[]>(
-            `
-            SELECT u.id,
-                   0.0 AS distance_km
-            FROM users u
-            WHERE u.type = 'worker'
-              AND u.is_available = true
-              AND (
-                $1::boolean = true
-                OR cardinality($2::text[]) = 0
-                OR EXISTS (
-                  SELECT 1
-                  FROM worker_skills ws
-                  WHERE ws.user_id = u.id
-                    AND LOWER(ws.skill) = ANY($2::text[])
-                )
-                OR NOT EXISTS (
-                  SELECT 1 FROM worker_skills ws2 WHERE ws2.user_id = u.id
-                )
-              )
-            ORDER BY u.created_at ASC
-            `,
-            [isGeneral, normalizedSkills],
-          );
-
-    if (workers.length === 0 && targetWorkers.length > 0) {
-      this.logger.warn(
-        `[seedOffers] Sin workers en rango geográfico → fallback a ${targetWorkers.length} worker(s) disponibles`,
-      );
-    }
-
+    const targetWorkers = workers;
     for (let index = 0; index < targetWorkers.length; index += 1) {
       const worker = targetWorkers[index];
 
@@ -3734,7 +3870,7 @@ Reglas obligatorias:
     }
 
     this.logger.log(
-      `[seedOffers] Solicitud ${requestId}: ${targetWorkers.length} worker(s) notificados (isGeneral=${isGeneral}, enRango=${workers.length}, skills=${JSON.stringify(normalizedSkills)})`,
+      `[seedOffers] Solicitud ${requestId}: ${targetWorkers.length} worker(s) notificados (radioConfigKm=${notificationRadiusKm}, skills=${JSON.stringify(normalizedSkills)})`,
     );
 
     return targetWorkers.length;

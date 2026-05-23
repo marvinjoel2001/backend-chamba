@@ -26,6 +26,7 @@ import {
   ApiCreatedResponse,
 } from '@nestjs/swagger';
 import { CreateUserDto } from './dto/create-user.dto';
+import { ReviewWorkerVerificationDto } from './dto/review-worker-verification.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
 import { UsersService } from './users.service';
@@ -70,6 +71,25 @@ export class UsersController {
       longitude,
       radiusKm,
     });
+  }
+
+  @ApiOperation({ summary: 'Listar buzon de verificaciones de workers pendientes' })
+  @ApiOkResponse({ type: User, isArray: true })
+  @Get('verification/workers/inbox')
+  getWorkerVerificationInbox() {
+    return this.usersService.getWorkerVerificationInbox();
+  }
+
+  @ApiOperation({ summary: 'Revisar verificacion de worker (carnet/selfie por separado)' })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiBody({ type: ReviewWorkerVerificationDto })
+  @ApiOkResponse({ type: User })
+  @Patch(':id/verification/review')
+  reviewWorkerVerification(
+    @Param('id') id: string,
+    @Body() body: ReviewWorkerVerificationDto,
+  ) {
+    return this.usersService.reviewWorkerVerification(id, body);
   }
 
   @ApiOperation({ summary: 'Obtener usuario por id' })

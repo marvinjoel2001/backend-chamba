@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CreateUserDto } from './dto/create-user.dto';
+import { ReviewWorkerVerificationDto } from './dto/review-worker-verification.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User, UserType, VerificationStatus } from './entities/user.entity';
 
@@ -109,6 +110,68 @@ export class UsersService {
     return updated;
   }
 
+  async getWorkerVerificationInbox(): Promise<User[]> {
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .where('user.type = :type', { type: UserType.WORKER })
+      .andWhere('user.verificationStatus = :status', {
+        status: VerificationStatus.PENDING,
+      })
+      .andWhere('(user.idPhotoUrl IS NOT NULL OR user.facePhotoUrl IS NOT NULL)')
+      .orderBy('user.updatedAt', 'DESC')
+      .getMany();
+  }
+
+  async reviewWorkerVerification(
+    userId: string,
+    review: ReviewWorkerVerificationDto,
+  ): Promise<User> {
+    if (
+      review.idPhotoApproved === undefined &&
+      review.facePhotoApproved === undefined
+    ) {
+      throw new BadRequestException(
+        'At least one review decision is required (idPhotoApproved or facePhotoApproved)',
+      );
+    }
+
+    const user = await this.findOne(userId);
+    if (user.type !== UserType.WORKER) {
+      throw new BadRequestException('Only workers can be reviewed');
+    }
+
+    if (!user.idPhotoUrl && !user.facePhotoUrl) {
+      throw new BadRequestException('Worker has no verification photos uploaded');
+    }
+
+    const idPhotoVerified =
+      review.idPhotoApproved !== undefined
+        ? review.idPhotoApproved
+        : user.idPhotoVerified ?? null;
+    const facePhotoVerified =
+      review.facePhotoApproved !== undefined
+        ? review.facePhotoApproved
+        : user.facePhotoVerified ?? null;
+    const verificationStatus = this.resolveVerificationStatus(
+      idPhotoVerified,
+      facePhotoVerified,
+    );
+
+    const merged = this.usersRepository.merge(user, {
+      idPhotoVerified,
+      facePhotoVerified,
+      verificationStatus,
+      verificationReviewedAt: new Date(),
+    });
+    const updated = await this.usersRepository.save(merged);
+
+    await this.redisService.del(USERS_ALL_CACHE_KEY);
+    await this.redisService.del(`${USER_CACHE_PREFIX}${userId}`);
+
+    this.emitVerificationUpdate(updated);
+    return updated;
+  }
+
   async findNearbyWorkers(params: {
     latitude: number;
     longitude: number;
@@ -163,6 +226,9 @@ export class UsersService {
       idPhotoUrl,
       facePhotoUrl: facePhotoUrl || idPhotoUrl, // Temporalmente usamos la misma si no se proporciona
       verificationStatus: VerificationStatus.PENDING, // Usar el enum correctamente
+      idPhotoVerified: null,
+      facePhotoVerified: null,
+      verificationReviewedAt: null,
     };
 
     const merged = this.usersRepository.merge(user, updateData);
@@ -171,6 +237,60 @@ export class UsersService {
     await this.redisService.del(USERS_ALL_CACHE_KEY);
     await this.redisService.del(`${USER_CACHE_PREFIX}${userId}`);
 
+    this.emitVerificationUpdate(updated);
+
     return updated;
+  }
+
+  private resolveVerificationStatus(
+    idPhotoVerified: boolean | null | undefined,
+    facePhotoVerified: boolean | null | undefined,
+  ): VerificationStatus {
+    if (idPhotoVerified === true && facePhotoVerified === true) {
+      return VerificationStatus.VERIFIED;
+    }
+
+    if (idPhotoVerified === false || facePhotoVerified === false) {
+      return VerificationStatus.NOT_VERIFIED;
+    }
+
+    return VerificationStatus.PENDING;
+  }
+
+  private emitVerificationUpdate(user: User): void {
+    const message = this.buildVerificationMessage(user);
+    this.realtimeGateway.emitToUser(user.id, 'user.verification.updated', {
+      verificationStatus: user.verificationStatus,
+      idPhotoVerified: user.idPhotoVerified ?? null,
+      facePhotoVerified: user.facePhotoVerified ?? null,
+      reviewedAt: user.verificationReviewedAt?.toISOString() ?? null,
+      message,
+    });
+  }
+
+  private buildVerificationMessage(user: User): string {
+    if (user.verificationStatus === VerificationStatus.VERIFIED) {
+      return 'Tu perfil fue verificado. Ya puedes recibir trabajos. Bien hecho.';
+    }
+
+    if (user.verificationStatus === VerificationStatus.PENDING) {
+      return 'Recibimos tus fotos. Nuestro equipo las esta revisando.';
+    }
+
+    if (
+      user.idPhotoVerified === false &&
+      user.facePhotoVerified !== false
+    ) {
+      return 'Revisamos tus fotos: tu carnet necesita una nueva imagen para continuar.';
+    }
+
+    if (
+      user.facePhotoVerified === false &&
+      user.idPhotoVerified !== false
+    ) {
+      return 'Revisamos tus fotos: tu selfie necesita una nueva imagen para continuar.';
+    }
+
+    return 'Necesitamos que vuelvas a subir tus fotos para completar tu verificacion.';
   }
 }
