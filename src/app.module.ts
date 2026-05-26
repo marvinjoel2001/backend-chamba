@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { HttpLoggerInterceptor } from './common/interceptors/http-logger.interceptor';
 import { envValidationSchema } from './config/env.validation';
+import { ApiLogsModule } from './modules/api-logs/api-logs.module';
 import { DatabaseModule } from './infrastructure/database/database.module';
 import { PushModule } from './infrastructure/push/push.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
@@ -29,6 +31,7 @@ const envFilePath =
         abortEarly: false,
       },
     }),
+    ApiLogsModule,
     DatabaseModule,
     RedisModule,
     PushModule,
@@ -41,5 +44,6 @@ const envFilePath =
     MobileModule,
     PlaceholdersModule,
   ],
+  providers: [HttpLoggerInterceptor],
 })
 export class AppModule {}

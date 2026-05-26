@@ -42,7 +42,7 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
-  app.useGlobalInterceptors(new HttpLoggerInterceptor());
+  app.useGlobalInterceptors(app.get(HttpLoggerInterceptor));
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Chamba Backend API')
