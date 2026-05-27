@@ -1971,8 +1971,18 @@ export class MobileService implements OnModuleInit {
              u.completed_jobs,
              u.updated_at,
              ST_Y(u.current_location::geometry) AS latitude,
-             ST_X(u.current_location::geometry) AS longitude
+             ST_X(u.current_location::geometry) AS longitude,
+             jr.id AS active_request_id,
+             jr.title AS active_request_title,
+             jr.status AS active_request_status,
+             jr.address AS active_request_address,
+             jr.worker_arrived AS active_worker_arrived,
+             c.first_name AS active_client_first_name,
+             c.last_name AS active_client_last_name
       FROM users u
+      LEFT JOIN job_offers jo ON jo.worker_user_id = u.id AND jo.status = 'accepted'
+      LEFT JOIN job_requests jr ON jr.id = jo.request_id AND jr.status IN ('assigned', 'in_progress')
+      LEFT JOIN users c ON c.id = jr.client_user_id
       WHERE u.type = 'worker'
         AND u.current_location IS NOT NULL
         AND ($1::timestamptz IS NULL OR u.updated_at >= $1::timestamptz)
@@ -2034,6 +2044,14 @@ export class MobileService implements OnModuleInit {
         latitude: Number(row.latitude),
         longitude: Number(row.longitude),
         updatedAt: row.updated_at,
+        activeRequest: row.active_request_id ? {
+          id: row.active_request_id,
+          title: row.active_request_title,
+          status: row.active_request_status,
+          address: row.active_request_address,
+          workerArrived: row.active_worker_arrived ?? false,
+          clientName: [row.active_client_first_name, row.active_client_last_name].filter(Boolean).join(' '),
+        } : null,
       })),
       clients: clients.map((row) => ({
         id: row.id,
