@@ -4,6 +4,10 @@ import { CreateUserDto } from './create-user.dto';
 import { VerificationStatus } from '../entities/user.entity';
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isAvailable?: boolean;
   @ApiPropertyOptional({ example: 'https://cdn.chamba.com/profile.jpg' })
   @IsOptional()
   @IsString()

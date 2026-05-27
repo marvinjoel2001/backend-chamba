@@ -15,6 +15,7 @@ const class_validator_1 = require("class-validator");
 const create_user_dto_1 = require("./create-user.dto");
 const user_entity_1 = require("../entities/user.entity");
 class UpdateUserDto extends (0, swagger_1.PartialType)(create_user_dto_1.CreateUserDto) {
+    isAvailable;
     profilePhotoUrl;
     verificationStatus;
     idPhotoUrl;
@@ -23,6 +24,12 @@ class UpdateUserDto extends (0, swagger_1.PartialType)(create_user_dto_1.CreateU
     facePhotoVerified;
 }
 exports.UpdateUserDto = UpdateUserDto;
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: true }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateUserDto.prototype, "isAvailable", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ example: 'https://cdn.chamba.com/profile.jpg' }),
     (0, class_validator_1.IsOptional)(),

@@ -5,6 +5,7 @@ import {
   Param,
   ParseFloatPipe,
   Patch,
+  Delete,
   Post,
   Query,
   UseInterceptors,
@@ -127,5 +128,14 @@ export class UsersController {
     @Body() body: { facePhotoUrl?: string },
   ) {
     return this.usersService.uploadVerificationPhotos(id, idPhoto, body.facePhotoUrl);
+  }
+
+  @ApiOperation({ summary: 'Desactivar (soft-delete) usuario por id' })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOkResponse({ description: 'Usuario desactivado' })
+  @ApiNotFoundResponse({ description: 'Usuario no encontrado' })
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    return this.usersService.softDelete(id);
   }
 }

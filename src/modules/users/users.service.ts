@@ -293,4 +293,13 @@ export class UsersService {
 
     return 'Necesitamos que vuelvas a subir tus fotos para completar tu verificacion.';
   }
+
+  async softDelete(id: string) {
+    const user = await this.findOne(id);
+    user.isAvailable = false;
+    await this.usersRepository.save(user);
+    await this.redisService.del(USERS_ALL_CACHE_KEY);
+    await this.redisService.del(USER_CACHE_PREFIX + id);
+    return { deleted: true, id: user.id };
+  }
 }

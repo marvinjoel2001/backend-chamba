@@ -54,6 +54,9 @@ let UsersController = class UsersController {
     uploadVerificationPhotos(id, idPhoto, body) {
         return this.usersService.uploadVerificationPhotos(id, idPhoto, body.facePhotoUrl);
     }
+    async remove(id) {
+        return this.usersService.softDelete(id);
+    }
 };
 exports.UsersController = UsersController;
 __decorate([
@@ -153,6 +156,17 @@ __decorate([
     __metadata("design:paramtypes", [String, Object, Object]),
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "uploadVerificationPhotos", null);
+__decorate([
+    (0, swagger_1.ApiOperation)({ summary: 'Desactivar (soft-delete) usuario por id' }),
+    (0, swagger_1.ApiParam)({ name: 'id', format: 'uuid' }),
+    (0, swagger_1.ApiOkResponse)({ description: 'Usuario desactivado' }),
+    (0, swagger_1.ApiNotFoundResponse)({ description: 'Usuario no encontrado' }),
+    (0, common_1.Delete)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "remove", null);
 exports.UsersController = UsersController = __decorate([
     (0, swagger_1.ApiTags)('Users'),
     (0, common_1.Controller)('users'),

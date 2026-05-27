@@ -16,4 +16,8 @@ export declare class UsersController {
     uploadVerificationPhotos(id: string, idPhoto: any, body: {
         facePhotoUrl?: string;
     }): Promise<User>;
+    remove(id: string): Promise<{
+        deleted: boolean;
+        id: string;
+    }>;
 }

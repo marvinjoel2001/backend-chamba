@@ -25,4 +25,8 @@ export declare class UsersService {
     private resolveVerificationStatus;
     private emitVerificationUpdate;
     private buildVerificationMessage;
+    softDelete(id: string): Promise<{
+        deleted: boolean;
+        id: string;
+    }>;
 }
