@@ -17,6 +17,8 @@ class CreateUserDto {
     type;
     email;
     phone;
+    countryCode;
+    ciNumber;
     firstName;
     lastName;
 }
@@ -33,11 +35,23 @@ __decorate([
     __metadata("design:type", String)
 ], CreateUserDto.prototype, "email", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ example: '+59170000000' }),
+    (0, swagger_1.ApiPropertyOptional)({ example: '70000000' }),
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.Matches)(/^[+0-9\\s-]{7,20}$/),
+    (0, class_validator_1.Matches)(/^[0-9\\s-]{7,15}$/),
     __metadata("design:type", String)
 ], CreateUserDto.prototype, "phone", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: '+591' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.Matches)(/^[+][0-9]{1,4}$/),
+    __metadata("design:type", String)
+], CreateUserDto.prototype, "countryCode", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: '12345678' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.Matches)(/^[0-9]{5,15}$/),
+    __metadata("design:type", String)
+], CreateUserDto.prototype, "ciNumber", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({ example: 'Juan' }),
     (0, class_validator_1.IsString)(),

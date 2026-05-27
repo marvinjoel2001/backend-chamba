@@ -106,6 +106,13 @@ let MobileController = class MobileController {
     removeProfilePhoto(userId) {
         return this.mobileService.removeProfilePhoto(userId);
     }
+    submitWorkerVerification(workerUserId, idPhotoBase64, facePhotoBase64) {
+        return this.mobileService.submitWorkerVerification({
+            workerUserId,
+            idPhotoBase64,
+            facePhotoBase64,
+        });
+    }
     deleteRequestPhoto(requestPhotoId, clientUserId) {
         return this.mobileService.deleteRequestPhoto({
             requestPhotoId,
@@ -181,6 +188,22 @@ let MobileController = class MobileController {
     getWorkerRadar(workerUserId) {
         return this.mobileService.getWorkerRadar(workerUserId);
     }
+    getAdminMapSnapshot(since) {
+        return this.mobileService.getAdminMapSnapshot({ since });
+    }
+    getAdminWallet(period) {
+        return this.mobileService.getAdminWallet({
+            period: period === 'day' || period === 'week' || period === 'month' ? period : undefined,
+        });
+    }
+    getAdminWorkerNotificationSettings() {
+        return this.mobileService.getAdminWorkerNotificationSettings();
+    }
+    updateAdminWorkerNotificationSettings(radiusKm) {
+        return this.mobileService.updateAdminWorkerNotificationSettings({
+            radiusKm: Number(radiusKm),
+        });
+    }
     setWorkerAvailability(workerUserId, available) {
         return this.mobileService.setWorkerAvailability(workerUserId, available);
     }
@@ -208,6 +231,65 @@ let MobileController = class MobileController {
             stars: Number(stars),
             comment,
         });
+    }
+    listDisputes(status) {
+        return this.mobileService.listDisputes({ status: status || undefined });
+    }
+    createDispute(requestId, reportedBy, reportedUser, reason, description) {
+        return this.mobileService.createDispute({
+            requestId,
+            reportedBy,
+            reportedUser,
+            reason: reason ?? '',
+            description,
+        });
+    }
+    resolveDispute(disputeId, resolution, resolvedBy) {
+        return this.mobileService.resolveDispute({
+            disputeId,
+            resolution,
+            resolvedBy: resolvedBy ?? 'admin',
+        });
+    }
+    getDisputeMessages(disputeId) {
+        return this.mobileService.getDisputeMessages(disputeId);
+    }
+    sendDisputeMessage(disputeId, senderType, senderId, content) {
+        return this.mobileService.sendDisputeMessage({
+            disputeId,
+            senderType: senderType || 'user',
+            senderId,
+            content: content ?? '',
+        });
+    }
+    adminCancelJob(requestId) {
+        return this.mobileService.adminCancelJob({ requestId });
+    }
+    getCancellationStats() {
+        return this.mobileService.getCancellationStats();
+    }
+    getCommissionConfig() {
+        return this.mobileService.getCommissionConfig();
+    }
+    updateCommissionConfig(commissionPercent) {
+        return this.mobileService.updateCommissionConfig({
+            commissionPercent: Number(commissionPercent),
+        });
+    }
+    listAllCategories() {
+        return this.mobileService.listAllCategories();
+    }
+    updateCategory(categoryId, name, description, icon, active) {
+        return this.mobileService.updateCategory({
+            id: categoryId,
+            name,
+            description,
+            icon,
+            active,
+        });
+    }
+    deleteCategory(categoryId) {
+        return this.mobileService.deleteCategory(categoryId);
     }
 };
 exports.MobileController = MobileController;
@@ -311,6 +393,15 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "removeProfilePhoto", null);
+__decorate([
+    (0, common_1.Post)('mobile/worker/verification'),
+    __param(0, (0, common_1.Body)('workerUserId')),
+    __param(1, (0, common_1.Body)('idPhotoBase64')),
+    __param(2, (0, common_1.Body)('facePhotoBase64')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "submitWorkerVerification", null);
 __decorate([
     (0, common_1.Post)('mobile/requests/photos/delete'),
     __param(0, (0, common_1.Body)('requestPhotoId')),
@@ -479,6 +570,33 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getWorkerRadar", null);
 __decorate([
+    (0, common_1.Get)('mobile/admin/map-snapshot'),
+    __param(0, (0, common_1.Query)('since')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getAdminMapSnapshot", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/wallet'),
+    __param(0, (0, common_1.Query)('period')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getAdminWallet", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/worker-notification-settings'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getAdminWorkerNotificationSettings", null);
+__decorate([
+    (0, common_1.Post)('mobile/admin/worker-notification-settings'),
+    __param(0, (0, common_1.Body)('radiusKm')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "updateAdminWorkerNotificationSettings", null);
+__decorate([
     (0, common_1.Post)('mobile/worker/availability'),
     __param(0, (0, common_1.Body)('workerUserId')),
     __param(1, (0, common_1.Body)('available', common_1.ParseBoolPipe)),
@@ -528,6 +646,100 @@ __decorate([
     __metadata("design:paramtypes", [String, String, String, Number, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "createReview", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/disputes'),
+    __param(0, (0, common_1.Query)('status')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "listDisputes", null);
+__decorate([
+    (0, common_1.Post)('mobile/disputes'),
+    __param(0, (0, common_1.Body)('requestId')),
+    __param(1, (0, common_1.Body)('reportedBy')),
+    __param(2, (0, common_1.Body)('reportedUser')),
+    __param(3, (0, common_1.Body)('reason')),
+    __param(4, (0, common_1.Body)('description')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String, String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "createDispute", null);
+__decorate([
+    (0, common_1.Post)('mobile/admin/disputes/:disputeId/resolve'),
+    __param(0, (0, common_1.Param)('disputeId')),
+    __param(1, (0, common_1.Body)('resolution')),
+    __param(2, (0, common_1.Body)('resolvedBy')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "resolveDispute", null);
+__decorate([
+    (0, common_1.Get)('mobile/disputes/:disputeId/messages'),
+    __param(0, (0, common_1.Param)('disputeId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getDisputeMessages", null);
+__decorate([
+    (0, common_1.Post)('mobile/disputes/:disputeId/messages'),
+    __param(0, (0, common_1.Param)('disputeId')),
+    __param(1, (0, common_1.Body)('senderType')),
+    __param(2, (0, common_1.Body)('senderId')),
+    __param(3, (0, common_1.Body)('content')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "sendDisputeMessage", null);
+__decorate([
+    (0, common_1.Post)('mobile/admin/requests/:requestId/cancel'),
+    __param(0, (0, common_1.Param)('requestId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "adminCancelJob", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/cancellation-stats'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getCancellationStats", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/commission'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getCommissionConfig", null);
+__decorate([
+    (0, common_1.Post)('mobile/admin/commission'),
+    __param(0, (0, common_1.Body)('commissionPercent')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "updateCommissionConfig", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/categories'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "listAllCategories", null);
+__decorate([
+    (0, common_1.Patch)('mobile/admin/categories/:categoryId'),
+    __param(0, (0, common_1.Param)('categoryId')),
+    __param(1, (0, common_1.Body)('name')),
+    __param(2, (0, common_1.Body)('description')),
+    __param(3, (0, common_1.Body)('icon')),
+    __param(4, (0, common_1.Body)('active')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String, String, Boolean]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "updateCategory", null);
+__decorate([
+    (0, common_1.Delete)('mobile/admin/categories/:categoryId'),
+    __param(0, (0, common_1.Param)('categoryId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "deleteCategory", null);
 exports.MobileController = MobileController = __decorate([
     (0, common_1.Controller)(),
     __metadata("design:paramtypes", [mobile_service_1.MobileService])

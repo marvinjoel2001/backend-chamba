@@ -11,6 +11,11 @@ export declare class MobileController {
             email: any;
             phone: any;
             profilePhotoUrl: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
         };
     }>;
     login(identifier: string, password: string): Promise<{
@@ -22,6 +27,11 @@ export declare class MobileController {
             email: any;
             phone: any;
             profilePhotoUrl: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
         };
     }>;
     checkIdentifier(identifier: string): Promise<{
@@ -37,6 +47,12 @@ export declare class MobileController {
             phone: any;
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            verificationReviewedAt: any;
             isAvailable: any;
             workRadiusKm: number;
             currentLatitude: number | null;
@@ -144,6 +160,12 @@ export declare class MobileController {
             phone: any;
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            verificationReviewedAt: any;
             isAvailable: any;
             workRadiusKm: number;
             currentLatitude: number | null;
@@ -160,6 +182,35 @@ export declare class MobileController {
             phone: any;
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            verificationReviewedAt: any;
+            isAvailable: any;
+            workRadiusKm: number;
+            currentLatitude: number | null;
+            currentLongitude: number | null;
+        };
+    }>;
+    submitWorkerVerification(workerUserId: string, idPhotoBase64: string, facePhotoBase64: string): Promise<{
+        submitted: boolean;
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+            profilePhotoPublicId: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            verificationReviewedAt: any;
             isAvailable: any;
             workRadiusKm: number;
             currentLatitude: number | null;
@@ -468,6 +519,12 @@ export declare class MobileController {
             phone: any;
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            verificationReviewedAt: any;
             isAvailable: any;
             workRadiusKm: number;
             currentLatitude: number | null;
@@ -486,6 +543,63 @@ export declare class MobileController {
         };
         skills: any[];
     }>;
+    getAdminMapSnapshot(since?: string): Promise<{
+        serverTime: string;
+        workers: {
+            id: any;
+            firstName: any;
+            lastName: any;
+            isAvailable: any;
+            averageRating: number;
+            completedJobs: number;
+            latitude: number;
+            longitude: number;
+            updatedAt: any;
+            activeRequest: {
+                id: any;
+                title: any;
+                status: any;
+                address: any;
+                workerArrived: any;
+                clientName: string;
+            } | null;
+        }[];
+        clients: {
+            id: any;
+            firstName: any;
+            lastName: any;
+            latitude: number;
+            longitude: number;
+            updatedAt: any;
+        }[];
+        requests: {
+            id: any;
+            title: any;
+            status: any;
+            budget: number;
+            address: any;
+            clientName: string;
+            latitude: number;
+            longitude: number;
+            updatedAt: any;
+        }[];
+    }>;
+    getAdminWallet(period?: string): Promise<{
+        period: "day" | "week" | "month";
+        totals: any;
+        workers: {
+            id: any;
+            name: string;
+            jobsCompleted: number;
+            earnings: number;
+        }[];
+    }>;
+    getAdminWorkerNotificationSettings(): Promise<{
+        radiusKm: number;
+    }>;
+    updateAdminWorkerNotificationSettings(radiusKm: number): Promise<{
+        radiusKm: number;
+    }>;
     setWorkerAvailability(workerUserId: string, available: boolean): Promise<{
         workerId: any;
         isAvailable: any;
@@ -494,6 +608,7 @@ export declare class MobileController {
         workerId: any;
         latitude: number;
         longitude: number;
+        timestamp: string;
     }>;
     getWorkerSkills(workerUserId: string): Promise<{
         workerUserId: string;
@@ -530,5 +645,99 @@ export declare class MobileController {
         workerUserId: string;
         averageRating: number;
         completedJobs: number;
+    }>;
+    listDisputes(status?: string): Promise<{
+        disputes: {
+            id: any;
+            requestId: any;
+            requestTitle: any;
+            requestStatus: any;
+            reportedBy: any;
+            reporterName: string;
+            reporterType: any;
+            reportedUser: any;
+            reportedName: string;
+            reportedType: any;
+            reason: any;
+            description: any;
+            status: any;
+            resolution: any;
+            resolvedBy: any;
+            resolvedAt: any;
+            createdAt: any;
+            updatedAt: any;
+        }[];
+    }>;
+    createDispute(requestId: string, reportedBy: string, reportedUser?: string, reason?: string, description?: string): Promise<{
+        dispute: {
+            id: any;
+            status: any;
+            createdAt: any;
+        };
+    }>;
+    resolveDispute(disputeId: string, resolution: string, resolvedBy?: string): Promise<{
+        disputeId: string;
+        status: string;
+    }>;
+    getDisputeMessages(disputeId: string): Promise<{
+        messages: {
+            id: any;
+            disputeId: any;
+            senderType: any;
+            senderId: any;
+            senderName: string;
+            content: any;
+            createdAt: any;
+        }[];
+    }>;
+    sendDisputeMessage(disputeId: string, senderType: string, senderId?: string, content?: string): Promise<{
+        messageId: any;
+        createdAt: any;
+    }>;
+    adminCancelJob(requestId: string): Promise<{
+        requestId: string;
+        status: string;
+    }>;
+    getCancellationStats(): Promise<{
+        users: {
+            id: any;
+            name: string;
+            type: any;
+            cancelCount: any;
+        }[];
+    }>;
+    getCommissionConfig(): Promise<{
+        commissionPercent: number;
+    }>;
+    updateCommissionConfig(commissionPercent: number): Promise<{
+        commissionPercent: number;
+    }>;
+    listAllCategories(): Promise<{
+        categories: {
+            id: any;
+            name: any;
+            description: any;
+            icon: any;
+            parentId: any;
+            active: any;
+            createdAt: any;
+            updatedAt: any;
+        }[];
+    }>;
+    updateCategory(categoryId: string, name?: string, description?: string, icon?: string, active?: boolean): Promise<{
+        category: {
+            id: any;
+            name: any;
+            description: any;
+            icon: any;
+            parentId: any;
+            active: any;
+            createdAt: any;
+            updatedAt: any;
+        };
+    }>;
+    deleteCategory(categoryId: string): Promise<{
+        deleted: boolean;
+        categoryId: string;
     }>;
 }

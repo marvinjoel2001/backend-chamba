@@ -42,6 +42,7 @@ let workerId: string;
 let requestId: string;
 let offerId: string;
 let threadId: string;
+let disputeId: string;
 const clientEmail = `client_${uid()}@test.com`;
 const workerEmail = `worker_${uid()}@test.com`;
 
@@ -529,5 +530,192 @@ describe('16. Users Controller', () => {
       .query({ lat: -16.5, lng: -68.15, radiusKm: 50 })
       .expect(200);
     expect(Array.isArray(res.body.categories ?? res.body)).toBe(true);
+  });
+});
+
+// 17. DISPUTAS
+describe('17. Disputas', () => {
+  it('POST /api/mobile/disputes → crea disputa', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/mobile/disputes')
+      .send({ requestId, reportedBy: clientId, reportedUser: workerId, reason: 'Trabajo mal realizado', description: 'No terminó el trabajo' })
+      .expect(201);
+    expect(res.body.dispute.id).toBeTruthy();
+    expect(res.body.dispute.status).toBe('open');
+    expect(res.body.dispute.reason).toBe('Trabajo mal realizado');
+    disputeId = res.body.dispute.id;
+  });
+
+  it('GET /api/mobile/admin/disputes → lista disputas', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/mobile/admin/disputes')
+      .expect(200);
+    expect(Array.isArray(res.body.disputes)).toBe(true);
+    expect(res.body.disputes.length).toBeGreaterThan(0);
+  });
+
+  it('GET /api/mobile/admin/disputes?status=open → filtra por estado', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/mobile/admin/disputes')
+      .query({ status: 'open' })
+      .expect(200);
+    expect(res.body.disputes.every((d: any) => d.status === 'open')).toBe(true);
+  });
+
+  it('POST /api/mobile/disputes/:disputeId/messages → envia mensaje', async () => {
+    if (!disputeId) return;
+    const res = await request(app.getHttpServer())
+      .post(`/api/mobile/disputes/${disputeId}/messages`)
+      .send({ senderType: 'user', senderId: clientId, content: 'Necesito ayuda con esto' })
+      .expect(201);
+    expect(res.body.message.content).toBe('Necesito ayuda con esto');
+  });
+
+  it('POST /api/mobile/disputes/:disputeId/messages → admin responde', async () => {
+    if (!disputeId) return;
+    const res = await request(app.getHttpServer())
+      .post(`/api/mobile/disputes/${disputeId}/messages`)
+      .send({ senderType: 'admin', content: 'Estamos revisando tu caso' })
+      .expect(201);
+    expect(res.body.message.senderType).toBe('admin');
+  });
+
+  it('GET /api/mobile/disputes/:disputeId/messages → lista mensajes', async () => {
+    if (!disputeId) return;
+    const res = await request(app.getHttpServer())
+      .get(`/api/mobile/disputes/${disputeId}/messages`)
+      .expect(200);
+    expect(Array.isArray(res.body.messages)).toBe(true);
+    expect(res.body.messages.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('400 si mensaje vacío', async () => {
+    if (!disputeId) return;
+    await request(app.getHttpServer())
+      .post(`/api/mobile/disputes/${disputeId}/messages`)
+      .send({ senderType: 'user', senderId: clientId, content: '' })
+      .expect(400);
+  });
+
+  it('POST /api/mobile/admin/disputes/:disputeId/resolve → resuelve disputa', async () => {
+    if (!disputeId) return;
+    const res = await request(app.getHttpServer())
+      .post(`/api/mobile/admin/disputes/${disputeId}/resolve`)
+      .send({ resolution: 'Se reembolsó al cliente', resolvedBy: 'admin' })
+      .expect(201);
+    expect(res.body.dispute.status).toBe('resolved');
+    expect(res.body.dispute.resolution).toBe('Se reembolsó al cliente');
+  });
+
+  it('GET /api/mobile/admin/disputes?status=resolved → aparece resuelta', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/mobile/admin/disputes')
+      .query({ status: 'resolved' })
+      .expect(200);
+    const found = res.body.disputes.find((d: any) => d.id === disputeId);
+    expect(found).toBeDefined();
+    expect(found.status).toBe('resolved');
+  });
+});
+
+// 18. ADMIN CATEGORIAS CRUD
+describe('18. Admin Categorias CRUD', () => {
+  let testCatId: string;
+
+  it('GET /api/mobile/admin/categories → lista todas (incluye inactivas)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/mobile/admin/categories')
+      .expect(200);
+    expect(Array.isArray(res.body.categories)).toBe(true);
+  });
+
+  it('POST /api/mobile/categories → crea categoria para pruebas', async () => {
+    const name = `TestCRUD_${uid()}`;
+    const res = await request(app.getHttpServer())
+      .post('/api/mobile/categories')
+      .send({ name, description: 'Para test CRUD' })
+      .expect(201);
+    testCatId = res.body.category.id;
+    expect(testCatId).toBeTruthy();
+  });
+
+  it('PATCH /api/mobile/admin/categories/:id → actualiza categoria', async () => {
+    if (!testCatId) return;
+    const res = await request(app.getHttpServer())
+      .patch(`/api/mobile/admin/categories/${testCatId}`)
+      .send({ name: 'NombreActualizado', description: 'Desc actualizada' })
+      .expect(200);
+    expect(res.body.category.name).toBe('NombreActualizado');
+  });
+
+  it('DELETE /api/mobile/admin/categories/:id → elimina categoria', async () => {
+    if (!testCatId) return;
+    await request(app.getHttpServer())
+      .delete(`/api/mobile/admin/categories/${testCatId}`)
+      .expect(200);
+  });
+});
+
+// 19. COMISION
+describe('19. Comision', () => {
+  it('GET /api/mobile/admin/commission → retorna comision actual', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/mobile/admin/commission')
+      .expect(200);
+    expect(typeof res.body.commissionPercent).toBe('number');
+  });
+
+  it('POST /api/mobile/admin/commission → actualiza comision', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/mobile/admin/commission')
+      .send({ commissionPercent: 12.5 })
+      .expect(201);
+    expect(res.body.commissionPercent).toBe(12.5);
+  });
+
+  it('GET /api/mobile/admin/commission → confirma nueva comision', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/mobile/admin/commission')
+      .expect(200);
+    expect(res.body.commissionPercent).toBe(12.5);
+  });
+});
+
+// 20. ADMIN CANCEL
+describe('20. Admin Cancel', () => {
+  let cancelReqId: string;
+
+  it('crea solicitud para cancelar', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/mobile/requests')
+      .send({
+        clientUserId: clientId,
+        title: 'Para cancelar',
+        description: 'Solicitud que se cancelara por admin',
+        category: 'Plomeria',
+        budget: 100,
+        priceType: 'fixed',
+        address: 'Test 456',
+        latitude: -16.5,
+        longitude: -68.15,
+      })
+      .expect(201);
+    cancelReqId = res.body.request.id;
+  });
+
+  it('POST /api/mobile/admin/requests/:id/cancel → admin cancela solicitud', async () => {
+    if (!cancelReqId) return;
+    const res = await request(app.getHttpServer())
+      .post(`/api/mobile/admin/requests/${cancelReqId}/cancel`)
+      .expect(201);
+    expect(res.body.cancelled).toBe(true);
+  });
+
+  it('GET /api/mobile/admin/cancellation-stats → retorna estadisticas', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/mobile/admin/cancellation-stats')
+      .expect(200);
+    expect(typeof res.body.totalCancelled).toBe('number');
+    expect(res.body.totalCancelled).toBeGreaterThan(0);
   });
 });

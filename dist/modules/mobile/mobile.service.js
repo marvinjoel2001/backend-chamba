@@ -27,6 +27,9 @@ let MobileService = class MobileService {
     logger = new common_1.Logger(MobileService_1.name);
     static OFFER_LIFETIME_SECONDS = 120;
     static OFFER_LIFETIME_CONFIG_KEY = 'offer_lifetime_by_price_type';
+    static WORKER_NOTIFICATION_RADIUS_CONFIG_KEY = 'worker_notification_radius_km';
+    static WORKER_NOTIFICATION_WAVE_SIZE = 5;
+    static WORKER_NOTIFICATION_WAVE_DELAY_MS = 7000;
     static DEFAULT_CATEGORY = 'General';
     static GEMINI_TIMEOUT_MS = 9000;
     constructor(configService, dataSource, storageService, notificationsService, realtimeGateway) {
@@ -83,7 +86,9 @@ let MobileService = class MobileService {
           is_available
         )
         VALUES ($1, $2, $3, $4, $5, false)
-        RETURNING id, type, first_name, last_name, email, phone, profile_photo_url
+        RETURNING id, type, first_name, last_name, email, phone, profile_photo_url,
+                  verification_status, id_photo_url, face_photo_url,
+                  id_photo_verified, face_photo_verified
         `, [type, email, phone, firstName, lastName]);
             const created = createdRows[0];
             await manager.query(`
@@ -99,6 +104,11 @@ let MobileService = class MobileService {
                     email: created.email,
                     phone: created.phone ?? null,
                     profilePhotoUrl: created.profile_photo_url ?? null,
+                    verificationStatus: created.verification_status ?? 'not_verified',
+                    idPhotoUrl: created.id_photo_url ?? null,
+                    facePhotoUrl: created.face_photo_url ?? null,
+                    idPhotoVerified: created.id_photo_verified ?? null,
+                    facePhotoVerified: created.face_photo_verified ?? null,
                 },
             };
         });
@@ -116,7 +126,12 @@ let MobileService = class MobileService {
              u.last_name,
              u.email,
              u.phone,
-             u.profile_photo_url
+             u.profile_photo_url,
+             u.verification_status,
+             u.id_photo_url,
+             u.face_photo_url,
+             u.id_photo_verified,
+             u.face_photo_verified
       FROM users u
       JOIN auth_credentials c ON c.user_id = u.id
       WHERE (
@@ -142,6 +157,11 @@ let MobileService = class MobileService {
                 email: row.email,
                 phone: row.phone ?? null,
                 profilePhotoUrl: row.profile_photo_url ?? null,
+                verificationStatus: row.verification_status ?? 'not_verified',
+                idPhotoUrl: row.id_photo_url ?? null,
+                facePhotoUrl: row.face_photo_url ?? null,
+                idPhotoVerified: row.id_photo_verified ?? null,
+                facePhotoVerified: row.face_photo_verified ?? null,
             },
         };
     }
@@ -338,6 +358,16 @@ let MobileService = class MobileService {
             ? await this.persistUploadedRequestPhotos(created.id, uploadedPhotosInput)
             : await this.uploadRequestPhotos(created.id, photos);
         const notifiedWorkers = await this.seedOffersForRequest(created.id, input.budget);
+        this.realtimeGateway.server.emit('request.published', {
+            requestId: created.id,
+            status: created.status,
+            title: created.title,
+            budget: Number(created.budget),
+            address: created.address,
+            latitude: Number(input.latitude),
+            longitude: Number(input.longitude),
+            timestamp: new Date().toISOString(),
+        });
         return {
             request: {
                 id: created.id,
@@ -411,6 +441,53 @@ let MobileService = class MobileService {
         }
         return {
             user: await this.getUserById(userId),
+        };
+    }
+    async submitWorkerVerification(params) {
+        if (!params.workerUserId?.trim()) {
+            throw new common_1.BadRequestException('workerUserId is required');
+        }
+        const user = await this.getUserById(params.workerUserId);
+        if (user.type !== 'worker') {
+            throw new common_1.BadRequestException('Only workers can submit verification');
+        }
+        const idPhotoBase64 = params.idPhotoBase64?.trim();
+        const facePhotoBase64 = params.facePhotoBase64?.trim();
+        if (!idPhotoBase64 || !facePhotoBase64) {
+            throw new common_1.BadRequestException('idPhotoBase64 and facePhotoBase64 are required');
+        }
+        this.ensureDataUri(idPhotoBase64);
+        this.ensureDataUri(facePhotoBase64);
+        const idUpload = await this.storageService.uploadBase64Image({
+            base64Data: idPhotoBase64,
+            folder: 'chamba/verification/id',
+        });
+        const faceUpload = await this.storageService.uploadBase64Image({
+            base64Data: facePhotoBase64,
+            folder: 'chamba/verification/face',
+        });
+        await this.dataSource.query(`
+      UPDATE users
+      SET id_photo_url = $2,
+          face_photo_url = $3,
+          verification_status = 'pending',
+          id_photo_verified = NULL,
+          face_photo_verified = NULL,
+          verification_reviewed_at = NULL,
+          updated_at = NOW()
+      WHERE id = $1
+      `, [params.workerUserId, idUpload.url, faceUpload.url]);
+        const updatedUser = await this.getUserById(params.workerUserId);
+        this.realtimeGateway.emitToUser(params.workerUserId, 'user.verification.updated', {
+            verificationStatus: 'pending',
+            idPhotoVerified: null,
+            facePhotoVerified: null,
+            reviewedAt: null,
+            message: 'Recibimos tus fotos. Nuestro equipo las esta revisando.',
+        });
+        return {
+            submitted: true,
+            user: updatedUser,
         };
     }
     async deleteRequestPhoto(params) {
@@ -940,6 +1017,11 @@ let MobileService = class MobileService {
           updated_at = NOW()
       WHERE id = $1
       `, [params.requestId]);
+        this.realtimeGateway.server.emit('request.status.updated', {
+            requestId: params.requestId,
+            status: 'negotiating',
+            timestamp: new Date().toISOString(),
+        });
         await this.ensureThreadAndInitialMessage({
             requestId: params.requestId,
             clientUserId: request.client_user_id,
@@ -1017,6 +1099,11 @@ let MobileService = class MobileService {
       `, [offer.request_id, params.offerId]);
         await this.dataSource.query(`UPDATE job_offers SET status = 'accepted' WHERE id = $1`, [params.offerId]);
         await this.dataSource.query(`UPDATE job_requests SET status = 'assigned', updated_at = NOW() WHERE id = $1`, [offer.request_id]);
+        this.realtimeGateway.server.emit('request.status.updated', {
+            requestId: offer.request_id,
+            status: 'assigned',
+            timestamp: new Date().toISOString(),
+        });
         await this.dataSource.query(`UPDATE users SET is_available = false, updated_at = NOW() WHERE id = $1`, [offer.worker_user_id]);
         this.logger.log(`[acceptOffer] Worker ${offer.worker_user_id} marcado como no disponible (trabajo en curso)`);
         const payload = {
@@ -1271,6 +1358,11 @@ let MobileService = class MobileService {
       SET status = 'completed', completed_at = NOW(), updated_at = NOW()
       WHERE id = $1
       `, [params.requestId]);
+        this.realtimeGateway.server.emit('request.status.updated', {
+            requestId: params.requestId,
+            status: 'completed',
+            timestamp: new Date().toISOString(),
+        });
         await this.dataSource.query(`UPDATE users SET is_available = true, updated_at = NOW() WHERE id = $1`, [params.workerUserId]);
         this.logger.log(`[completeJob] Worker ${params.workerUserId} restaurado como disponible`);
         this.realtimeGateway.emitToUser(params.workerUserId, 'job.completed', { requestId: params.requestId });
@@ -1291,6 +1383,11 @@ let MobileService = class MobileService {
         if (!req)
             throw new common_1.NotFoundException('Request not found or not authorized');
         await this.dataSource.query(`UPDATE job_requests SET status = 'cancelled', updated_at = NOW() WHERE id = $1`, [params.requestId]);
+        this.realtimeGateway.server.emit('request.status.updated', {
+            requestId: params.requestId,
+            status: 'cancelled',
+            timestamp: new Date().toISOString(),
+        });
         if (req.worker_user_id) {
             await this.dataSource.query(`UPDATE users SET is_available = true, updated_at = NOW() WHERE id = $1`, [req.worker_user_id]);
             this.logger.log(`[cancelJob] Worker ${req.worker_user_id} restaurado como disponible`);
@@ -1344,6 +1441,149 @@ let MobileService = class MobileService {
             skills: skills.skills,
         };
     }
+    async getAdminMapSnapshot(params) {
+        const sinceIso = params.since && !Number.isNaN(Date.parse(params.since))
+            ? new Date(params.since).toISOString()
+            : null;
+        const workers = await this.dataSource.query(`
+      SELECT u.id,
+             u.first_name,
+             u.last_name,
+             u.is_available,
+             u.average_rating,
+             u.completed_jobs,
+             u.updated_at,
+             ST_Y(u.current_location::geometry) AS latitude,
+             ST_X(u.current_location::geometry) AS longitude,
+             jr.id AS active_request_id,
+             jr.title AS active_request_title,
+             jr.status AS active_request_status,
+             jr.address AS active_request_address,
+             jr.worker_arrived AS active_worker_arrived,
+             c.first_name AS active_client_first_name,
+             c.last_name AS active_client_last_name
+      FROM users u
+      LEFT JOIN job_offers jo ON jo.worker_user_id = u.id AND jo.status = 'accepted'
+      LEFT JOIN job_requests jr ON jr.id = jo.request_id AND jr.status IN ('assigned', 'in_progress')
+      LEFT JOIN users c ON c.id = jr.client_user_id
+      WHERE u.type = 'worker'
+        AND u.current_location IS NOT NULL
+        AND ($1::timestamptz IS NULL OR u.updated_at >= $1::timestamptz)
+      ORDER BY u.updated_at DESC
+      LIMIT 10000
+      `, [sinceIso]);
+        const clients = await this.dataSource.query(`
+      SELECT u.id,
+             u.first_name,
+             u.last_name,
+             u.updated_at,
+             ST_Y(u.current_location::geometry) AS latitude,
+             ST_X(u.current_location::geometry) AS longitude
+      FROM users u
+      WHERE u.type = 'client'
+        AND u.current_location IS NOT NULL
+        AND ($1::timestamptz IS NULL OR u.updated_at >= $1::timestamptz)
+      ORDER BY u.updated_at DESC
+      LIMIT 5000
+      `, [sinceIso]);
+        const requests = await this.dataSource.query(`
+      SELECT jr.id,
+             jr.title,
+             jr.status,
+             jr.budget,
+             jr.address,
+             jr.updated_at,
+             u.first_name AS client_first_name,
+             u.last_name AS client_last_name,
+             ST_Y(jr.location::geometry) AS latitude,
+             ST_X(jr.location::geometry) AS longitude
+      FROM job_requests jr
+      JOIN users u ON u.id = jr.client_user_id
+      WHERE jr.location IS NOT NULL
+        AND ($1::timestamptz IS NULL OR jr.updated_at >= $1::timestamptz)
+      ORDER BY jr.updated_at DESC
+      LIMIT 5000
+      `, [sinceIso]);
+        return {
+            serverTime: new Date().toISOString(),
+            workers: workers.map((row) => ({
+                id: row.id,
+                firstName: row.first_name,
+                lastName: row.last_name ?? '',
+                isAvailable: row.is_available,
+                averageRating: Number(row.average_rating ?? 0),
+                completedJobs: Number(row.completed_jobs ?? 0),
+                latitude: Number(row.latitude),
+                longitude: Number(row.longitude),
+                updatedAt: row.updated_at,
+                activeRequest: row.active_request_id ? {
+                    id: row.active_request_id,
+                    title: row.active_request_title,
+                    status: row.active_request_status,
+                    address: row.active_request_address,
+                    workerArrived: row.active_worker_arrived ?? false,
+                    clientName: [row.active_client_first_name, row.active_client_last_name].filter(Boolean).join(' '),
+                } : null,
+            })),
+            clients: clients.map((row) => ({
+                id: row.id,
+                firstName: row.first_name,
+                lastName: row.last_name ?? '',
+                latitude: Number(row.latitude),
+                longitude: Number(row.longitude),
+                updatedAt: row.updated_at,
+            })),
+            requests: requests.map((row) => ({
+                id: row.id,
+                title: row.title,
+                status: row.status,
+                budget: Number(row.budget ?? 0),
+                address: row.address,
+                clientName: `${row.client_first_name ?? ''} ${row.client_last_name ?? ''}`.trim(),
+                latitude: Number(row.latitude),
+                longitude: Number(row.longitude),
+                updatedAt: row.updated_at,
+            })),
+        };
+    }
+    async getAdminWallet(params) {
+        const period = params.period ?? 'week';
+        const interval = period === 'day'
+            ? `NOW() - INTERVAL '1 day'`
+            : period === 'month'
+                ? `NOW() - INTERVAL '1 month'`
+                : `NOW() - INTERVAL '7 days'`;
+        const rows = await this.dataSource.query(`
+      SELECT u.id,
+             u.first_name,
+             u.last_name,
+             COUNT(*)::int AS jobs_completed,
+             COALESCE(SUM(jo.amount), 0)::numeric AS earnings
+      FROM job_offers jo
+      JOIN users u ON u.id = jo.worker_user_id
+      JOIN job_requests jr ON jr.id = jo.request_id
+      WHERE jo.status = 'accepted'
+        AND jr.created_at >= ${interval}
+      GROUP BY u.id, u.first_name, u.last_name
+      ORDER BY earnings DESC
+      LIMIT 500
+      `);
+        const totals = rows.reduce((acc, row) => {
+            acc.totalEarnings += Number(row.earnings ?? 0);
+            acc.totalJobs += Number(row.jobs_completed ?? 0);
+            return acc;
+        }, { totalEarnings: 0, totalJobs: 0 });
+        return {
+            period,
+            totals,
+            workers: rows.map((row) => ({
+                id: row.id,
+                name: `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim(),
+                jobsCompleted: Number(row.jobs_completed ?? 0),
+                earnings: Number(row.earnings ?? 0),
+            })),
+        };
+    }
     async setWorkerAvailability(workerUserId, available) {
         const rows = await this.dataSource.query(`
       UPDATE users
@@ -1377,10 +1617,15 @@ let MobileService = class MobileService {
         if (!rows[0]) {
             throw new common_1.NotFoundException('Worker not found');
         }
-        return {
+        const payload = {
             workerId: rows[0].id,
             latitude: Number(rows[0].latitude),
             longitude: Number(rows[0].longitude),
+            timestamp: new Date().toISOString(),
+        };
+        this.realtimeGateway.server.emit('worker.location.updated', payload);
+        return {
+            ...payload,
         };
     }
     async getWorkerSkills(workerUserId) {
@@ -1583,6 +1828,12 @@ let MobileService = class MobileService {
             `CREATE EXTENSION IF NOT EXISTS postgis;`,
             `CREATE EXTENSION IF NOT EXISTS pgcrypto;`,
             `ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_public_id TEXT NULL;`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'not_verified';`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS id_photo_url TEXT NULL;`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS face_photo_url TEXT NULL;`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS id_photo_verified BOOLEAN NULL;`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS face_photo_verified BOOLEAN NULL;`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_reviewed_at TIMESTAMPTZ NULL;`,
             `
       CREATE TABLE IF NOT EXISTS auth_credentials (
         user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -1708,6 +1959,35 @@ let MobileService = class MobileService {
             `CREATE INDEX IF NOT EXISTS idx_job_request_photos_request ON job_request_photos(request_id);`,
             `CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_id);`,
             `CREATE INDEX IF NOT EXISTS idx_categories_active_name ON categories(is_active, name);`,
+            `
+      CREATE TABLE IF NOT EXISTS disputes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        request_id UUID NOT NULL REFERENCES job_requests(id) ON DELETE CASCADE,
+        reported_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reported_user UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+        reason TEXT NOT NULL,
+        description TEXT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        resolution TEXT NULL,
+        resolved_by TEXT NULL,
+        resolved_at TIMESTAMPTZ NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      `,
+            `CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);`,
+            `CREATE INDEX IF NOT EXISTS idx_disputes_request ON disputes(request_id);`,
+            `
+      CREATE TABLE IF NOT EXISTS dispute_messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        dispute_id UUID NOT NULL REFERENCES disputes(id) ON DELETE CASCADE,
+        sender_type TEXT NOT NULL DEFAULT 'user',
+        sender_id UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      `,
+            `CREATE INDEX IF NOT EXISTS idx_dispute_messages_dispute ON dispute_messages(dispute_id, created_at ASC);`,
         ];
         for (const statement of statements) {
             await this.dataSource.query(statement);
@@ -1960,6 +2240,39 @@ let MobileService = class MobileService {
                 day: 300,
             }),
         ]);
+        await this.dataSource.query(`
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ($1, $2::jsonb, NOW())
+      ON CONFLICT (key) DO NOTHING
+      `, [
+            MobileService_1.WORKER_NOTIFICATION_RADIUS_CONFIG_KEY,
+            JSON.stringify({
+                radiusKm: 5,
+            }),
+        ]);
+    }
+    async getAdminWorkerNotificationSettings() {
+        const radiusKm = await this.getWorkerNotificationRadiusKm();
+        return {
+            radiusKm,
+        };
+    }
+    async updateAdminWorkerNotificationSettings(params) {
+        const parsed = Number(params.radiusKm);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            throw new common_1.BadRequestException('radiusKm must be greater than 0');
+        }
+        const radiusKm = Math.min(50, Math.max(0.5, parsed));
+        await this.dataSource.query(`
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ($1, $2::jsonb, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
+      `, [
+            MobileService_1.WORKER_NOTIFICATION_RADIUS_CONFIG_KEY,
+            JSON.stringify({ radiusKm }),
+        ]);
+        return { radiusKm };
     }
     extractTopCategories(workerRows) {
         const counter = new Map();
@@ -2020,6 +2333,20 @@ let MobileService = class MobileService {
             return fallback;
         }
         return Math.floor(parsed);
+    }
+    async getWorkerNotificationRadiusKm() {
+        const rows = await this.dataSource.query(`
+      SELECT value_json
+      FROM app_config
+      WHERE key = $1
+      LIMIT 1
+      `, [MobileService_1.WORKER_NOTIFICATION_RADIUS_CONFIG_KEY]);
+        const config = rows[0]?.value_json;
+        const candidate = Number(config?.radiusKm);
+        if (!Number.isFinite(candidate) || candidate <= 0) {
+            return 5;
+        }
+        return Math.min(50, Math.max(0.5, candidate));
     }
     async resolveRequest(params) {
         if (params.requestId) {
@@ -2117,6 +2444,12 @@ let MobileService = class MobileService {
              phone,
              profile_photo_url,
              profile_photo_public_id,
+             verification_status,
+             id_photo_url,
+             face_photo_url,
+             id_photo_verified,
+             face_photo_verified,
+             verification_reviewed_at,
              is_available,
              work_radius_km,
              ST_Y(current_location::geometry) AS current_latitude,
@@ -2138,6 +2471,12 @@ let MobileService = class MobileService {
             phone: row.phone ?? null,
             profilePhotoUrl: row.profile_photo_url ?? null,
             profilePhotoPublicId: row.profile_photo_public_id ?? null,
+            verificationStatus: row.verification_status ?? 'not_verified',
+            idPhotoUrl: row.id_photo_url ?? null,
+            facePhotoUrl: row.face_photo_url ?? null,
+            idPhotoVerified: row.id_photo_verified ?? null,
+            facePhotoVerified: row.face_photo_verified ?? null,
+            verificationReviewedAt: row.verification_reviewed_at ?? null,
             isAvailable: row.is_available,
             workRadiusKm: Number(row.work_radius_km ?? 0),
             currentLatitude: row.current_latitude == null ? null : Number(row.current_latitude),
@@ -2591,6 +2930,7 @@ Reglas obligatorias:
     }
     async seedOffersForRequest(requestId, baseBudget) {
         const request = await this.getRequestById(requestId);
+        const notificationRadiusKm = await this.getWorkerNotificationRadiusKm();
         const normalizedSkills = [
             ...new Set([
                 request.category,
@@ -2610,6 +2950,7 @@ Reglas obligatorias:
       WHERE u.type = 'worker'
         AND u.is_available = true
         AND u.current_location IS NOT NULL
+        AND ST_DWithin(u.current_location, $1::geography, $4::float8 * 1000)
         AND ST_DWithin(u.current_location, $1::geography, u.work_radius_km * 1000)
         AND (
           $2::boolean = true
@@ -2625,69 +2966,98 @@ Reglas obligatorias:
           )
         )
       ORDER BY ST_Distance(u.current_location, $1::geography) ASC
-      `, [request.location, isGeneral, normalizedSkills]);
-        const targetWorkers = workers.length > 0
-            ? workers
-            : await this.dataSource.query(`
-            SELECT u.id,
-                   0.0 AS distance_km
-            FROM users u
-            WHERE u.type = 'worker'
-              AND u.is_available = true
-              AND (
-                $1::boolean = true
-                OR cardinality($2::text[]) = 0
-                OR EXISTS (
-                  SELECT 1
-                  FROM worker_skills ws
-                  WHERE ws.user_id = u.id
-                    AND LOWER(ws.skill) = ANY($2::text[])
-                )
-                OR NOT EXISTS (
-                  SELECT 1 FROM worker_skills ws2 WHERE ws2.user_id = u.id
-                )
-              )
-            ORDER BY u.created_at ASC
-            `, [isGeneral, normalizedSkills]);
-        if (workers.length === 0 && targetWorkers.length > 0) {
-            this.logger.warn(`[seedOffers] Sin workers en rango geográfico → fallback a ${targetWorkers.length} worker(s) disponibles`);
+      `, [request.location, isGeneral, normalizedSkills, notificationRadiusKm]);
+        const targetWorkers = workers.map((worker, index) => ({
+            workerId: String(worker.id),
+            distanceKm: Number(worker.distance_km ?? 0),
+            queuePosition: index + 1,
+        }));
+        const waveSize = MobileService_1.WORKER_NOTIFICATION_WAVE_SIZE;
+        const totalWaves = Math.ceil(targetWorkers.length / waveSize);
+        for (let waveIndex = 0; waveIndex < totalWaves; waveIndex += 1) {
+            const from = waveIndex * waveSize;
+            const to = from + waveSize;
+            const waveWorkers = targetWorkers.slice(from, to);
+            if (waveWorkers.length === 0) {
+                continue;
+            }
+            if (waveIndex === 0) {
+                await this.dispatchWorkerNotificationWave({
+                    requestId,
+                    category: request.category,
+                    title: request.title,
+                    budget: Number(request.budget ?? baseBudget),
+                    address: request.address,
+                    description: request.description,
+                    aiCategories: request.aiCategories ?? [],
+                    waveWorkers,
+                });
+                continue;
+            }
+            const delayMs = waveIndex * MobileService_1.WORKER_NOTIFICATION_WAVE_DELAY_MS;
+            setTimeout(() => {
+                void this.dispatchWorkerNotificationWave({
+                    requestId,
+                    category: request.category,
+                    title: request.title,
+                    budget: Number(request.budget ?? baseBudget),
+                    address: request.address,
+                    description: request.description,
+                    aiCategories: request.aiCategories ?? [],
+                    waveWorkers,
+                }).catch((error) => {
+                    const message = error instanceof Error ? error.message : String(error);
+                    this.logger.error(`[request.new] Error enviando ola ${waveIndex + 1} para ${requestId}: ${message}`);
+                });
+            }, delayMs);
         }
-        for (let index = 0; index < targetWorkers.length; index += 1) {
-            const worker = targetWorkers[index];
-            this.logger.log(`[request.new] Notificando worker ${worker.id} (${Number(worker.distance_km ?? 0).toFixed(1)} km) para solicitud ${requestId}`);
-            this.realtimeGateway.emitToUser(worker.id, 'request.new', {
-                requestId,
-                category: request.category,
-                title: request.title,
-                budget: Number(request.budget ?? baseBudget),
-                distanceKm: Number(worker.distance_km ?? 0),
-                address: request.address,
-                description: request.description,
-                aiCategories: request.aiCategories ?? [],
+        this.logger.log(`[seedOffers] Solicitud ${requestId}: ${targetWorkers.length} worker(s) en pila por cercania (radioConfigKm=${notificationRadiusKm}, waveSize=${waveSize}, waveDelayMs=${MobileService_1.WORKER_NOTIFICATION_WAVE_DELAY_MS}, skills=${JSON.stringify(normalizedSkills)})`);
+        return targetWorkers.length;
+    }
+    async dispatchWorkerNotificationWave(params) {
+        const requestRows = await this.dataSource.query(`
+      SELECT status
+      FROM job_requests
+      WHERE id = $1
+      LIMIT 1
+      `, [params.requestId]);
+        const currentStatus = String(requestRows[0]?.status ?? '');
+        if (currentStatus !== 'searching') {
+            this.logger.log(`[request.new] Ola cancelada para ${params.requestId}: estado actual ${currentStatus}`);
+            return;
+        }
+        for (const worker of params.waveWorkers) {
+            this.logger.log(`[request.new] Notificando worker ${worker.workerId} (${worker.distanceKm.toFixed(1)} km) [posicion ${worker.queuePosition}] solicitud ${params.requestId}`);
+            this.realtimeGateway.emitToUser(worker.workerId, 'request.new', {
+                requestId: params.requestId,
+                category: params.category,
+                title: params.title,
+                budget: params.budget,
+                distanceKm: worker.distanceKm,
+                address: params.address,
+                description: params.description,
+                aiCategories: params.aiCategories,
+                queuePosition: worker.queuePosition,
             });
         }
-        const workerIds = targetWorkers.map((worker) => worker.id).filter(Boolean);
-        if (workerIds.length > 0) {
-            const tokenRows = await this.dataSource.query(`
-        SELECT token
-        FROM push_tokens
-        WHERE user_id = ANY($1::uuid[])
-        `, [workerIds]);
-            const tokens = tokenRows
-                .map((row) => String(row.token ?? ''))
-                .filter(Boolean);
-            if (tokens.length > 0) {
-                await this.notificationsService.notifyWorkersForJobWave({
-                    tokens,
-                    jobId: requestId,
-                    category: request.category,
-                    offeredPrice: `Bs ${Math.round(baseBudget)}`,
-                    distanceKm: 'cerca de ti',
-                });
-            }
+        const workerIds = params.waveWorkers.map((worker) => worker.workerId);
+        const tokenRows = await this.dataSource.query(`
+      SELECT token
+      FROM push_tokens
+      WHERE user_id = ANY($1::uuid[])
+      `, [workerIds]);
+        const tokens = tokenRows.map((row) => String(row.token ?? '')).filter(Boolean);
+        if (tokens.length === 0) {
+            return;
         }
-        this.logger.log(`[seedOffers] Solicitud ${requestId}: ${targetWorkers.length} worker(s) notificados (isGeneral=${isGeneral}, enRango=${workers.length}, skills=${JSON.stringify(normalizedSkills)})`);
-        return targetWorkers.length;
+        const nearestDistance = Math.min(...params.waveWorkers.map((worker) => worker.distanceKm));
+        await this.notificationsService.notifyWorkersForJobWave({
+            tokens,
+            jobId: params.requestId,
+            category: params.category,
+            offeredPrice: `Bs ${Math.round(params.budget)}`,
+            distanceKm: nearestDistance.toFixed(1),
+        });
     }
     async expireStaleOffers(requestId) {
         const rows = await this.dataSource.query(`
@@ -2731,6 +3101,267 @@ Reglas obligatorias:
         WHERE id = $1 OR LOWER(name) = LOWER($2)
         `, [id, name]);
         }
+    }
+    async listDisputes(params) {
+        const rows = await this.dataSource.query(`
+      SELECT d.id,
+             d.request_id,
+             d.reported_by,
+             d.reported_user,
+             d.reason,
+             d.description,
+             d.status,
+             d.resolution,
+             d.resolved_by,
+             d.resolved_at,
+             d.created_at,
+             d.updated_at,
+             jr.title AS request_title,
+             jr.status AS request_status,
+             reporter.first_name AS reporter_first_name,
+             reporter.last_name AS reporter_last_name,
+             reporter.type AS reporter_type,
+             reported.first_name AS reported_first_name,
+             reported.last_name AS reported_last_name,
+             reported.type AS reported_type
+      FROM disputes d
+      JOIN job_requests jr ON jr.id = d.request_id
+      JOIN users reporter ON reporter.id = d.reported_by
+      LEFT JOIN users reported ON reported.id = d.reported_user
+      WHERE ($1::text IS NULL OR d.status = $1)
+      ORDER BY d.created_at DESC
+      LIMIT 500
+      `, [params?.status || null]);
+        return {
+            disputes: rows.map((r) => ({
+                id: r.id,
+                requestId: r.request_id,
+                requestTitle: r.request_title,
+                requestStatus: r.request_status,
+                reportedBy: r.reported_by,
+                reporterName: [r.reporter_first_name, r.reporter_last_name].filter(Boolean).join(' '),
+                reporterType: r.reporter_type,
+                reportedUser: r.reported_user,
+                reportedName: [r.reported_first_name, r.reported_last_name].filter(Boolean).join(' '),
+                reportedType: r.reported_type,
+                reason: r.reason,
+                description: r.description ?? '',
+                status: r.status,
+                resolution: r.resolution,
+                resolvedBy: r.resolved_by,
+                resolvedAt: r.resolved_at,
+                createdAt: r.created_at,
+                updatedAt: r.updated_at,
+            })),
+        };
+    }
+    async createDispute(params) {
+        if (!params.requestId || !params.reportedBy || !params.reason?.trim()) {
+            throw new common_1.BadRequestException('requestId, reportedBy, and reason are required');
+        }
+        const rows = await this.dataSource.query(`
+      INSERT INTO disputes (request_id, reported_by, reported_user, reason, description)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, status, created_at
+      `, [
+            params.requestId,
+            params.reportedBy,
+            params.reportedUser || null,
+            params.reason.trim(),
+            params.description?.trim() || null,
+        ]);
+        return { dispute: { id: rows[0].id, status: rows[0].status, createdAt: rows[0].created_at } };
+    }
+    async resolveDispute(params) {
+        if (!params.disputeId || !params.resolution?.trim()) {
+            throw new common_1.BadRequestException('disputeId and resolution are required');
+        }
+        await this.dataSource.query(`
+      UPDATE disputes
+      SET status = 'resolved',
+          resolution = $2,
+          resolved_by = $3,
+          resolved_at = NOW(),
+          updated_at = NOW()
+      WHERE id = $1
+      `, [params.disputeId, params.resolution.trim(), params.resolvedBy || 'admin']);
+        return { disputeId: params.disputeId, status: 'resolved' };
+    }
+    async adminCancelJob(params) {
+        const rows = await this.dataSource.query(`SELECT id, client_user_id, status FROM job_requests WHERE id = $1 LIMIT 1`, [params.requestId]);
+        if (!rows[0])
+            throw new common_1.NotFoundException('Request not found');
+        const req = rows[0];
+        if (req.status === 'completed' || req.status === 'cancelled') {
+            throw new common_1.BadRequestException('Cannot cancel a request that is already ' + req.status);
+        }
+        await this.dataSource.query(`UPDATE job_requests SET status = 'cancelled', updated_at = NOW() WHERE id = $1`, [params.requestId]);
+        const offerRows = await this.dataSource.query(`SELECT worker_user_id FROM job_offers WHERE request_id = $1 AND status = 'accepted' LIMIT 1`, [params.requestId]);
+        if (offerRows[0]?.worker_user_id) {
+            await this.dataSource.query(`UPDATE users SET is_available = true, updated_at = NOW() WHERE id = $1`, [offerRows[0].worker_user_id]);
+        }
+        this.realtimeGateway.server.emit('request.status.updated', {
+            requestId: params.requestId,
+            status: 'cancelled',
+            timestamp: new Date().toISOString(),
+        });
+        return { requestId: params.requestId, status: 'cancelled' };
+    }
+    async getCancellationStats() {
+        const rows = await this.dataSource.query(`
+      SELECT
+        u.id,
+        u.first_name,
+        u.last_name,
+        u.type,
+        COUNT(*)::int AS cancel_count
+      FROM job_requests jr
+      LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
+      JOIN users u ON u.id = COALESCE(jo.worker_user_id, jr.client_user_id)
+      WHERE jr.status = 'cancelled'
+      GROUP BY u.id, u.first_name, u.last_name, u.type
+      HAVING COUNT(*) >= 1
+      ORDER BY cancel_count DESC
+      LIMIT 100
+    `);
+        return {
+            users: rows.map((r) => ({
+                id: r.id,
+                name: [r.first_name, r.last_name].filter(Boolean).join(' '),
+                type: r.type,
+                cancelCount: r.cancel_count,
+            })),
+        };
+    }
+    async getCommissionConfig() {
+        const rows = await this.dataSource.query(`SELECT value_json FROM app_config WHERE key = 'platform_commission' LIMIT 1`);
+        if (rows[0]) {
+            const val = typeof rows[0].value_json === 'string' ? JSON.parse(rows[0].value_json) : rows[0].value_json;
+            return { commissionPercent: Number(val.percent ?? 10) };
+        }
+        return { commissionPercent: 10 };
+    }
+    async updateCommissionConfig(params) {
+        const percent = Math.min(50, Math.max(0, Number(params.commissionPercent)));
+        if (!Number.isFinite(percent)) {
+            throw new common_1.BadRequestException('commissionPercent must be a valid number');
+        }
+        await this.dataSource.query(`
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ('platform_commission', $1::jsonb, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
+      `, [JSON.stringify({ percent })]);
+        return { commissionPercent: percent };
+    }
+    async updateCategory(params) {
+        const sets = [];
+        const values = [];
+        let idx = 1;
+        if (params.name !== undefined) {
+            sets.push(`name = $${idx++}`);
+            values.push(params.name.trim());
+        }
+        if (params.description !== undefined) {
+            sets.push(`description = $${idx++}`);
+            values.push(params.description.trim());
+        }
+        if (params.icon !== undefined) {
+            sets.push(`icon = $${idx++}`);
+            values.push(params.icon.trim() || null);
+        }
+        if (params.active !== undefined) {
+            sets.push(`is_active = $${idx++}`);
+            values.push(params.active);
+        }
+        if (sets.length === 0)
+            throw new common_1.BadRequestException('No fields to update');
+        sets.push(`updated_at = NOW()`);
+        values.push(params.id);
+        const rows = await this.dataSource.query(`UPDATE categories SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, name, description, icon, is_active, parent_id, created_at, updated_at`, values);
+        if (!rows[0])
+            throw new common_1.NotFoundException('Category not found');
+        return {
+            category: {
+                id: rows[0].id,
+                name: rows[0].name,
+                description: rows[0].description ?? '',
+                icon: rows[0].icon ?? null,
+                parentId: rows[0].parent_id ?? null,
+                active: rows[0].is_active,
+                createdAt: rows[0].created_at,
+                updatedAt: rows[0].updated_at,
+            },
+        };
+    }
+    async getDisputeMessages(disputeId) {
+        const rows = await this.dataSource.query(`
+      SELECT dm.id,
+             dm.dispute_id,
+             dm.sender_type,
+             dm.sender_id,
+             dm.content,
+             dm.created_at,
+             u.first_name AS sender_first_name,
+             u.last_name AS sender_last_name
+      FROM dispute_messages dm
+      LEFT JOIN users u ON u.id = dm.sender_id
+      WHERE dm.dispute_id = $1
+      ORDER BY dm.created_at ASC
+      LIMIT 500
+      `, [disputeId]);
+        return {
+            messages: rows.map((r) => ({
+                id: r.id,
+                disputeId: r.dispute_id,
+                senderType: r.sender_type,
+                senderId: r.sender_id,
+                senderName: [r.sender_first_name, r.sender_last_name].filter(Boolean).join(' ') || 'Soporte',
+                content: r.content,
+                createdAt: r.created_at,
+            })),
+        };
+    }
+    async sendDisputeMessage(params) {
+        if (!params.content?.trim()) {
+            throw new common_1.BadRequestException('content is required');
+        }
+        const rows = await this.dataSource.query(`
+      INSERT INTO dispute_messages (dispute_id, sender_type, sender_id, content)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, created_at
+      `, [
+            params.disputeId,
+            params.senderType || 'user',
+            params.senderId || null,
+            params.content.trim(),
+        ]);
+        this.realtimeGateway.server.emit('dispute.message', {
+            disputeId: params.disputeId,
+            messageId: rows[0].id,
+            senderType: params.senderType,
+            timestamp: rows[0].created_at,
+        });
+        return { messageId: rows[0].id, createdAt: rows[0].created_at };
+    }
+    async deleteCategory(categoryId) {
+        await this.dataSource.query(`UPDATE categories SET is_active = false, updated_at = NOW() WHERE id = $1`, [categoryId]);
+        return { deleted: true, categoryId };
+    }
+    async listAllCategories() {
+        const rows = await this.dataSource.query(`SELECT id, name, description, icon, parent_id, is_active, created_at, updated_at FROM categories ORDER BY name ASC`);
+        return {
+            categories: rows.map((row) => ({
+                id: row.id,
+                name: row.name,
+                description: row.description ?? '',
+                icon: row.icon ?? null,
+                parentId: row.parent_id ?? null,
+                active: row.is_active,
+                createdAt: row.created_at,
+                updatedAt: row.updated_at,
+            })),
+        };
     }
 };
 exports.MobileService = MobileService;

@@ -13,8 +13,14 @@ exports.UpdateUserDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 const create_user_dto_1 = require("./create-user.dto");
+const user_entity_1 = require("../entities/user.entity");
 class UpdateUserDto extends (0, swagger_1.PartialType)(create_user_dto_1.CreateUserDto) {
     profilePhotoUrl;
+    verificationStatus;
+    idPhotoUrl;
+    facePhotoUrl;
+    idPhotoVerified;
+    facePhotoVerified;
 }
 exports.UpdateUserDto = UpdateUserDto;
 __decorate([
@@ -23,4 +29,34 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], UpdateUserDto.prototype, "profilePhotoUrl", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ enum: user_entity_1.VerificationStatus, example: user_entity_1.VerificationStatus.PENDING }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEnum)(user_entity_1.VerificationStatus),
+    __metadata("design:type", String)
+], UpdateUserDto.prototype, "verificationStatus", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: 'https://cdn.chamba.com/id-photo.jpg' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], UpdateUserDto.prototype, "idPhotoUrl", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: 'https://cdn.chamba.com/face-photo.jpg' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], UpdateUserDto.prototype, "facePhotoUrl", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: true, nullable: true }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Object)
+], UpdateUserDto.prototype, "idPhotoVerified", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: false, nullable: true }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Object)
+], UpdateUserDto.prototype, "facePhotoVerified", void 0);
 //# sourceMappingURL=update-user.dto.js.map

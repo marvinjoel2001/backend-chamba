@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseBoolPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -438,5 +440,116 @@ export class MobileController {
       stars: Number(stars),
       comment,
     });
+  }
+  // --- Disputes ---
+
+  @Get('mobile/admin/disputes')
+  listDisputes(@Query('status') status?: string) {
+    return this.mobileService.listDisputes({ status: status || undefined });
+  }
+
+  @Post('mobile/disputes')
+  createDispute(
+    @Body('requestId') requestId: string,
+    @Body('reportedBy') reportedBy: string,
+    @Body('reportedUser') reportedUser?: string,
+    @Body('reason') reason?: string,
+    @Body('description') description?: string,
+  ) {
+    return this.mobileService.createDispute({
+      requestId,
+      reportedBy,
+      reportedUser,
+      reason: reason ?? '',
+      description,
+    });
+  }
+
+  @Post('mobile/admin/disputes/:disputeId/resolve')
+  resolveDispute(
+    @Param('disputeId') disputeId: string,
+    @Body('resolution') resolution: string,
+    @Body('resolvedBy') resolvedBy?: string,
+  ) {
+    return this.mobileService.resolveDispute({
+      disputeId,
+      resolution,
+      resolvedBy: resolvedBy ?? 'admin',
+    });
+  }
+
+  @Get('mobile/disputes/:disputeId/messages')
+  getDisputeMessages(@Param('disputeId') disputeId: string) {
+    return this.mobileService.getDisputeMessages(disputeId);
+  }
+
+  @Post('mobile/disputes/:disputeId/messages')
+  sendDisputeMessage(
+    @Param('disputeId') disputeId: string,
+    @Body('senderType') senderType: string,
+    @Body('senderId') senderId?: string,
+    @Body('content') content?: string,
+  ) {
+    return this.mobileService.sendDisputeMessage({
+      disputeId,
+      senderType: senderType || 'user',
+      senderId,
+      content: content ?? '',
+    });
+  }
+
+  // --- Admin: Cancel Job ---
+
+  @Post('mobile/admin/requests/:requestId/cancel')
+  adminCancelJob(@Param('requestId') requestId: string) {
+    return this.mobileService.adminCancelJob({ requestId });
+  }
+
+  @Get('mobile/admin/cancellation-stats')
+  getCancellationStats() {
+    return this.mobileService.getCancellationStats();
+  }
+
+  // --- Admin: Commission Config ---
+
+  @Get('mobile/admin/commission')
+  getCommissionConfig() {
+    return this.mobileService.getCommissionConfig();
+  }
+
+  @Post('mobile/admin/commission')
+  updateCommissionConfig(@Body('commissionPercent') commissionPercent: number) {
+    return this.mobileService.updateCommissionConfig({
+      commissionPercent: Number(commissionPercent),
+    });
+  }
+
+  // --- Admin: Categories CRUD ---
+
+  @Get('mobile/admin/categories')
+  listAllCategories() {
+    return this.mobileService.listAllCategories();
+  }
+
+  @Patch('mobile/admin/categories/:categoryId')
+  updateCategory(
+    @Param('categoryId') categoryId: string,
+    @Body('name') name?: string,
+    @Body('description') description?: string,
+    @Body('icon') icon?: string,
+    @Body('active') active?: boolean,
+  ) {
+    return this.mobileService.updateCategory({
+      id: categoryId,
+      name,
+      description,
+      icon,
+      active,
+    });
+  }
+
+  @Delete('mobile/admin/categories/:categoryId')
+  deleteCategory(@Param('categoryId') categoryId: string) {
+    return this.mobileService.deleteCategory(categoryId);
   }
 }

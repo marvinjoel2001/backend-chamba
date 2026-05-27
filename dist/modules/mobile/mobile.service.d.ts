@@ -35,6 +35,9 @@ export declare class MobileService implements OnModuleInit {
     private readonly logger;
     private static readonly OFFER_LIFETIME_SECONDS;
     private static readonly OFFER_LIFETIME_CONFIG_KEY;
+    private static readonly WORKER_NOTIFICATION_RADIUS_CONFIG_KEY;
+    private static readonly WORKER_NOTIFICATION_WAVE_SIZE;
+    private static readonly WORKER_NOTIFICATION_WAVE_DELAY_MS;
     private static readonly DEFAULT_CATEGORY;
     private static readonly GEMINI_TIMEOUT_MS;
     constructor(configService: ConfigService, dataSource: DataSource, storageService: StorageService, notificationsService: NotificationsService, realtimeGateway: RealtimeGateway);
@@ -55,6 +58,11 @@ export declare class MobileService implements OnModuleInit {
             email: any;
             phone: any;
             profilePhotoUrl: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
         };
     }>;
     login(identifier: string, password: string): Promise<{
@@ -66,6 +74,11 @@ export declare class MobileService implements OnModuleInit {
             email: any;
             phone: any;
             profilePhotoUrl: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
         };
     }>;
     checkIdentifier(identifier: string): Promise<{
@@ -86,6 +99,12 @@ export declare class MobileService implements OnModuleInit {
             phone: any;
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            verificationReviewedAt: any;
             isAvailable: any;
             workRadiusKm: number;
             currentLatitude: number | null;
@@ -169,6 +188,12 @@ export declare class MobileService implements OnModuleInit {
             phone: any;
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            verificationReviewedAt: any;
             isAvailable: any;
             workRadiusKm: number;
             currentLatitude: number | null;
@@ -185,6 +210,39 @@ export declare class MobileService implements OnModuleInit {
             phone: any;
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            verificationReviewedAt: any;
+            isAvailable: any;
+            workRadiusKm: number;
+            currentLatitude: number | null;
+            currentLongitude: number | null;
+        };
+    }>;
+    submitWorkerVerification(params: {
+        workerUserId: string;
+        idPhotoBase64: string;
+        facePhotoBase64: string;
+    }): Promise<{
+        submitted: boolean;
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+            profilePhotoPublicId: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            verificationReviewedAt: any;
             isAvailable: any;
             workRadiusKm: number;
             currentLatitude: number | null;
@@ -543,6 +601,12 @@ export declare class MobileService implements OnModuleInit {
             phone: any;
             profilePhotoUrl: any;
             profilePhotoPublicId: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            verificationReviewedAt: any;
             isAvailable: any;
             workRadiusKm: number;
             currentLatitude: number | null;
@@ -561,6 +625,61 @@ export declare class MobileService implements OnModuleInit {
         };
         skills: any[];
     }>;
+    getAdminMapSnapshot(params: {
+        since?: string;
+    }): Promise<{
+        serverTime: string;
+        workers: {
+            id: any;
+            firstName: any;
+            lastName: any;
+            isAvailable: any;
+            averageRating: number;
+            completedJobs: number;
+            latitude: number;
+            longitude: number;
+            updatedAt: any;
+            activeRequest: {
+                id: any;
+                title: any;
+                status: any;
+                address: any;
+                workerArrived: any;
+                clientName: string;
+            } | null;
+        }[];
+        clients: {
+            id: any;
+            firstName: any;
+            lastName: any;
+            latitude: number;
+            longitude: number;
+            updatedAt: any;
+        }[];
+        requests: {
+            id: any;
+            title: any;
+            status: any;
+            budget: number;
+            address: any;
+            clientName: string;
+            latitude: number;
+            longitude: number;
+            updatedAt: any;
+        }[];
+    }>;
+    getAdminWallet(params: {
+        period?: 'day' | 'week' | 'month';
+    }): Promise<{
+        period: "day" | "week" | "month";
+        totals: any;
+        workers: {
+            id: any;
+            name: string;
+            jobsCompleted: number;
+            earnings: number;
+        }[];
+    }>;
     setWorkerAvailability(workerUserId: string, available: boolean): Promise<{
         workerId: any;
         isAvailable: any;
@@ -573,6 +692,7 @@ export declare class MobileService implements OnModuleInit {
         workerId: any;
         latitude: number;
         longitude: number;
+        timestamp: string;
     }>;
     getWorkerSkills(workerUserId: string): Promise<{
         workerUserId: string;
@@ -651,10 +771,19 @@ export declare class MobileService implements OnModuleInit {
     private seedData;
     private seedDefaultCategories;
     private seedDefaultConfig;
+    getAdminWorkerNotificationSettings(): Promise<{
+        radiusKm: number;
+    }>;
+    updateAdminWorkerNotificationSettings(params: {
+        radiusKm: number;
+    }): Promise<{
+        radiusKm: number;
+    }>;
     private extractTopCategories;
     private listFallbackCategories;
     private normalizePriceTypeKey;
     private getOfferLifetimeSeconds;
+    private getWorkerNotificationRadiusKm;
     private resolveRequest;
     private findLatestClientRequest;
     private getRequestById;
@@ -678,7 +807,129 @@ export declare class MobileService implements OnModuleInit {
     private ensureThreadExists;
     private ensureThreadAndInitialMessage;
     private seedOffersForRequest;
+    private dispatchWorkerNotificationWave;
     private expireStaleOffers;
     private ensureCategoriesExist;
+    listDisputes(params?: {
+        status?: string;
+    }): Promise<{
+        disputes: {
+            id: any;
+            requestId: any;
+            requestTitle: any;
+            requestStatus: any;
+            reportedBy: any;
+            reporterName: string;
+            reporterType: any;
+            reportedUser: any;
+            reportedName: string;
+            reportedType: any;
+            reason: any;
+            description: any;
+            status: any;
+            resolution: any;
+            resolvedBy: any;
+            resolvedAt: any;
+            createdAt: any;
+            updatedAt: any;
+        }[];
+    }>;
+    createDispute(params: {
+        requestId: string;
+        reportedBy: string;
+        reportedUser?: string;
+        reason: string;
+        description?: string;
+    }): Promise<{
+        dispute: {
+            id: any;
+            status: any;
+            createdAt: any;
+        };
+    }>;
+    resolveDispute(params: {
+        disputeId: string;
+        resolution: string;
+        resolvedBy: string;
+    }): Promise<{
+        disputeId: string;
+        status: string;
+    }>;
+    adminCancelJob(params: {
+        requestId: string;
+    }): Promise<{
+        requestId: string;
+        status: string;
+    }>;
+    getCancellationStats(): Promise<{
+        users: {
+            id: any;
+            name: string;
+            type: any;
+            cancelCount: any;
+        }[];
+    }>;
+    getCommissionConfig(): Promise<{
+        commissionPercent: number;
+    }>;
+    updateCommissionConfig(params: {
+        commissionPercent: number;
+    }): Promise<{
+        commissionPercent: number;
+    }>;
+    updateCategory(params: {
+        id: string;
+        name?: string;
+        description?: string;
+        icon?: string;
+        active?: boolean;
+    }): Promise<{
+        category: {
+            id: any;
+            name: any;
+            description: any;
+            icon: any;
+            parentId: any;
+            active: any;
+            createdAt: any;
+            updatedAt: any;
+        };
+    }>;
+    getDisputeMessages(disputeId: string): Promise<{
+        messages: {
+            id: any;
+            disputeId: any;
+            senderType: any;
+            senderId: any;
+            senderName: string;
+            content: any;
+            createdAt: any;
+        }[];
+    }>;
+    sendDisputeMessage(params: {
+        disputeId: string;
+        senderType: string;
+        senderId?: string;
+        content: string;
+    }): Promise<{
+        messageId: any;
+        createdAt: any;
+    }>;
+    deleteCategory(categoryId: string): Promise<{
+        deleted: boolean;
+        categoryId: string;
+    }>;
+    listAllCategories(): Promise<{
+        categories: {
+            id: any;
+            name: any;
+            description: any;
+            icon: any;
+            parentId: any;
+            active: any;
+            createdAt: any;
+            updatedAt: any;
+        }[];
+    }>;
 }
 export {};

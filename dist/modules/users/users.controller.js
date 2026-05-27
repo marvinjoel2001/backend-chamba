@@ -14,8 +14,10 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UsersController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
 const swagger_1 = require("@nestjs/swagger");
 const create_user_dto_1 = require("./dto/create-user.dto");
+const review_worker_verification_dto_1 = require("./dto/review-worker-verification.dto");
 const update_user_dto_1 = require("./dto/update-user.dto");
 const user_entity_1 = require("./entities/user.entity");
 const users_service_1 = require("./users.service");
@@ -37,11 +39,20 @@ let UsersController = class UsersController {
             radiusKm,
         });
     }
+    getWorkerVerificationInbox() {
+        return this.usersService.getWorkerVerificationInbox();
+    }
+    reviewWorkerVerification(id, body) {
+        return this.usersService.reviewWorkerVerification(id, body);
+    }
     findOne(id) {
         return this.usersService.findOne(id);
     }
     update(id, updateUserDto) {
         return this.usersService.update(id, updateUserDto);
+    }
+    uploadVerificationPhotos(id, idPhoto, body) {
+        return this.usersService.uploadVerificationPhotos(id, idPhoto, body.facePhotoUrl);
     }
 };
 exports.UsersController = UsersController;
@@ -82,6 +93,26 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "findNearbyWorkers", null);
 __decorate([
+    (0, swagger_1.ApiOperation)({ summary: 'Listar buzon de verificaciones de workers pendientes' }),
+    (0, swagger_1.ApiOkResponse)({ type: user_entity_1.User, isArray: true }),
+    (0, common_1.Get)('verification/workers/inbox'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "getWorkerVerificationInbox", null);
+__decorate([
+    (0, swagger_1.ApiOperation)({ summary: 'Revisar verificacion de worker (carnet/selfie por separado)' }),
+    (0, swagger_1.ApiParam)({ name: 'id', format: 'uuid' }),
+    (0, swagger_1.ApiBody)({ type: review_worker_verification_dto_1.ReviewWorkerVerificationDto }),
+    (0, swagger_1.ApiOkResponse)({ type: user_entity_1.User }),
+    (0, common_1.Patch)(':id/verification/review'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, review_worker_verification_dto_1.ReviewWorkerVerificationDto]),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "reviewWorkerVerification", null);
+__decorate([
     (0, swagger_1.ApiOperation)({ summary: 'Obtener usuario por id' }),
     (0, swagger_1.ApiParam)({ name: 'id', format: 'uuid' }),
     (0, swagger_1.ApiOkResponse)({ type: user_entity_1.User }),
@@ -108,6 +139,20 @@ __decorate([
     __metadata("design:paramtypes", [String, update_user_dto_1.UpdateUserDto]),
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "update", null);
+__decorate([
+    (0, swagger_1.ApiOperation)({ summary: 'Subir fotos de verificación de identidad' }),
+    (0, swagger_1.ApiParam)({ name: 'id', format: 'uuid' }),
+    (0, swagger_1.ApiOkResponse)({ type: user_entity_1.User }),
+    (0, swagger_1.ApiNotFoundResponse)({ description: 'Usuario no encontrado' }),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('idPhoto')),
+    (0, common_1.Post)(':id/verification-photos'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.UploadedFile)()),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "uploadVerificationPhotos", null);
 exports.UsersController = UsersController = __decorate([
     (0, swagger_1.ApiTags)('Users'),
     (0, common_1.Controller)('users'),

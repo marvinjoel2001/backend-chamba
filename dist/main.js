@@ -37,7 +37,7 @@ async function bootstrap() {
         transform: true,
         forbidNonWhitelisted: true,
     }));
-    app.useGlobalInterceptors(new http_logger_interceptor_1.HttpLoggerInterceptor());
+    app.useGlobalInterceptors(app.get(http_logger_interceptor_1.HttpLoggerInterceptor));
     const swaggerConfig = new swagger_1.DocumentBuilder()
         .setTitle('Chamba Backend API')
         .setDescription('Documentación de endpoints HTTP de Chamba')

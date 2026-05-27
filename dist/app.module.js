@@ -9,7 +9,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
+const http_logger_interceptor_1 = require("./common/interceptors/http-logger.interceptor");
 const env_validation_1 = require("./config/env.validation");
+const api_logs_module_1 = require("./modules/api-logs/api-logs.module");
 const database_module_1 = require("./infrastructure/database/database.module");
 const push_module_1 = require("./infrastructure/push/push.module");
 const redis_module_1 = require("./infrastructure/redis/redis.module");
@@ -39,6 +41,7 @@ exports.AppModule = AppModule = __decorate([
                     abortEarly: false,
                 },
             }),
+            api_logs_module_1.ApiLogsModule,
             database_module_1.DatabaseModule,
             redis_module_1.RedisModule,
             push_module_1.PushModule,
@@ -51,6 +54,7 @@ exports.AppModule = AppModule = __decorate([
             mobile_module_1.MobileModule,
             placeholders_module_1.PlaceholdersModule,
         ],
+        providers: [http_logger_interceptor_1.HttpLoggerInterceptor],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

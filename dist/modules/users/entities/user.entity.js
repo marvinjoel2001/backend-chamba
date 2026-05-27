@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.User = exports.UserType = void 0;
+exports.User = exports.VerificationStatus = exports.UserType = void 0;
 const typeorm_1 = require("typeorm");
 const swagger_1 = require("@nestjs/swagger");
 var UserType;
@@ -17,11 +17,25 @@ var UserType;
     UserType["CLIENT"] = "client";
     UserType["WORKER"] = "worker";
 })(UserType || (exports.UserType = UserType = {}));
+var VerificationStatus;
+(function (VerificationStatus) {
+    VerificationStatus["NOT_VERIFIED"] = "not_verified";
+    VerificationStatus["PENDING"] = "pending";
+    VerificationStatus["VERIFIED"] = "verified";
+})(VerificationStatus || (exports.VerificationStatus = VerificationStatus = {}));
 let User = class User {
     id;
     type;
     email;
     phone;
+    countryCode;
+    ciNumber;
+    verificationStatus;
+    idPhotoUrl;
+    facePhotoUrl;
+    idPhotoVerified;
+    facePhotoVerified;
+    verificationReviewedAt;
     firstName;
     lastName;
     profilePhotoUrl;
@@ -51,10 +65,54 @@ __decorate([
     __metadata("design:type", String)
 ], User.prototype, "email", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ example: '+59170000000' }),
-    (0, typeorm_1.Column)({ unique: true, nullable: true }),
+    (0, swagger_1.ApiPropertyOptional)({ example: '70000000' }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
 ], User.prototype, "phone", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: '+591' }),
+    (0, typeorm_1.Column)({ name: 'country_code', nullable: true }),
+    __metadata("design:type", String)
+], User.prototype, "countryCode", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: '12345678' }),
+    (0, typeorm_1.Column)({ name: 'ci_number', nullable: true }),
+    __metadata("design:type", String)
+], User.prototype, "ciNumber", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ enum: VerificationStatus, example: VerificationStatus.NOT_VERIFIED }),
+    (0, typeorm_1.Column)({ name: 'verification_status', type: 'enum', enum: VerificationStatus, default: VerificationStatus.NOT_VERIFIED }),
+    __metadata("design:type", String)
+], User.prototype, "verificationStatus", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: 'https://cdn.chamba.com/id-photo.jpg' }),
+    (0, typeorm_1.Column)({ name: 'id_photo_url', nullable: true }),
+    __metadata("design:type", String)
+], User.prototype, "idPhotoUrl", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: 'https://cdn.chamba.com/face-photo.jpg' }),
+    (0, typeorm_1.Column)({ name: 'face_photo_url', nullable: true }),
+    __metadata("design:type", String)
+], User.prototype, "facePhotoUrl", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: true, nullable: true }),
+    (0, typeorm_1.Column)({ name: 'id_photo_verified', type: 'boolean', nullable: true }),
+    __metadata("design:type", Object)
+], User.prototype, "idPhotoVerified", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: false, nullable: true }),
+    (0, typeorm_1.Column)({ name: 'face_photo_verified', type: 'boolean', nullable: true }),
+    __metadata("design:type", Object)
+], User.prototype, "facePhotoVerified", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({
+        type: String,
+        nullable: true,
+        example: '2026-05-23T18:12:00.000Z',
+    }),
+    (0, typeorm_1.Column)({ name: 'verification_reviewed_at', type: 'timestamptz', nullable: true }),
+    __metadata("design:type", Object)
+], User.prototype, "verificationReviewedAt", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({ example: 'Juan' }),
     (0, typeorm_1.Column)({ name: 'first_name' }),

@@ -38,10 +38,10 @@ let NotificationsService = class NotificationsService {
     async notifyWorkersForJobWave(params) {
         return this.pushService.sendToTokens({
             tokens: params.tokens,
-            title: `Nueva chamba: ${params.category}`,
-            body: `Oferta ${params.offeredPrice} - a ${params.distanceKm} km`,
+            title: `Trabajo nuevo cerca: ${params.category}`,
+            body: `Tienes una solicitud ${params.offeredPrice} a ${params.distanceKm} km. Toca para revisar.`,
             data: {
-                type: 'job_wave',
+                type: 'request_new',
                 jobId: params.jobId,
             },
         });

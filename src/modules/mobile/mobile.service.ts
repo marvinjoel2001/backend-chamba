@@ -2587,6 +2587,35 @@ export class MobileService implements OnModuleInit {
       `CREATE INDEX IF NOT EXISTS idx_job_request_photos_request ON job_request_photos(request_id);`,
       `CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_id);`,
       `CREATE INDEX IF NOT EXISTS idx_categories_active_name ON categories(is_active, name);`,
+      `
+      CREATE TABLE IF NOT EXISTS disputes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        request_id UUID NOT NULL REFERENCES job_requests(id) ON DELETE CASCADE,
+        reported_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reported_user UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+        reason TEXT NOT NULL,
+        description TEXT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        resolution TEXT NULL,
+        resolved_by TEXT NULL,
+        resolved_at TIMESTAMPTZ NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      `,
+      `CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);`,
+      `CREATE INDEX IF NOT EXISTS idx_disputes_request ON disputes(request_id);`,
+      `
+      CREATE TABLE IF NOT EXISTS dispute_messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        dispute_id UUID NOT NULL REFERENCES disputes(id) ON DELETE CASCADE,
+        sender_type TEXT NOT NULL DEFAULT 'user',
+        sender_id UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      `,
+      `CREATE INDEX IF NOT EXISTS idx_dispute_messages_dispute ON dispute_messages(dispute_id, created_at ASC);`,
     ];
 
     for (const statement of statements) {
@@ -4039,5 +4068,360 @@ Reglas obligatorias:
         [id, name],
       );
     }
+  }
+
+  // ─── Admin: Disputes ───
+
+  async listDisputes(params?: { status?: string }) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT d.id,
+             d.request_id,
+             d.reported_by,
+             d.reported_user,
+             d.reason,
+             d.description,
+             d.status,
+             d.resolution,
+             d.resolved_by,
+             d.resolved_at,
+             d.created_at,
+             d.updated_at,
+             jr.title AS request_title,
+             jr.status AS request_status,
+             reporter.first_name AS reporter_first_name,
+             reporter.last_name AS reporter_last_name,
+             reporter.type AS reporter_type,
+             reported.first_name AS reported_first_name,
+             reported.last_name AS reported_last_name,
+             reported.type AS reported_type
+      FROM disputes d
+      JOIN job_requests jr ON jr.id = d.request_id
+      JOIN users reporter ON reporter.id = d.reported_by
+      LEFT JOIN users reported ON reported.id = d.reported_user
+      WHERE ($1::text IS NULL OR d.status = $1)
+      ORDER BY d.created_at DESC
+      LIMIT 500
+      `,
+      [params?.status || null],
+    );
+
+    return {
+      disputes: rows.map((r) => ({
+        id: r.id,
+        requestId: r.request_id,
+        requestTitle: r.request_title,
+        requestStatus: r.request_status,
+        reportedBy: r.reported_by,
+        reporterName: [r.reporter_first_name, r.reporter_last_name].filter(Boolean).join(' '),
+        reporterType: r.reporter_type,
+        reportedUser: r.reported_user,
+        reportedName: [r.reported_first_name, r.reported_last_name].filter(Boolean).join(' '),
+        reportedType: r.reported_type,
+        reason: r.reason,
+        description: r.description ?? '',
+        status: r.status,
+        resolution: r.resolution,
+        resolvedBy: r.resolved_by,
+        resolvedAt: r.resolved_at,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      })),
+    };
+  }
+
+  async createDispute(params: {
+    requestId: string;
+    reportedBy: string;
+    reportedUser?: string;
+    reason: string;
+    description?: string;
+  }) {
+    if (!params.requestId || !params.reportedBy || !params.reason?.trim()) {
+      throw new BadRequestException('requestId, reportedBy, and reason are required');
+    }
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      INSERT INTO disputes (request_id, reported_by, reported_user, reason, description)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, status, created_at
+      `,
+      [
+        params.requestId,
+        params.reportedBy,
+        params.reportedUser || null,
+        params.reason.trim(),
+        params.description?.trim() || null,
+      ],
+    );
+
+    return { dispute: { id: rows[0].id, status: rows[0].status, createdAt: rows[0].created_at } };
+  }
+
+  async resolveDispute(params: {
+    disputeId: string;
+    resolution: string;
+    resolvedBy: string;
+  }) {
+    if (!params.disputeId || !params.resolution?.trim()) {
+      throw new BadRequestException('disputeId and resolution are required');
+    }
+
+    await this.dataSource.query(
+      `
+      UPDATE disputes
+      SET status = 'resolved',
+          resolution = $2,
+          resolved_by = $3,
+          resolved_at = NOW(),
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [params.disputeId, params.resolution.trim(), params.resolvedBy || 'admin'],
+    );
+
+    return { disputeId: params.disputeId, status: 'resolved' };
+  }
+
+  // ─── Admin: Cancel Job ───
+
+  async adminCancelJob(params: { requestId: string }) {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT id, client_user_id, status FROM job_requests WHERE id = $1 LIMIT 1`,
+      [params.requestId],
+    );
+    if (!rows[0]) throw new NotFoundException('Request not found');
+
+    const req = rows[0];
+    if (req.status === 'completed' || req.status === 'cancelled') {
+      throw new BadRequestException('Cannot cancel a request that is already ' + req.status);
+    }
+
+    await this.dataSource.query(
+      `UPDATE job_requests SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+      [params.requestId],
+    );
+
+    // Restore worker availability
+    const offerRows = await this.dataSource.query<any[]>(
+      `SELECT worker_user_id FROM job_offers WHERE request_id = $1 AND status = 'accepted' LIMIT 1`,
+      [params.requestId],
+    );
+    if (offerRows[0]?.worker_user_id) {
+      await this.dataSource.query(
+        `UPDATE users SET is_available = true, updated_at = NOW() WHERE id = $1`,
+        [offerRows[0].worker_user_id],
+      );
+    }
+
+    this.realtimeGateway.server.emit('request.status.updated', {
+      requestId: params.requestId,
+      status: 'cancelled',
+      timestamp: new Date().toISOString(),
+    });
+
+    return { requestId: params.requestId, status: 'cancelled' };
+  }
+
+  // ─── Admin: Cancellation Stats ───
+
+  async getCancellationStats() {
+    const rows = await this.dataSource.query<any[]>(`
+      SELECT
+        u.id,
+        u.first_name,
+        u.last_name,
+        u.type,
+        COUNT(*)::int AS cancel_count
+      FROM job_requests jr
+      LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
+      JOIN users u ON u.id = COALESCE(jo.worker_user_id, jr.client_user_id)
+      WHERE jr.status = 'cancelled'
+      GROUP BY u.id, u.first_name, u.last_name, u.type
+      HAVING COUNT(*) >= 1
+      ORDER BY cancel_count DESC
+      LIMIT 100
+    `);
+
+    return {
+      users: rows.map((r) => ({
+        id: r.id,
+        name: [r.first_name, r.last_name].filter(Boolean).join(' '),
+        type: r.type,
+        cancelCount: r.cancel_count,
+      })),
+    };
+  }
+
+  // ─── Admin: Commission Config ───
+
+  async getCommissionConfig() {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT value_json FROM app_config WHERE key = 'platform_commission' LIMIT 1`,
+    );
+    if (rows[0]) {
+      const val = typeof rows[0].value_json === 'string' ? JSON.parse(rows[0].value_json) : rows[0].value_json;
+      return { commissionPercent: Number(val.percent ?? 10) };
+    }
+    return { commissionPercent: 10 };
+  }
+
+  async updateCommissionConfig(params: { commissionPercent: number }) {
+    const percent = Math.min(50, Math.max(0, Number(params.commissionPercent)));
+    if (!Number.isFinite(percent)) {
+      throw new BadRequestException('commissionPercent must be a valid number');
+    }
+
+    await this.dataSource.query(
+      `
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ('platform_commission', $1::jsonb, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
+      `,
+      [JSON.stringify({ percent })],
+    );
+
+    return { commissionPercent: percent };
+  }
+
+  // ─── Admin: Category Update & Delete ───
+
+  async updateCategory(params: {
+    id: string;
+    name?: string;
+    description?: string;
+    icon?: string;
+    active?: boolean;
+  }) {
+    const sets: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (params.name !== undefined) { sets.push(`name = $${idx++}`); values.push(params.name.trim()); }
+    if (params.description !== undefined) { sets.push(`description = $${idx++}`); values.push(params.description.trim()); }
+    if (params.icon !== undefined) { sets.push(`icon = $${idx++}`); values.push(params.icon.trim() || null); }
+    if (params.active !== undefined) { sets.push(`is_active = $${idx++}`); values.push(params.active); }
+
+    if (sets.length === 0) throw new BadRequestException('No fields to update');
+
+    sets.push(`updated_at = NOW()`);
+    values.push(params.id);
+
+    const rows = await this.dataSource.query<any[]>(
+      `UPDATE categories SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, name, description, icon, is_active, parent_id, created_at, updated_at`,
+      values,
+    );
+
+    if (!rows[0]) throw new NotFoundException('Category not found');
+
+    return {
+      category: {
+        id: rows[0].id,
+        name: rows[0].name,
+        description: rows[0].description ?? '',
+        icon: rows[0].icon ?? null,
+        parentId: rows[0].parent_id ?? null,
+        active: rows[0].is_active,
+        createdAt: rows[0].created_at,
+        updatedAt: rows[0].updated_at,
+      },
+    };
+  }
+
+  async getDisputeMessages(disputeId: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT dm.id,
+             dm.dispute_id,
+             dm.sender_type,
+             dm.sender_id,
+             dm.content,
+             dm.created_at,
+             u.first_name AS sender_first_name,
+             u.last_name AS sender_last_name
+      FROM dispute_messages dm
+      LEFT JOIN users u ON u.id = dm.sender_id
+      WHERE dm.dispute_id = $1
+      ORDER BY dm.created_at ASC
+      LIMIT 500
+      `,
+      [disputeId],
+    );
+
+    return {
+      messages: rows.map((r) => ({
+        id: r.id,
+        disputeId: r.dispute_id,
+        senderType: r.sender_type,
+        senderId: r.sender_id,
+        senderName: [r.sender_first_name, r.sender_last_name].filter(Boolean).join(' ') || 'Soporte',
+        content: r.content,
+        createdAt: r.created_at,
+      })),
+    };
+  }
+
+  async sendDisputeMessage(params: {
+    disputeId: string;
+    senderType: string;
+    senderId?: string;
+    content: string;
+  }) {
+    if (!params.content?.trim()) {
+      throw new BadRequestException('content is required');
+    }
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      INSERT INTO dispute_messages (dispute_id, sender_type, sender_id, content)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, created_at
+      `,
+      [
+        params.disputeId,
+        params.senderType || 'user',
+        params.senderId || null,
+        params.content.trim(),
+      ],
+    );
+
+    this.realtimeGateway.server.emit('dispute.message', {
+      disputeId: params.disputeId,
+      messageId: rows[0].id,
+      senderType: params.senderType,
+      timestamp: rows[0].created_at,
+    });
+
+    return { messageId: rows[0].id, createdAt: rows[0].created_at };
+  }
+
+  async deleteCategory(categoryId: string) {
+    await this.dataSource.query(
+      `UPDATE categories SET is_active = false, updated_at = NOW() WHERE id = $1`,
+      [categoryId],
+    );
+    return { deleted: true, categoryId };
+  }
+
+  // ─── Admin: List all categories (including inactive) ───
+
+  async listAllCategories() {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT id, name, description, icon, parent_id, is_active, created_at, updated_at FROM categories ORDER BY name ASC`,
+    );
+    return {
+      categories: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description ?? '',
+        icon: row.icon ?? null,
+        parentId: row.parent_id ?? null,
+        active: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      })),
+    };
   }
 }
