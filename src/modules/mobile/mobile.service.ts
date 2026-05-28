@@ -2590,7 +2590,7 @@ export class MobileService implements OnModuleInit {
       `
       CREATE TABLE IF NOT EXISTS disputes (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        request_id UUID NOT NULL REFERENCES job_requests(id) ON DELETE CASCADE,
+        request_id UUID NULL REFERENCES job_requests(id) ON DELETE CASCADE,
         reported_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         reported_user UUID NULL REFERENCES users(id) ON DELETE SET NULL,
         reason TEXT NOT NULL,
@@ -2605,6 +2605,7 @@ export class MobileService implements OnModuleInit {
       `,
       `CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);`,
       `CREATE INDEX IF NOT EXISTS idx_disputes_request ON disputes(request_id);`,
+      `ALTER TABLE disputes ALTER COLUMN request_id DROP NOT NULL;`,
       `
       CREATE TABLE IF NOT EXISTS dispute_messages (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -4131,14 +4132,14 @@ Reglas obligatorias:
   }
 
   async createDispute(params: {
-    requestId: string;
+    requestId?: string;
     reportedBy: string;
     reportedUser?: string;
     reason: string;
     description?: string;
   }) {
-    if (!params.requestId || !params.reportedBy || !params.reason?.trim()) {
-      throw new BadRequestException('requestId, reportedBy, and reason are required');
+    if (!params.reportedBy || !params.reason?.trim()) {
+      throw new BadRequestException('El usuario reportante y la razón del reporte son obligatorios.');
     }
 
     const rows = await this.dataSource.query<any[]>(
@@ -4148,7 +4149,7 @@ Reglas obligatorias:
       RETURNING id, status, created_at
       `,
       [
-        params.requestId,
+        params.requestId || null,
         params.reportedBy,
         params.reportedUser || null,
         params.reason.trim(),
