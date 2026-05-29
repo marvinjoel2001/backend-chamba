@@ -450,7 +450,7 @@ export class MobileController {
 
   @Post('mobile/disputes')
   createDispute(
-    @Body('requestId') requestId?: string,
+    @Body('requestId') requestId: string | undefined,
     @Body('reportedBy') reportedBy: string,
     @Body('reportedUser') reportedUser?: string,
     @Body('reason') reason?: string,
