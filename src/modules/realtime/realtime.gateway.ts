@@ -100,6 +100,37 @@ export class RealtimeGateway
     this.server.to(this.threadRoom(threadId)).emit(event, payload);
   }
 
+  /**
+   * Emitir evento a todos los clientes conectados (broadcast global)
+   * Útil para eventos que deben ser visibles en el admin panel
+   */
+  broadcastToAll(event: string, payload: unknown): void {
+    this.server.emit(event, payload);
+  }
+
+  /**
+   * Emitir actualización de ubicación de cliente a todos los listeners
+   */
+  broadcastClientLocationUpdated(clientId: string, latitude: number, longitude: number, timestamp: string): void {
+    this.server.emit('client.location.updated', {
+      clientId,
+      latitude,
+      longitude,
+      timestamp,
+    });
+  }
+
+  /**
+   * Emitir cambio de estado de cliente (activo/inactivo)
+   */
+  broadcastClientStatusChanged(clientId: string, isActive: boolean, timestamp: string): void {
+    this.server.emit('client.status.changed', {
+      clientId,
+      isActive,
+      timestamp,
+    });
+  }
+
   private userRoom(userId: string): string {
     return `user:${userId}`;
   }

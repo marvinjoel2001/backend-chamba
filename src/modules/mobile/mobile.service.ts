@@ -2187,6 +2187,52 @@ export class MobileService implements OnModuleInit {
     };
   }
 
+  async updateClientLocation(params: {
+    clientUserId: string;
+    latitude: number;
+    longitude: number;
+  }) {
+    if (
+      !Number.isFinite(params.latitude) ||
+      !Number.isFinite(params.longitude)
+    ) {
+      throw new BadRequestException('latitude and longitude are required');
+    }
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      UPDATE users
+      SET current_location = ST_SetSRID(ST_MakePoint($3::float8, $2::float8), 4326)::geography,
+          updated_at = NOW()
+      WHERE id = $1 AND type = 'client'
+      RETURNING id,
+                ST_Y(current_location::geometry) AS latitude,
+                ST_X(current_location::geometry) AS longitude
+      `,
+      [params.clientUserId, params.latitude, params.longitude],
+    );
+
+    if (!rows[0]) {
+      throw new NotFoundException('Client not found');
+    }
+
+    const payload = {
+      clientId: rows[0].id,
+      latitude: Number(rows[0].latitude),
+      longitude: Number(rows[0].longitude),
+      timestamp: new Date().toISOString(),
+    };
+    // Emitir a todos los listeners (incluyendo admin panel)
+    this.realtimeGateway.broadcastClientLocationUpdated(
+      payload.clientId,
+      payload.latitude,
+      payload.longitude,
+      payload.timestamp,
+    );
+
+    return payload;
+  }
+
   async getWorkerSkills(workerUserId: string) {
     await this.getUserById(workerUserId);
 
