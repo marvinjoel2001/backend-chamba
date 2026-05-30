@@ -4143,7 +4143,7 @@ Reglas obligatorias:
              reported.last_name AS reported_last_name,
              reported.type AS reported_type
       FROM disputes d
-      JOIN job_requests jr ON jr.id = d.request_id
+      LEFT JOIN job_requests jr ON jr.id = d.request_id
       JOIN users reporter ON reporter.id = d.reported_by
       LEFT JOIN users reported ON reported.id = d.reported_user
       WHERE ($1::text IS NULL OR d.status = $1)
