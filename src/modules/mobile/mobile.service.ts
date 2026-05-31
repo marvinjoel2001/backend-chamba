@@ -1632,16 +1632,13 @@ export class MobileService implements OnModuleInit {
       [params.requestId, params.amount],
     );
 
-    // Expirar todas las ofertas pendientes del worker.
-    // job_offers.amount es lo que pide el worker; el cliente actualiza solo el budget.
-    // El worker verá el nuevo budget del cliente y podrá aceptar u ofertar de nuevo.
+    // Seleccionar los workers con ofertas pendientes para notificarles del nuevo budget
     const workerRows = await this.dataSource.query<any[]>(
       `
-      UPDATE job_offers
-      SET status = 'expired', expires_at = NOW()
+      SELECT worker_user_id
+      FROM job_offers
       WHERE request_id = $1
         AND status = 'pending'
-      RETURNING worker_user_id
       `,
       [params.requestId],
     );
@@ -3126,20 +3123,21 @@ export class MobileService implements OnModuleInit {
   private async findLatestClientRequest(clientUserId: string) {
     const rows = await this.dataSource.query<any[]>(
       `
-      SELECT id,
-             client_user_id,
-             title,
-             description,
-             category,
-             ai_categories,
-             budget,
-             price_type,
-             address,
-             status,
-             created_at
-      FROM job_requests
-      WHERE client_user_id = $1
-      ORDER BY created_at DESC
+      SELECT jr.id,
+             jr.client_user_id,
+             jr.title,
+             jr.description,
+             jr.category,
+             jr.ai_categories,
+             jr.budget,
+             jr.price_type,
+             jr.address,
+             jr.status,
+             jr.created_at,
+             (SELECT COUNT(*) FROM job_offers jo WHERE jo.request_id = jr.id AND jo.status = 'pending') AS pending_offers_count
+      FROM job_requests jr
+      WHERE jr.client_user_id = $1
+      ORDER BY jr.created_at DESC
       LIMIT 1
       `,
       [clientUserId],
@@ -3162,6 +3160,7 @@ export class MobileService implements OnModuleInit {
       address: row.address,
       status: row.status,
       createdAt: row.created_at,
+      pendingOffersCount: Number(row.pending_offers_count ?? 0),
     };
   }
 
