@@ -14,6 +14,7 @@ import { PlaceholdersModule } from './modules/placeholders/placeholders.module';
 import { QueuesModule } from './modules/queues/queues.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { UsersModule } from './modules/users/users.module';
+import { PaymentMethodsModule } from './modules/payment-methods/payment-methods.module';
 
 const envFilePath =
   process.env.NODE_ENV === 'production'
@@ -43,6 +44,7 @@ const envFilePath =
     NotificationsModule,
     MobileModule,
     PlaceholdersModule,
+    PaymentMethodsModule,
   ],
   providers: [HttpLoggerInterceptor],
 })

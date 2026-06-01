@@ -71,6 +71,24 @@ let RealtimeGateway = class RealtimeGateway {
     emitToThread(threadId, event, payload) {
         this.server.to(this.threadRoom(threadId)).emit(event, payload);
     }
+    broadcastToAll(event, payload) {
+        this.server.emit(event, payload);
+    }
+    broadcastClientLocationUpdated(clientId, latitude, longitude, timestamp) {
+        this.server.emit('client.location.updated', {
+            clientId,
+            latitude,
+            longitude,
+            timestamp,
+        });
+    }
+    broadcastClientStatusChanged(clientId, isActive, timestamp) {
+        this.server.emit('client.status.changed', {
+            clientId,
+            isActive,
+            timestamp,
+        });
+    }
     userRoom(userId) {
         return `user:${userId}`;
     }

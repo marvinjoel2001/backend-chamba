@@ -38,11 +38,44 @@ let NotificationsService = class NotificationsService {
     async notifyWorkersForJobWave(params) {
         return this.pushService.sendToTokens({
             tokens: params.tokens,
-            title: `Trabajo nuevo cerca: ${params.category}`,
+            title: `📍 Trabajo nuevo cerca: ${params.category}`,
             body: `Tienes una solicitud ${params.offeredPrice} a ${params.distanceKm} km. Toca para revisar.`,
             data: {
                 type: 'request_new',
                 jobId: params.jobId,
+            },
+        });
+    }
+    async notifyClientNewOffer(params) {
+        return this.pushService.sendToToken({
+            token: params.token,
+            title: `💰 ${params.workerName} ofertó Bs ${params.amount}`,
+            body: `En tu solicitud: ${params.jobTitle}`,
+            data: {
+                type: 'offer_new',
+                requestId: params.requestId,
+            },
+        });
+    }
+    async notifyWorkerOfferAccepted(params) {
+        return this.pushService.sendToToken({
+            token: params.token,
+            title: `✅ ¡Oferta aceptada!`,
+            body: `${params.clientName} aceptó tu oferta en: ${params.jobTitle}`,
+            data: {
+                type: 'offer_accepted',
+                requestId: params.requestId,
+            },
+        });
+    }
+    async notifyNewMessage(params) {
+        return this.pushService.sendToToken({
+            token: params.token,
+            title: `💬 ${params.senderName}`,
+            body: params.message.length > 60 ? params.message.substring(0, 60) + '...' : params.message,
+            data: {
+                type: 'message_new',
+                threadId: params.threadId,
             },
         });
     }

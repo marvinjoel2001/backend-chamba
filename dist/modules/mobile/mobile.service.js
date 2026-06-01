@@ -324,7 +324,8 @@ let MobileService = class MobileService {
         scheduled_at,
         location,
         address,
-        status
+        status,
+        payment_method
       )
       VALUES (
         $1,
@@ -337,9 +338,10 @@ let MobileService = class MobileService {
         $8,
         ST_SetSRID(ST_MakePoint($10::float8, $9::float8), 4326)::geography,
         $11,
-        'searching'
+        'searching',
+        $12
       )
-      RETURNING id, status, title, budget, address, ai_categories, created_at
+      RETURNING id, status, title, budget, address, ai_categories, created_at, payment_method
       `, [
             input.clientUserId,
             input.title,
@@ -348,10 +350,11 @@ let MobileService = class MobileService {
             JSON.stringify(aiCategories),
             input.budget,
             input.priceType,
-            input.scheduledAt ?? null,
+            input.scheduledAt || null,
             input.latitude,
             input.longitude,
             input.address,
+            input.paymentMethod || 'Efectivo',
         ]);
         const created = rows[0];
         const uploadedPhotos = uploadedPhotosInput.length > 0
@@ -833,6 +836,14 @@ let MobileService = class MobileService {
         if (thread?.worker_user_id) {
             this.realtimeGateway.emitToUser(thread.worker_user_id, 'message.new', payload);
         }
+        const recipientUserId = params.senderUserId === thread?.client_user_id
+            ? thread?.worker_user_id
+            : thread?.client_user_id;
+        if (recipientUserId) {
+            this.notifyRecipientOfNewMessage(recipientUserId, params.senderUserId, params.content, params.threadId).catch((err) => {
+                this.logger.warn('Failed to send push notification for new message:', err.message);
+            });
+        }
         return {
             message: {
                 id: rows[0].id,
@@ -841,6 +852,21 @@ let MobileService = class MobileService {
                 createdAt: rows[0].created_at,
             },
         };
+    }
+    async notifyRecipientOfNewMessage(recipientUserId, senderUserId, message, threadId) {
+        const senderRows = await this.dataSource.query(`SELECT first_name, last_name FROM users WHERE id = $1`, [senderUserId]);
+        const senderName = senderRows[0]
+            ? `${senderRows[0].first_name} ${senderRows[0].last_name ?? ''}`.trim()
+            : 'Alguien';
+        const tokenRows = await this.dataSource.query(`SELECT push_token FROM users WHERE id = $1 AND push_token IS NOT NULL`, [recipientUserId]);
+        if (!tokenRows[0]?.push_token)
+            return;
+        await this.notificationsService.notifyNewMessage({
+            token: tokenRows[0].push_token,
+            senderName,
+            message,
+            threadId,
+        });
     }
     async getIncomingRequest(workerUserId) {
         await this.expireStaleOffers();
@@ -1057,6 +1083,9 @@ let MobileService = class MobileService {
                 workerUserId: row.worker_user_id,
             });
         }
+        this.notifyClientOfNewOffer(params.requestId, params.workerUserId, params.amount, request.title).catch((err) => {
+            this.logger.warn('Failed to send push notification for new offer:', err.message);
+        });
         return {
             offer: {
                 id: offerId,
@@ -1067,6 +1096,26 @@ let MobileService = class MobileService {
                 status: 'pending',
             },
         };
+    }
+    async notifyClientOfNewOffer(requestId, workerUserId, amount, jobTitle) {
+        const workerRows = await this.dataSource.query(`SELECT first_name, last_name FROM users WHERE id = $1`, [workerUserId]);
+        const workerName = workerRows[0]
+            ? `${workerRows[0].first_name} ${workerRows[0].last_name ?? ''}`.trim()
+            : 'Un trabajador';
+        const requestRows = await this.dataSource.query(`SELECT client_user_id FROM job_requests WHERE id = $1`, [requestId]);
+        if (!requestRows[0])
+            return;
+        const clientUserId = requestRows[0].client_user_id;
+        const tokenRows = await this.dataSource.query(`SELECT push_token FROM users WHERE id = $1 AND push_token IS NOT NULL`, [clientUserId]);
+        if (!tokenRows[0]?.push_token)
+            return;
+        await this.notificationsService.notifyClientNewOffer({
+            token: tokenRows[0].push_token,
+            workerName,
+            amount,
+            jobTitle,
+            requestId,
+        });
     }
     async acceptOffer(params) {
         await this.expireStaleOffers();
@@ -1125,11 +1174,31 @@ let MobileService = class MobileService {
                 reason: 'selected_other_worker',
             });
         }
+        this.notifyWorkerOfAcceptedOffer(offer.request_id, offer.worker_user_id, params.clientUserId).catch((err) => {
+            this.logger.warn('Failed to send push notification for accepted offer:', err.message);
+        });
         return {
             accepted: true,
             requestId: offer.request_id,
             workerUserId: offer.worker_user_id,
         };
+    }
+    async notifyWorkerOfAcceptedOffer(requestId, workerUserId, clientUserId) {
+        const clientRows = await this.dataSource.query(`SELECT first_name, last_name FROM users WHERE id = $1`, [clientUserId]);
+        const clientName = clientRows[0]
+            ? `${clientRows[0].first_name} ${clientRows[0].last_name ?? ''}`.trim()
+            : 'Un cliente';
+        const requestRows = await this.dataSource.query(`SELECT title FROM job_requests WHERE id = $1`, [requestId]);
+        const jobTitle = requestRows[0]?.title ?? 'tu trabajo';
+        const tokenRows = await this.dataSource.query(`SELECT push_token FROM users WHERE id = $1 AND push_token IS NOT NULL`, [workerUserId]);
+        if (!tokenRows[0]?.push_token)
+            return;
+        await this.notificationsService.notifyWorkerOfferAccepted({
+            token: tokenRows[0].push_token,
+            clientName,
+            jobTitle,
+            requestId,
+        });
     }
     async discardOffer(params) {
         await this.dataSource.query(`
@@ -1200,11 +1269,10 @@ let MobileService = class MobileService {
         }
         await this.dataSource.query(`UPDATE job_requests SET budget = $2, status = 'negotiating', updated_at = NOW() WHERE id = $1`, [params.requestId, params.amount]);
         const workerRows = await this.dataSource.query(`
-      UPDATE job_offers
-      SET status = 'expired', expires_at = NOW()
+      SELECT worker_user_id
+      FROM job_offers
       WHERE request_id = $1
         AND status = 'pending'
-      RETURNING worker_user_id
       `, [params.requestId]);
         const payload = {
             requestId: params.requestId,
@@ -1628,6 +1696,32 @@ let MobileService = class MobileService {
             ...payload,
         };
     }
+    async updateClientLocation(params) {
+        if (!Number.isFinite(params.latitude) ||
+            !Number.isFinite(params.longitude)) {
+            throw new common_1.BadRequestException('latitude and longitude are required');
+        }
+        const rows = await this.dataSource.query(`
+      UPDATE users
+      SET current_location = ST_SetSRID(ST_MakePoint($3::float8, $2::float8), 4326)::geography,
+          updated_at = NOW()
+      WHERE id = $1 AND type = 'client'
+      RETURNING id,
+                ST_Y(current_location::geometry) AS latitude,
+                ST_X(current_location::geometry) AS longitude
+      `, [params.clientUserId, params.latitude, params.longitude]);
+        if (!rows[0]) {
+            throw new common_1.NotFoundException('Client not found');
+        }
+        const payload = {
+            clientId: rows[0].id,
+            latitude: Number(rows[0].latitude),
+            longitude: Number(rows[0].longitude),
+            timestamp: new Date().toISOString(),
+        };
+        this.realtimeGateway.broadcastClientLocationUpdated(payload.clientId, payload.latitude, payload.longitude, payload.timestamp);
+        return payload;
+    }
     async getWorkerSkills(workerUserId) {
         await this.getUserById(workerUserId);
         const rows = await this.dataSource.query(`SELECT skill FROM worker_skills WHERE user_id = $1 ORDER BY skill ASC`, [workerUserId]);
@@ -1962,7 +2056,7 @@ let MobileService = class MobileService {
             `
       CREATE TABLE IF NOT EXISTS disputes (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        request_id UUID NOT NULL REFERENCES job_requests(id) ON DELETE CASCADE,
+        request_id UUID NULL REFERENCES job_requests(id) ON DELETE CASCADE,
         reported_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         reported_user UUID NULL REFERENCES users(id) ON DELETE SET NULL,
         reason TEXT NOT NULL,
@@ -1977,6 +2071,7 @@ let MobileService = class MobileService {
       `,
             `CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);`,
             `CREATE INDEX IF NOT EXISTS idx_disputes_request ON disputes(request_id);`,
+            `ALTER TABLE disputes ALTER COLUMN request_id DROP NOT NULL;`,
             `
       CREATE TABLE IF NOT EXISTS dispute_messages (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2363,20 +2458,21 @@ let MobileService = class MobileService {
     }
     async findLatestClientRequest(clientUserId) {
         const rows = await this.dataSource.query(`
-      SELECT id,
-             client_user_id,
-             title,
-             description,
-             category,
-             ai_categories,
-             budget,
-             price_type,
-             address,
-             status,
-             created_at
-      FROM job_requests
-      WHERE client_user_id = $1
-      ORDER BY created_at DESC
+      SELECT jr.id,
+             jr.client_user_id,
+             jr.title,
+             jr.description,
+             jr.category,
+             jr.ai_categories,
+             jr.budget,
+             jr.price_type,
+             jr.address,
+             jr.status,
+             jr.created_at,
+             (SELECT COUNT(*) FROM job_offers jo WHERE jo.request_id = jr.id AND jo.status = 'pending') AS pending_offers_count
+      FROM job_requests jr
+      WHERE jr.client_user_id = $1
+      ORDER BY jr.created_at DESC
       LIMIT 1
       `, [clientUserId]);
         const row = rows[0];
@@ -2395,6 +2491,7 @@ let MobileService = class MobileService {
             address: row.address,
             status: row.status,
             createdAt: row.created_at,
+            pendingOffersCount: Number(row.pending_offers_count ?? 0),
         };
     }
     async getRequestById(requestId) {
@@ -3125,7 +3222,7 @@ Reglas obligatorias:
              reported.last_name AS reported_last_name,
              reported.type AS reported_type
       FROM disputes d
-      JOIN job_requests jr ON jr.id = d.request_id
+      LEFT JOIN job_requests jr ON jr.id = d.request_id
       JOIN users reporter ON reporter.id = d.reported_by
       LEFT JOIN users reported ON reported.id = d.reported_user
       WHERE ($1::text IS NULL OR d.status = $1)
@@ -3156,15 +3253,15 @@ Reglas obligatorias:
         };
     }
     async createDispute(params) {
-        if (!params.requestId || !params.reportedBy || !params.reason?.trim()) {
-            throw new common_1.BadRequestException('requestId, reportedBy, and reason are required');
+        if (!params.reportedBy || !params.reason?.trim()) {
+            throw new common_1.BadRequestException('El usuario reportante y la razón del reporte son obligatorios.');
         }
         const rows = await this.dataSource.query(`
       INSERT INTO disputes (request_id, reported_by, reported_user, reason, description)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING id, status, created_at
       `, [
-            params.requestId,
+            params.requestId || null,
             params.reportedBy,
             params.reportedUser || null,
             params.reason.trim(),

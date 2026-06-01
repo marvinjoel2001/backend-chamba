@@ -23,6 +23,7 @@ const placeholders_module_1 = require("./modules/placeholders/placeholders.modul
 const queues_module_1 = require("./modules/queues/queues.module");
 const realtime_module_1 = require("./modules/realtime/realtime.module");
 const users_module_1 = require("./modules/users/users.module");
+const payment_methods_module_1 = require("./modules/payment-methods/payment-methods.module");
 const envFilePath = process.env.NODE_ENV === 'production'
     ? ['.env.production', '.env']
     : ['.env.local', '.env'];
@@ -53,6 +54,7 @@ exports.AppModule = AppModule = __decorate([
             notifications_module_1.NotificationsModule,
             mobile_module_1.MobileModule,
             placeholders_module_1.PlaceholdersModule,
+            payment_methods_module_1.PaymentMethodsModule,
         ],
         providers: [http_logger_interceptor_1.HttpLoggerInterceptor],
     })

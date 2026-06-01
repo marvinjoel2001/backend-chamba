@@ -24,11 +24,11 @@ let StorageService = StorageService_1 = class StorageService {
     constructor(configService) {
         this.configService = configService;
         this.cloudName =
-            this.configService.get('CLOUDINARY_CLOUD_NAME', '')?.trim() || '';
+            this.configService.get('CLOUDINARY_CLOUD_NAME', '')?.trim() || 'chamba';
         this.apiKey =
-            this.configService.get('CLOUDINARY_API_KEY', '')?.trim() || '';
+            this.configService.get('CLOUDINARY_API_KEY', '')?.trim() || '494851424798979';
         this.apiSecret =
-            this.configService.get('CLOUDINARY_API_SECRET', '')?.trim() || '';
+            this.configService.get('CLOUDINARY_API_SECRET', '')?.trim() || 'dbIi3bUK2ZHUmY9kLt7Gl5qPcHc';
         this.enabled = Boolean(this.cloudName && this.apiKey && this.apiSecret);
         if (!this.enabled) {
             this.logger.warn('Cloudinary disabled: missing CLOUDINARY_CLOUD_NAME/CLOUDINARY_API_KEY/CLOUDINARY_API_SECRET.');

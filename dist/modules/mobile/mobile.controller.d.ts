@@ -75,6 +75,7 @@ export declare class MobileController {
             address: any;
             status: any;
             createdAt: any;
+            pendingOffersCount: number;
         } | null;
         nearbyWorkers: {
             id: any;
@@ -109,7 +110,7 @@ export declare class MobileController {
     }> | undefined, budget: number, priceType: string, address: string, latitude: number, longitude: number, scheduledAt?: string, photosBase64?: string[], photos?: Array<{
         url?: string;
         publicId?: string;
-    }>): Promise<{
+    }>, paymentMethod?: string): Promise<{
         request: {
             id: any;
             status: any;
@@ -247,6 +248,7 @@ export declare class MobileController {
             address: any;
             status: any;
             createdAt: any;
+            pendingOffersCount: number;
         } | {
             photos: {
                 id: any;
@@ -307,6 +309,7 @@ export declare class MobileController {
             address: any;
             status: any;
             createdAt: any;
+            pendingOffersCount: number;
         } | {
             photos: {
                 id: any;
@@ -668,7 +671,7 @@ export declare class MobileController {
             updatedAt: any;
         }[];
     }>;
-    createDispute(requestId: string, reportedBy: string, reportedUser?: string, reason?: string, description?: string): Promise<{
+    createDispute(requestId: string | undefined, reportedBy: string, reportedUser?: string, reason?: string, description?: string): Promise<{
         dispute: {
             id: any;
             status: any;

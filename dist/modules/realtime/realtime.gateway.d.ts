@@ -25,6 +25,9 @@ export declare class RealtimeGateway implements OnGatewayConnection, OnGatewayDi
     }): void;
     emitToUser(userId: string, event: string, payload: unknown): void;
     emitToThread(threadId: string, event: string, payload: unknown): void;
+    broadcastToAll(event: string, payload: unknown): void;
+    broadcastClientLocationUpdated(clientId: string, latitude: number, longitude: number, timestamp: string): void;
+    broadcastClientStatusChanged(clientId: string, isActive: boolean, timestamp: string): void;
     private userRoom;
     private threadRoom;
 }

@@ -35,6 +35,7 @@ type CreateRequestInput = {
     url: string;
     publicId: string;
   }>;
+  paymentMethod?: string;
 };
 
 @Injectable()
@@ -423,7 +424,8 @@ export class MobileService implements OnModuleInit {
         scheduled_at,
         location,
         address,
-        status
+        status,
+        payment_method
       )
       VALUES (
         $1,
@@ -436,9 +438,10 @@ export class MobileService implements OnModuleInit {
         $8,
         ST_SetSRID(ST_MakePoint($10::float8, $9::float8), 4326)::geography,
         $11,
-        'searching'
+        'searching',
+        $12
       )
-      RETURNING id, status, title, budget, address, ai_categories, created_at
+      RETURNING id, status, title, budget, address, ai_categories, created_at, payment_method
       `,
       [
         input.clientUserId,
@@ -448,10 +451,11 @@ export class MobileService implements OnModuleInit {
         JSON.stringify(aiCategories),
         input.budget,
         input.priceType,
-        input.scheduledAt ?? null,
+        input.scheduledAt || null,
         input.latitude,
         input.longitude,
         input.address,
+        input.paymentMethod || 'Efectivo',
       ],
     );
 

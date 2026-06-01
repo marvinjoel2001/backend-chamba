@@ -58,7 +58,7 @@ let MobileController = class MobileController {
             category,
         });
     }
-    createRequest(clientUserId, title, description, category, aiCategories, budget, priceType, address, latitude, longitude, scheduledAt, photosBase64, photos) {
+    createRequest(clientUserId, title, description, category, aiCategories, budget, priceType, address, latitude, longitude, scheduledAt, photosBase64, photos, paymentMethod) {
         return this.mobileService.createRequest({
             clientUserId,
             title,
@@ -76,6 +76,7 @@ let MobileController = class MobileController {
             longitude: Number(longitude),
             scheduledAt,
             photosBase64,
+            paymentMethod,
             photos: photos?.map((item) => ({
                 url: item.url ?? '',
                 publicId: item.publicId ?? '',
@@ -354,8 +355,9 @@ __decorate([
     __param(10, (0, common_1.Body)('scheduledAt')),
     __param(11, (0, common_1.Body)('photosBase64')),
     __param(12, (0, common_1.Body)('photos')),
+    __param(13, (0, common_1.Body)('paymentMethod')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, Object, Object, Number, String, String, Number, Number, String, Array, Array]),
+    __metadata("design:paramtypes", [String, String, String, Object, Object, Number, String, String, Number, Number, String, Array, Array, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "createRequest", null);
 __decorate([
@@ -661,7 +663,7 @@ __decorate([
     __param(3, (0, common_1.Body)('reason')),
     __param(4, (0, common_1.Body)('description')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String, String]),
+    __metadata("design:paramtypes", [Object, String, String, String, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "createDispute", null);
 __decorate([

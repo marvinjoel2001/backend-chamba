@@ -112,6 +112,7 @@ export class MobileController {
       url?: string;
       publicId?: string;
     }>,
+    @Body('paymentMethod') paymentMethod?: string,
   ) {
     return this.mobileService.createRequest({
       clientUserId,
@@ -130,6 +131,7 @@ export class MobileController {
       longitude: Number(longitude),
       scheduledAt,
       photosBase64,
+      paymentMethod,
       photos:
         photos?.map((item) => ({
           url: item.url ?? '',

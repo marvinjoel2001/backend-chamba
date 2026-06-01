@@ -25,6 +25,7 @@ type CreateRequestInput = {
         url: string;
         publicId: string;
     }>;
+    paymentMethod?: string;
 };
 export declare class MobileService implements OnModuleInit {
     private readonly configService;
@@ -127,6 +128,7 @@ export declare class MobileService implements OnModuleInit {
             address: any;
             status: any;
             createdAt: any;
+            pendingOffersCount: number;
         } | null;
         nearbyWorkers: {
             id: any;
@@ -289,6 +291,7 @@ export declare class MobileService implements OnModuleInit {
             address: any;
             status: any;
             createdAt: any;
+            pendingOffersCount: number;
         } | {
             photos: {
                 id: any;
@@ -352,6 +355,7 @@ export declare class MobileService implements OnModuleInit {
             address: any;
             status: any;
             createdAt: any;
+            pendingOffersCount: number;
         } | {
             photos: {
                 id: any;
@@ -450,6 +454,7 @@ export declare class MobileService implements OnModuleInit {
             createdAt: any;
         };
     }>;
+    private notifyRecipientOfNewMessage;
     getIncomingRequest(workerUserId: string): Promise<{
         request: null;
         offerLifetimeSeconds?: undefined;
@@ -493,6 +498,7 @@ export declare class MobileService implements OnModuleInit {
             status: string;
         };
     }>;
+    private notifyClientOfNewOffer;
     acceptOffer(params: {
         offerId: string;
         clientUserId: string;
@@ -501,6 +507,7 @@ export declare class MobileService implements OnModuleInit {
         requestId: any;
         workerUserId: any;
     }>;
+    private notifyWorkerOfAcceptedOffer;
     discardOffer(params: {
         requestId: string;
         workerUserId: string;
@@ -694,6 +701,16 @@ export declare class MobileService implements OnModuleInit {
         longitude: number;
         timestamp: string;
     }>;
+    updateClientLocation(params: {
+        clientUserId: string;
+        latitude: number;
+        longitude: number;
+    }): Promise<{
+        clientId: any;
+        latitude: number;
+        longitude: number;
+        timestamp: string;
+    }>;
     getWorkerSkills(workerUserId: string): Promise<{
         workerUserId: string;
         skills: any[];
@@ -835,7 +852,7 @@ export declare class MobileService implements OnModuleInit {
         }[];
     }>;
     createDispute(params: {
-        requestId: string;
+        requestId?: string;
         reportedBy: string;
         reportedUser?: string;
         reason: string;

@@ -15,4 +15,23 @@ export declare class NotificationsService {
         offeredPrice: string;
         distanceKm: string;
     }): Promise<number>;
+    notifyClientNewOffer(params: {
+        token: string;
+        workerName: string;
+        amount: number;
+        jobTitle: string;
+        requestId: string;
+    }): Promise<string | null>;
+    notifyWorkerOfferAccepted(params: {
+        token: string;
+        clientName: string;
+        jobTitle: string;
+        requestId: string;
+    }): Promise<string | null>;
+    notifyNewMessage(params: {
+        token: string;
+        senderName: string;
+        message: string;
+        threadId: string;
+    }): Promise<string | null>;
 }
