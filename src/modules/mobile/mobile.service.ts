@@ -181,7 +181,8 @@ export class MobileService implements OnModuleInit {
              u.id_photo_url,
              u.face_photo_url,
              u.id_photo_verified,
-             u.face_photo_verified
+             u.face_photo_verified,
+             u.is_blocked
       FROM users u
       JOIN auth_credentials c ON c.user_id = u.id
       WHERE (
@@ -214,9 +215,11 @@ export class MobileService implements OnModuleInit {
         verificationStatus: row.verification_status ?? 'not_verified',
         idPhotoUrl: row.id_photo_url ?? null,
         facePhotoUrl: row.face_photo_url ?? null,
-        idPhotoVerified: row.id_photo_verified ?? null,
-        facePhotoVerified: row.face_photo_verified ?? null,
+        idPhotoVerified: row.id_photo_verified,
+        facePhotoVerified: row.face_photo_verified,
+        isBlocked: row.is_blocked,
       },
+      token: 'fake-jwt-token-for-now',
     };
   }
 

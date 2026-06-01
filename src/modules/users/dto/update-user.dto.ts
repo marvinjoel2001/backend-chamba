@@ -8,6 +8,11 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   @IsBoolean()
   isAvailable?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  isBlocked?: boolean;
   @ApiPropertyOptional({ example: 'https://cdn.chamba.com/profile.jpg' })
   @IsOptional()
   @IsString()

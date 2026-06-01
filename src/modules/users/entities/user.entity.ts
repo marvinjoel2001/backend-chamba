@@ -123,6 +123,10 @@ export class User {
   @Column({ name: 'is_available', type: 'boolean', default: false })
   isAvailable: boolean;
 
+  @ApiProperty({ example: false })
+  @Column({ name: 'is_blocked', type: 'boolean', default: false })
+  isBlocked: boolean;
+
   @ApiProperty({ type: String, example: '2026-03-08T22:42:26.170Z' })
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
