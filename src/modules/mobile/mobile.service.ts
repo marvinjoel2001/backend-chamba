@@ -1106,6 +1106,22 @@ export class MobileService implements OnModuleInit {
       );
     }
 
+    // Push notification: notificar al destinatario del mensaje
+    const recipientUserId =
+      params.senderUserId === thread?.client_user_id
+        ? thread?.worker_user_id
+        : thread?.client_user_id;
+    if (recipientUserId) {
+      this.notifyRecipientOfNewMessage(
+        recipientUserId,
+        params.senderUserId,
+        params.content,
+        params.threadId,
+      ).catch((err) => {
+        this.logger.warn('Failed to send push notification for new message:', err.message);
+      });
+    }
+
     return {
       message: {
         id: rows[0].id,
@@ -1114,6 +1130,36 @@ export class MobileService implements OnModuleInit {
         createdAt: rows[0].created_at,
       },
     };
+  }
+
+  private async notifyRecipientOfNewMessage(
+    recipientUserId: string,
+    senderUserId: string,
+    message: string,
+    threadId: string,
+  ): Promise<void> {
+    // Obtener nombre del remitente
+    const senderRows = await this.dataSource.query<any[]>(
+      `SELECT first_name, last_name FROM users WHERE id = $1`,
+      [senderUserId],
+    );
+    const senderName = senderRows[0]
+      ? `${senderRows[0].first_name} ${senderRows[0].last_name ?? ''}`.trim()
+      : 'Alguien';
+
+    // Obtener push token del destinatario
+    const tokenRows = await this.dataSource.query<any[]>(
+      `SELECT push_token FROM users WHERE id = $1 AND push_token IS NOT NULL`,
+      [recipientUserId],
+    );
+    if (!tokenRows[0]?.push_token) return;
+
+    await this.notificationsService.notifyNewMessage({
+      token: tokenRows[0].push_token,
+      senderName,
+      message,
+      threadId,
+    });
   }
 
   async getIncomingRequest(workerUserId: string) {
@@ -1391,6 +1437,11 @@ export class MobileService implements OnModuleInit {
       });
     }
 
+    // Push notification: notificar al cliente que alguien ofertó
+    this.notifyClientOfNewOffer(params.requestId, params.workerUserId, params.amount, request.title).catch((err) => {
+      this.logger.warn('Failed to send push notification for new offer:', err.message);
+    });
+
     return {
       offer: {
         id: offerId,
@@ -1401,6 +1452,45 @@ export class MobileService implements OnModuleInit {
         status: 'pending',
       },
     };
+  }
+
+  private async notifyClientOfNewOffer(
+    requestId: string,
+    workerUserId: string,
+    amount: number,
+    jobTitle: string,
+  ): Promise<void> {
+    // Obtener nombre del worker
+    const workerRows = await this.dataSource.query<any[]>(
+      `SELECT first_name, last_name FROM users WHERE id = $1`,
+      [workerUserId],
+    );
+    const workerName = workerRows[0]
+      ? `${workerRows[0].first_name} ${workerRows[0].last_name ?? ''}`.trim()
+      : 'Un trabajador';
+
+    // Obtener client_user_id y push token del cliente desde la solicitud
+    const requestRows = await this.dataSource.query<any[]>(
+      `SELECT client_user_id FROM job_requests WHERE id = $1`,
+      [requestId],
+    );
+    if (!requestRows[0]) return;
+    const clientUserId = requestRows[0].client_user_id;
+
+    // Obtener push token del cliente
+    const tokenRows = await this.dataSource.query<any[]>(
+      `SELECT push_token FROM users WHERE id = $1 AND push_token IS NOT NULL`,
+      [clientUserId],
+    );
+    if (!tokenRows[0]?.push_token) return;
+
+    await this.notificationsService.notifyClientNewOffer({
+      token: tokenRows[0].push_token,
+      workerName,
+      amount,
+      jobTitle,
+      requestId,
+    });
   }
 
   async acceptOffer(params: { offerId: string; clientUserId: string }) {
@@ -1497,11 +1587,56 @@ export class MobileService implements OnModuleInit {
       );
     }
 
+    // Push notification: notificar al worker que su oferta fue aceptada
+    this.notifyWorkerOfAcceptedOffer(
+      offer.request_id,
+      offer.worker_user_id,
+      params.clientUserId,
+    ).catch((err) => {
+      this.logger.warn('Failed to send push notification for accepted offer:', err.message);
+    });
+
     return {
       accepted: true,
       requestId: offer.request_id,
       workerUserId: offer.worker_user_id,
     };
+  }
+
+  private async notifyWorkerOfAcceptedOffer(
+    requestId: string,
+    workerUserId: string,
+    clientUserId: string,
+  ): Promise<void> {
+    // Obtener nombre del cliente
+    const clientRows = await this.dataSource.query<any[]>(
+      `SELECT first_name, last_name FROM users WHERE id = $1`,
+      [clientUserId],
+    );
+    const clientName = clientRows[0]
+      ? `${clientRows[0].first_name} ${clientRows[0].last_name ?? ''}`.trim()
+      : 'Un cliente';
+
+    // Obtener título del trabajo
+    const requestRows = await this.dataSource.query<any[]>(
+      `SELECT title FROM job_requests WHERE id = $1`,
+      [requestId],
+    );
+    const jobTitle = requestRows[0]?.title ?? 'tu trabajo';
+
+    // Obtener push token del worker
+    const tokenRows = await this.dataSource.query<any[]>(
+      `SELECT push_token FROM users WHERE id = $1 AND push_token IS NOT NULL`,
+      [workerUserId],
+    );
+    if (!tokenRows[0]?.push_token) return;
+
+    await this.notificationsService.notifyWorkerOfferAccepted({
+      token: tokenRows[0].push_token,
+      clientName,
+      jobTitle,
+      requestId,
+    });
   }
 
   // Worker descarta su oferta pendiente → vuelve al estado "sin oferta"
