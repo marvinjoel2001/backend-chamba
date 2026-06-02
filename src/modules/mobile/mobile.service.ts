@@ -3552,13 +3552,13 @@ export class MobileService implements OnModuleInit {
       ];
     }
 
-    const geminiApiKey =
-      this.configService.get<string>('GEMINI_API_KEY')?.trim() ?? '';
-    if (!geminiApiKey) {
+    const nvidiaApiKey =
+      this.configService.get<string>('NVIDIA_API_KEY')?.trim() ?? '';
+    if (!nvidiaApiKey) {
       this.logger.warn(
-        '[Gemini] GEMINI_API_KEY no configurada → usando fallback "' +
+        '[Nvidia AI] NVIDIA_API_KEY no configurada → usando fallback "' +
           fallbackCategory +
-          '". Configúrala en backend/.env (https://aistudio.google.com/app/apikey)',
+          '". Configúrala en backend/.env',
       );
       return [
         {
@@ -3569,12 +3569,12 @@ export class MobileService implements OnModuleInit {
       ];
     }
 
-    const geminiModel =
-      this.configService.get<string>('GEMINI_MODEL')?.trim() ||
-      'gemini-2.0-flash';
+    const nvidiaModel =
+      this.configService.get<string>('NVIDIA_MODEL')?.trim() ||
+      'minimaxai/minimax-m2.7';
 
     this.logger.log(
-      `[Gemini] Clasificando: "${params.title}" | "${params.description.slice(0, 60)}…"`,
+      `[Nvidia AI] Clasificando: "${params.title}" | "${params.description.slice(0, 60)}…"`,
     );
 
     const categoryCatalog = catalog
@@ -3606,12 +3606,7 @@ Reglas obligatorias:
 7) No agregues texto fuera del JSON.
 `.trim();
 
-    const endpoint = new URL(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-        geminiModel,
-      )}:generateContent`,
-    );
-    endpoint.searchParams.set('key', geminiApiKey);
+    const endpoint = new URL('https://integrate.api.nvidia.com/v1/chat/completions');
 
     const controller = new AbortController();
     const timeout = setTimeout(
@@ -3624,19 +3619,16 @@ Reglas obligatorias:
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${nvidiaApiKey}`,
         },
         body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }],
-            },
-          ],
-          generationConfig: {
-            temperature: 0,
-            responseMimeType: 'application/json',
-            maxOutputTokens: 480,
-          },
+          model: nvidiaModel,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0,
+          top_p: 0.95,
+          max_tokens: 480,
+          stream: false,
+          response_format: { type: 'json_object' },
         }),
         signal: controller.signal,
       });
@@ -3644,7 +3636,7 @@ Reglas obligatorias:
       if (!response.ok) {
         const errBody = await response.text().catch(() => '');
         this.logger.error(
-          `[Gemini] HTTP ${response.status} → fallback "${fallbackCategory}" | detalle: ${errBody.slice(0, 300)}`,
+          `[Nvidia AI] HTTP ${response.status} → fallback "${fallbackCategory}" | detalle: ${errBody.slice(0, 300)}`,
         );
         return [
           {
@@ -3656,17 +3648,17 @@ Reglas obligatorias:
       }
 
       const payload = (await response.json()) as {
-        candidates?: Array<{
-          content?: {
-            parts?: Array<{ text?: string }>;
+        choices?: Array<{
+          message?: {
+            content?: string;
           };
         }>;
       };
 
       const text =
-        payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+        payload.choices?.[0]?.message?.content?.trim() ?? '';
       if (!text) {
-        this.logger.warn('[Gemini] Respuesta vacía → fallback');
+        this.logger.warn('[Nvidia AI] Respuesta vacía → fallback');
         return [
           {
             id: this.toCategoryId(fallbackCategory),
@@ -3676,19 +3668,19 @@ Reglas obligatorias:
         ];
       }
 
-      const parsed = this.parseAiCategoriesFromGeminiText({
+      const parsed = this.parseAiCategoriesFromText({
         text,
         catalog,
         fallbackCategory,
       });
       if (parsed.length > 0) {
         this.logger.log(
-          `[Gemini] Categorías detectadas: ${parsed.map((c) => c.name).join(', ')}`,
+          `[Nvidia AI] Categorías detectadas: ${parsed.map((c) => c.name).join(', ')}`,
         );
         return parsed;
       }
 
-      this.logger.warn('[Gemini] No se pudo parsear respuesta → fallback');
+      this.logger.warn('[Nvidia AI] No se pudo parsear respuesta → fallback');
       return [
         {
           id: this.toCategoryId(fallbackCategory),
@@ -3698,7 +3690,7 @@ Reglas obligatorias:
       ];
     } catch (err) {
       const msg = (err as Error)?.message ?? String(err);
-      this.logger.error(`[Gemini] Error: ${msg} → fallback "${fallbackCategory}"`);
+      this.logger.error(`[Nvidia AI] Error: ${msg} → fallback "${fallbackCategory}"`);
       return [
         {
           id: this.toCategoryId(fallbackCategory),
@@ -3711,7 +3703,7 @@ Reglas obligatorias:
     }
   }
 
-  private parseAiCategoriesFromGeminiText(params: {
+  private parseAiCategoriesFromText(params: {
     text: string;
     catalog: Array<{ id: string; name: string }>;
     fallbackCategory: string;
