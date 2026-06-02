@@ -1,7 +1,9 @@
 import { MobileService } from './mobile.service';
+import { NotificationsService } from '../notifications/notifications.service';
 export declare class MobileController {
     private readonly mobileService;
-    constructor(mobileService: MobileService);
+    private readonly notificationsService;
+    constructor(mobileService: MobileService, notificationsService: NotificationsService);
     register(type: string, email: string, phone: string | undefined, firstName: string, lastName: string | undefined, password: string): Promise<{
         user: {
             id: any;
@@ -32,7 +34,9 @@ export declare class MobileController {
             facePhotoUrl: any;
             idPhotoVerified: any;
             facePhotoVerified: any;
+            isBlocked: any;
         };
+        token: string;
     }>;
     checkIdentifier(identifier: string): Promise<{
         exists: boolean;
@@ -377,6 +381,16 @@ export declare class MobileController {
         threads: {
             id: any;
             requestId: any;
+            request: {
+                id: any;
+                title: any;
+                description: any;
+                status: any;
+                budget: any;
+                category: any;
+                workerId: any;
+                clientId: any;
+            } | null;
             counterpart: {
                 id: any;
                 firstName: any;
@@ -405,8 +419,9 @@ export declare class MobileController {
         };
     }>;
     getIncomingRequest(workerUserId: string): Promise<{
-        request: null;
+        requests: never[];
         offerLifetimeSeconds?: undefined;
+        request?: undefined;
     } | {
         offerLifetimeSeconds: number;
         request: {
@@ -422,6 +437,10 @@ export declare class MobileController {
             client: {
                 id: any;
                 name: string;
+                profilePhotoUrl: any;
+                rating: number;
+                reviews: number;
+                isVerified: boolean;
             };
             workerOffer: {
                 id: any;
@@ -430,7 +449,44 @@ export declare class MobileController {
                 expiresAt: any;
                 secondsRemaining: number | null;
             } | null;
-        };
+            offerLifetimeSeconds: number;
+        } | null;
+        requests: {
+            id: any;
+            title: any;
+            description: any;
+            category: any;
+            budget: number;
+            priceType: any;
+            address: any;
+            status: any;
+            distanceKm: number | null;
+            client: {
+                id: any;
+                name: string;
+                profilePhotoUrl: any;
+                rating: number;
+                reviews: number;
+                isVerified: boolean;
+            };
+            workerOffer: {
+                id: any;
+                amount: number;
+                status: any;
+                expiresAt: any;
+                secondsRemaining: number | null;
+            } | null;
+            offerLifetimeSeconds: number;
+        }[];
+    }>;
+    blockUser(userId: string, blockedUserId: string): Promise<{
+        success: boolean;
+    }>;
+    reportRequest(requestId: string, reporterUserId: string, reason: string): Promise<{
+        success: boolean;
+    }>;
+    dismissRequest(requestId: string, workerUserId: string): Promise<{
+        success: boolean;
     }>;
     upsertOffer(requestId: string, workerUserId: string, amount: number, message?: string): Promise<{
         offer: {
@@ -638,6 +694,11 @@ export declare class MobileController {
                 profilePhotoUrl: any;
             };
         }[];
+    }>;
+    updateActiveSkills(userId: string, skills: string[]): any;
+    getNotifications(userId: string): Promise<import("../notifications/entities/notification.entity").Notification[]>;
+    markNotificationsRead(userId: string): Promise<{
+        success: boolean;
     }>;
     updateWorkerSkills(workerUserId: string, skills: string[]): Promise<{
         workerUserId: string;

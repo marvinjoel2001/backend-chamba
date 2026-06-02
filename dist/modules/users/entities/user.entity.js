@@ -45,6 +45,7 @@ let User = class User {
     averageRating;
     completedJobs;
     isAvailable;
+    isBlocked;
     createdAt;
     updatedAt;
 };
@@ -168,6 +169,11 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'is_available', type: 'boolean', default: false }),
     __metadata("design:type", Boolean)
 ], User.prototype, "isAvailable", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: false }),
+    (0, typeorm_1.Column)({ name: 'is_blocked', type: 'boolean', default: false }),
+    __metadata("design:type", Boolean)
+], User.prototype, "isBlocked", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({ type: String, example: '2026-03-08T22:42:26.170Z' }),
     (0, typeorm_1.CreateDateColumn)({ name: 'created_at' }),

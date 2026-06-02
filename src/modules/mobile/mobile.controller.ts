@@ -10,6 +10,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { MobileService } from './mobile.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const parseNumber = (value?: string): number | undefined => {
   if (value === undefined || value === null || value === '') {
@@ -22,7 +23,10 @@ const parseNumber = (value?: string): number | undefined => {
 
 @Controller()
 export class MobileController {
-  constructor(private readonly mobileService: MobileService) {}
+  constructor(
+    private readonly mobileService: MobileService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   @Post('auth/register')
   register(
@@ -442,6 +446,30 @@ export class MobileController {
   @Get('mobile/worker/history')
   getWorkerHistory(@Query('workerUserId') workerUserId: string) {
     return this.mobileService.getWorkerHistory(workerUserId);
+  }
+
+  // --- Notificaciones ---
+  @Get('mobile/notifications')
+  async getNotifications(
+    @Query('userId') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    if (!userId) {
+      return { items: [], hasMore: false };
+    }
+    const pageNum = Math.max(1, parseInt(page || '1', 10));
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit || '20', 10)));
+    return this.notificationsService.getUserNotifications(userId, pageNum, limitNum);
+  }
+
+  @Patch('mobile/notifications/read')
+  async markNotificationsRead(@Body('userId') userId: string) {
+    if (!userId) {
+      return { success: false };
+    }
+    await this.notificationsService.markNotificationsAsRead(userId);
+    return { success: true };
   }
 
   @Post('mobile/worker/skills')

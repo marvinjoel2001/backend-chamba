@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MobileController = void 0;
 const common_1 = require("@nestjs/common");
 const mobile_service_1 = require("./mobile.service");
+const notifications_service_1 = require("../notifications/notifications.service");
 const parseNumber = (value) => {
     if (value === undefined || value === null || value === '') {
         return undefined;
@@ -24,8 +25,10 @@ const parseNumber = (value) => {
 };
 let MobileController = class MobileController {
     mobileService;
-    constructor(mobileService) {
+    notificationsService;
+    constructor(mobileService, notificationsService) {
         this.mobileService = mobileService;
+        this.notificationsService = notificationsService;
     }
     register(type, email, phone, firstName, lastName, password) {
         return this.mobileService.register({
@@ -144,6 +147,15 @@ let MobileController = class MobileController {
     getIncomingRequest(workerUserId) {
         return this.mobileService.getIncomingRequest(workerUserId);
     }
+    blockUser(userId, blockedUserId) {
+        return this.mobileService.blockUser(userId, blockedUserId);
+    }
+    reportRequest(requestId, reporterUserId, reason) {
+        return this.mobileService.reportRequest(requestId, reporterUserId, reason);
+    }
+    dismissRequest(requestId, workerUserId) {
+        return this.mobileService.dismissRequest(requestId, workerUserId);
+    }
     upsertOffer(requestId, workerUserId, amount, message) {
         return this.mobileService.upsertOffer({
             requestId,
@@ -220,6 +232,23 @@ let MobileController = class MobileController {
     }
     getWorkerHistory(workerUserId) {
         return this.mobileService.getWorkerHistory(workerUserId);
+    }
+    updateActiveSkills(userId, skills) {
+        return this.mobileService.updateActiveSkills(userId, skills);
+    }
+    async getNotifications(userId) {
+        if (!userId) {
+            return [];
+        }
+        const items = await this.notificationsService.getUserNotifications(userId);
+        return items;
+    }
+    async markNotificationsRead(userId) {
+        if (!userId) {
+            return { success: false };
+        }
+        await this.notificationsService.markNotificationsAsRead(userId);
+        return { success: true };
     }
     updateWorkerSkills(workerUserId, skills) {
         return this.mobileService.updateWorkerSkills(workerUserId, skills ?? []);
@@ -475,6 +504,31 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getIncomingRequest", null);
 __decorate([
+    (0, common_1.Post)('mobile/users/:userId/block'),
+    __param(0, (0, common_1.Param)('userId')),
+    __param(1, (0, common_1.Body)('blockedUserId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "blockUser", null);
+__decorate([
+    (0, common_1.Post)('mobile/requests/:requestId/report'),
+    __param(0, (0, common_1.Param)('requestId')),
+    __param(1, (0, common_1.Body)('reporterUserId')),
+    __param(2, (0, common_1.Body)('reason')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "reportRequest", null);
+__decorate([
+    (0, common_1.Post)('mobile/requests/:requestId/dismiss'),
+    __param(0, (0, common_1.Param)('requestId')),
+    __param(1, (0, common_1.Body)('workerUserId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "dismissRequest", null);
+__decorate([
     (0, common_1.Post)('mobile/offers/counter'),
     __param(0, (0, common_1.Body)('requestId')),
     __param(1, (0, common_1.Body)('workerUserId')),
@@ -630,6 +684,28 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getWorkerHistory", null);
 __decorate([
+    (0, common_1.Post)('users/:userId/active-skills'),
+    __param(0, (0, common_1.Param)('userId')),
+    __param(1, (0, common_1.Body)('skills')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Array]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "updateActiveSkills", null);
+__decorate([
+    (0, common_1.Get)('mobile/notifications'),
+    __param(0, (0, common_1.Query)('userId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], MobileController.prototype, "getNotifications", null);
+__decorate([
+    (0, common_1.Patch)('mobile/notifications/read'),
+    __param(0, (0, common_1.Body)('userId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], MobileController.prototype, "markNotificationsRead", null);
+__decorate([
     (0, common_1.Post)('mobile/worker/skills'),
     __param(0, (0, common_1.Body)('workerUserId')),
     __param(1, (0, common_1.Body)('skills')),
@@ -744,6 +820,7 @@ __decorate([
 ], MobileController.prototype, "deleteCategory", null);
 exports.MobileController = MobileController = __decorate([
     (0, common_1.Controller)(),
-    __metadata("design:paramtypes", [mobile_service_1.MobileService])
+    __metadata("design:paramtypes", [mobile_service_1.MobileService,
+        notifications_service_1.NotificationsService])
 ], MobileController);
 //# sourceMappingURL=mobile.controller.js.map

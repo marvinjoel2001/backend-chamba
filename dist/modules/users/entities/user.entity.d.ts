@@ -33,6 +33,7 @@ export declare class User {
     averageRating: number;
     completedJobs: number;
     isAvailable: boolean;
+    isBlocked: boolean;
     createdAt: Date;
     updatedAt: Date;
 }

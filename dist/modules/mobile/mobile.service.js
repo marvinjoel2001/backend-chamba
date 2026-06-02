@@ -131,7 +131,8 @@ let MobileService = class MobileService {
              u.id_photo_url,
              u.face_photo_url,
              u.id_photo_verified,
-             u.face_photo_verified
+             u.face_photo_verified,
+             u.is_blocked
       FROM users u
       JOIN auth_credentials c ON c.user_id = u.id
       WHERE (
@@ -160,9 +161,11 @@ let MobileService = class MobileService {
                 verificationStatus: row.verification_status ?? 'not_verified',
                 idPhotoUrl: row.id_photo_url ?? null,
                 facePhotoUrl: row.face_photo_url ?? null,
-                idPhotoVerified: row.id_photo_verified ?? null,
-                facePhotoVerified: row.face_photo_verified ?? null,
+                idPhotoVerified: row.id_photo_verified,
+                facePhotoVerified: row.face_photo_verified,
+                isBlocked: row.is_blocked,
             },
+            token: 'fake-jwt-token-for-now',
         };
     }
     async checkIdentifier(identifier) {
@@ -748,6 +751,13 @@ let MobileService = class MobileService {
         const rows = await this.dataSource.query(`
       SELECT t.id AS thread_id,
              t.request_id,
+             jr.title AS request_title,
+             jr.description AS request_description,
+             jr.status AS request_status,
+             jr.budget AS request_budget,
+             jr.category AS request_category,
+             jr.worker_id AS request_worker_id,
+             jr.client_id AS request_client_id,
              CASE WHEN t.client_user_id = $1 THEN t.worker_user_id ELSE t.client_user_id END AS counterpart_id,
              u.first_name AS counterpart_first_name,
              u.last_name AS counterpart_last_name,
@@ -757,6 +767,7 @@ let MobileService = class MobileService {
       FROM chat_threads t
       JOIN users u
         ON u.id = CASE WHEN t.client_user_id = $1 THEN t.worker_user_id ELSE t.client_user_id END
+      LEFT JOIN job_requests jr ON jr.id = t.request_id
       LEFT JOIN LATERAL (
         SELECT m.content, m.created_at
         FROM chat_messages m
@@ -771,6 +782,16 @@ let MobileService = class MobileService {
             threads: rows.map((row) => ({
                 id: row.thread_id,
                 requestId: row.request_id ?? null,
+                request: row.request_id ? {
+                    id: row.request_id,
+                    title: row.request_title,
+                    description: row.request_description,
+                    status: row.request_status,
+                    budget: row.request_budget,
+                    category: row.request_category,
+                    workerId: row.request_worker_id,
+                    clientId: row.request_client_id,
+                } : null,
                 counterpart: {
                     id: row.counterpart_id,
                     firstName: row.counterpart_first_name,
@@ -862,6 +883,7 @@ let MobileService = class MobileService {
         if (!tokenRows[0]?.push_token)
             return;
         await this.notificationsService.notifyNewMessage({
+            userId: recipientUserId,
             token: tokenRows[0].push_token,
             senderName,
             message,
@@ -888,6 +910,10 @@ let MobileService = class MobileService {
              c.id AS client_id,
              c.first_name AS client_first_name,
              c.last_name AS client_last_name,
+             c.profile_photo_url AS client_photo_url,
+             c.average_rating AS client_rating,
+             c.completed_jobs AS client_reviews,
+             c.verification_status AS client_verification,
              jo.id AS offer_id,
              jo.amount AS offer_amount,
              jo.status AS offer_status,
@@ -906,6 +932,9 @@ let MobileService = class MobileService {
        AND jo.status <> 'expired'
        AND (jo.status <> 'pending' OR jo.expires_at IS NULL OR jo.expires_at > NOW())
       WHERE jr.client_user_id <> $1
+        AND jr.id NOT IN (SELECT request_id FROM dismissed_requests WHERE worker_user_id = $1)
+        AND jr.client_user_id NOT IN (SELECT blocked_user_id FROM user_blocks WHERE blocker_user_id = $1)
+        AND jr.id NOT IN (SELECT request_id FROM request_reports WHERE reporter_user_id = $1)
         AND (
           (
             jr.status IN ('searching', 'negotiating')
@@ -946,16 +975,13 @@ let MobileService = class MobileService {
         CASE WHEN jr.status = 'assigned' THEN 0 ELSE 1 END,
         distance_km ASC NULLS LAST,
         jr.created_at DESC
-      LIMIT 1
       `, [workerUserId]);
-        const row = rows[0];
-        if (!row) {
-            return { request: null };
+        if (rows.length === 0) {
+            return { requests: [] };
         }
-        const offerLifetimeSeconds = await this.getOfferLifetimeSeconds(row.price_type);
-        return {
-            offerLifetimeSeconds,
-            request: {
+        const requests = await Promise.all(rows.map(async (row) => {
+            const offerLifetimeSeconds = await this.getOfferLifetimeSeconds(row.price_type);
+            return {
                 id: row.request_id,
                 title: row.title,
                 description: row.description,
@@ -968,6 +994,10 @@ let MobileService = class MobileService {
                 client: {
                     id: row.client_id,
                     name: `${row.client_first_name} ${row.client_last_name ?? ''}`.trim(),
+                    profilePhotoUrl: row.client_photo_url ?? null,
+                    rating: Number(row.client_rating ?? 0),
+                    reviews: Number(row.client_reviews ?? 0),
+                    isVerified: row.client_verification === 'verified',
                 },
                 workerOffer: row.offer_id
                     ? {
@@ -980,8 +1010,26 @@ let MobileService = class MobileService {
                             : Math.max(0, Math.floor(Number(row.offer_seconds_left))),
                     }
                     : null,
-            },
+                offerLifetimeSeconds,
+            };
+        }));
+        return {
+            offerLifetimeSeconds: requests.length > 0 ? requests[0].offerLifetimeSeconds : 120,
+            request: requests.length > 0 ? requests[0] : null,
+            requests,
         };
+    }
+    async blockUser(blockerUserId, blockedUserId) {
+        await this.dataSource.query(`INSERT INTO user_blocks (blocker_user_id, blocked_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [blockerUserId, blockedUserId]);
+        return { success: true };
+    }
+    async reportRequest(requestId, reporterUserId, reason) {
+        await this.dataSource.query(`INSERT INTO request_reports (request_id, reporter_user_id, reason) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, [requestId, reporterUserId, reason]);
+        return { success: true };
+    }
+    async dismissRequest(requestId, workerUserId) {
+        await this.dataSource.query(`INSERT INTO dismissed_requests (request_id, worker_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [requestId, workerUserId]);
+        return { success: true };
     }
     async upsertOffer(params) {
         if (!Number.isFinite(params.amount) || params.amount <= 0) {
@@ -1110,6 +1158,7 @@ let MobileService = class MobileService {
         if (!tokenRows[0]?.push_token)
             return;
         await this.notificationsService.notifyClientNewOffer({
+            userId: clientUserId,
             token: tokenRows[0].push_token,
             workerName,
             amount,
@@ -1194,6 +1243,7 @@ let MobileService = class MobileService {
         if (!tokenRows[0]?.push_token)
             return;
         await this.notificationsService.notifyWorkerOfferAccepted({
+            userId: workerUserId,
             token: tokenRows[0].push_token,
             clientName,
             jobTitle,
@@ -1380,11 +1430,27 @@ let MobileService = class MobileService {
         this.realtimeGateway.emitToUser(params.workerUserId, 'job.worker_arrived', {
             requestId: params.requestId,
         });
-        const clientRows = await this.dataSource.query(`SELECT client_user_id FROM job_requests WHERE id = $1`, [params.requestId]);
+        const clientRows = await this.dataSource.query(`
+      SELECT jr.client_user_id, jr.title, u.first_name as worker_name, pt.token
+      FROM job_requests jr
+      JOIN users u ON u.id = $2
+      LEFT JOIN push_tokens pt ON pt.user_id = jr.client_user_id
+      WHERE jr.id = $1
+      `, [params.requestId, params.workerUserId]);
         if (clientRows[0]) {
-            this.realtimeGateway.emitToUser(clientRows[0].client_user_id, 'job.worker_arrived', {
+            const clientUserId = clientRows[0].client_user_id;
+            this.realtimeGateway.emitToUser(clientUserId, 'job.worker_arrived', {
                 requestId: params.requestId,
             });
+            if (clientRows[0].token) {
+                await this.notificationsService.notifyWorkerArrived({
+                    userId: clientUserId,
+                    token: clientRows[0].token,
+                    workerName: clientRows[0].worker_name,
+                    jobTitle: clientRows[0].title,
+                    requestId: params.requestId,
+                }).catch((e) => this.logger.error('Failed to send worker arrived notification', e));
+            }
         }
         return { requestId: params.requestId, workerArrived: true };
     }
@@ -1435,6 +1501,22 @@ let MobileService = class MobileService {
         this.logger.log(`[completeJob] Worker ${params.workerUserId} restaurado como disponible`);
         this.realtimeGateway.emitToUser(params.workerUserId, 'job.completed', { requestId: params.requestId });
         this.realtimeGateway.emitToUser(req.client_user_id, 'job.completed', { requestId: params.requestId });
+        const infoRows = await this.dataSource.query(`
+      SELECT jr.title, u.first_name as worker_name, pt.token
+      FROM job_requests jr
+      JOIN users u ON u.id = $2
+      LEFT JOIN push_tokens pt ON pt.user_id = jr.client_user_id
+      WHERE jr.id = $1
+      `, [params.requestId, params.workerUserId]);
+        if (infoRows[0]?.token) {
+            await this.notificationsService.notifyJobFinished({
+                userId: req.client_user_id,
+                token: infoRows[0].token,
+                workerName: infoRows[0].worker_name,
+                jobTitle: infoRows[0].title,
+                requestId: params.requestId,
+            }).catch((e) => this.logger.error('Failed to send job finished notification', e));
+        }
         this.logger.log(`[completeJob] Trabajo ${params.requestId} completado por worker ${params.workerUserId}`);
         return { requestId: params.requestId, status: 'completed' };
     }
@@ -2083,6 +2165,32 @@ let MobileService = class MobileService {
       );
       `,
             `CREATE INDEX IF NOT EXISTS idx_dispute_messages_dispute ON dispute_messages(dispute_id, created_at ASC);`,
+            `
+      CREATE TABLE IF NOT EXISTS user_blocks (
+        blocker_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        blocked_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (blocker_user_id, blocked_user_id)
+      );
+      `,
+            `
+      CREATE TABLE IF NOT EXISTS request_reports (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        request_id UUID NOT NULL REFERENCES job_requests(id) ON DELETE CASCADE,
+        reporter_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reason TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (request_id, reporter_user_id)
+      );
+      `,
+            `
+      CREATE TABLE IF NOT EXISTS dismissed_requests (
+        request_id UUID NOT NULL REFERENCES job_requests(id) ON DELETE CASCADE,
+        worker_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (request_id, worker_user_id)
+      );
+      `
         ];
         for (const statement of statements) {
             await this.dataSource.query(statement);
@@ -2696,11 +2804,11 @@ let MobileService = class MobileService {
                 },
             ];
         }
-        const geminiApiKey = this.configService.get('GEMINI_API_KEY')?.trim() ?? '';
-        if (!geminiApiKey) {
-            this.logger.warn('[Gemini] GEMINI_API_KEY no configurada → usando fallback "' +
+        const nvidiaApiKey = this.configService.get('NVIDIA_API_KEY')?.trim() ?? '';
+        if (!nvidiaApiKey) {
+            this.logger.warn('[Nvidia AI] NVIDIA_API_KEY no configurada → usando fallback "' +
                 fallbackCategory +
-                '". Configúrala en backend/.env (https://aistudio.google.com/app/apikey)');
+                '". Configúrala en backend/.env');
             return [
                 {
                     id: this.toCategoryId(fallbackCategory),
@@ -2709,9 +2817,9 @@ let MobileService = class MobileService {
                 },
             ];
         }
-        const geminiModel = this.configService.get('GEMINI_MODEL')?.trim() ||
-            'gemini-2.0-flash';
-        this.logger.log(`[Gemini] Clasificando: "${params.title}" | "${params.description.slice(0, 60)}…"`);
+        const nvidiaModel = this.configService.get('NVIDIA_MODEL')?.trim() ||
+            'minimaxai/minimax-m2.7';
+        this.logger.log(`[Nvidia AI] Clasificando: "${params.title}" | "${params.description.slice(0, 60)}…"`);
         const categoryCatalog = catalog
             .map((item) => `- id: ${item.id}, nombre: ${item.name}`)
             .join('\n');
@@ -2739,8 +2847,7 @@ Reglas obligatorias:
 6) Si hay duda, incluye "trabajo_general" / "General".
 7) No agregues texto fuera del JSON.
 `.trim();
-        const endpoint = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent`);
-        endpoint.searchParams.set('key', geminiApiKey);
+        const endpoint = new URL('https://integrate.api.nvidia.com/v1/chat/completions');
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), MobileService_1.GEMINI_TIMEOUT_MS);
         try {
@@ -2748,25 +2855,22 @@ Reglas obligatorias:
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    Authorization: `Bearer ${nvidiaApiKey}`,
                 },
                 body: JSON.stringify({
-                    contents: [
-                        {
-                            role: 'user',
-                            parts: [{ text: prompt }],
-                        },
-                    ],
-                    generationConfig: {
-                        temperature: 0,
-                        responseMimeType: 'application/json',
-                        maxOutputTokens: 480,
-                    },
+                    model: nvidiaModel,
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0,
+                    top_p: 0.95,
+                    max_tokens: 480,
+                    stream: false,
+                    response_format: { type: 'json_object' },
                 }),
                 signal: controller.signal,
             });
             if (!response.ok) {
                 const errBody = await response.text().catch(() => '');
-                this.logger.error(`[Gemini] HTTP ${response.status} → fallback "${fallbackCategory}" | detalle: ${errBody.slice(0, 300)}`);
+                this.logger.error(`[Nvidia AI] HTTP ${response.status} → fallback "${fallbackCategory}" | detalle: ${errBody.slice(0, 300)}`);
                 return [
                     {
                         id: this.toCategoryId(fallbackCategory),
@@ -2776,9 +2880,9 @@ Reglas obligatorias:
                 ];
             }
             const payload = (await response.json());
-            const text = payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+            const text = payload.choices?.[0]?.message?.content?.trim() ?? '';
             if (!text) {
-                this.logger.warn('[Gemini] Respuesta vacía → fallback');
+                this.logger.warn('[Nvidia AI] Respuesta vacía → fallback');
                 return [
                     {
                         id: this.toCategoryId(fallbackCategory),
@@ -2787,16 +2891,16 @@ Reglas obligatorias:
                     },
                 ];
             }
-            const parsed = this.parseAiCategoriesFromGeminiText({
+            const parsed = this.parseAiCategoriesFromText({
                 text,
                 catalog,
                 fallbackCategory,
             });
             if (parsed.length > 0) {
-                this.logger.log(`[Gemini] Categorías detectadas: ${parsed.map((c) => c.name).join(', ')}`);
+                this.logger.log(`[Nvidia AI] Categorías detectadas: ${parsed.map((c) => c.name).join(', ')}`);
                 return parsed;
             }
-            this.logger.warn('[Gemini] No se pudo parsear respuesta → fallback');
+            this.logger.warn('[Nvidia AI] No se pudo parsear respuesta → fallback');
             return [
                 {
                     id: this.toCategoryId(fallbackCategory),
@@ -2807,7 +2911,7 @@ Reglas obligatorias:
         }
         catch (err) {
             const msg = err?.message ?? String(err);
-            this.logger.error(`[Gemini] Error: ${msg} → fallback "${fallbackCategory}"`);
+            this.logger.error(`[Nvidia AI] Error: ${msg} → fallback "${fallbackCategory}"`);
             return [
                 {
                     id: this.toCategoryId(fallbackCategory),
@@ -2820,7 +2924,7 @@ Reglas obligatorias:
             clearTimeout(timeout);
         }
     }
-    parseAiCategoriesFromGeminiText(params) {
+    parseAiCategoriesFromText(params) {
         const byId = new Map(params.catalog.map((item) => [item.id.trim().toLowerCase(), item]));
         const byName = new Map(params.catalog.map((item) => [item.name.trim().toLowerCase(), item]));
         let decoded;
@@ -3139,17 +3243,17 @@ Reglas obligatorias:
         }
         const workerIds = params.waveWorkers.map((worker) => worker.workerId);
         const tokenRows = await this.dataSource.query(`
-      SELECT token
+      SELECT user_id, token
       FROM push_tokens
       WHERE user_id = ANY($1::uuid[])
       `, [workerIds]);
-        const tokens = tokenRows.map((row) => String(row.token ?? '')).filter(Boolean);
-        if (tokens.length === 0) {
+        const users = tokenRows.map((row) => ({ userId: row.user_id, token: row.token }));
+        if (users.length === 0) {
             return;
         }
         const nearestDistance = Math.min(...params.waveWorkers.map((worker) => worker.distanceKm));
         await this.notificationsService.notifyWorkersForJobWave({
-            tokens,
+            users,
             jobId: params.requestId,
             category: params.category,
             offeredPrice: `Bs ${Math.round(params.budget)}`,

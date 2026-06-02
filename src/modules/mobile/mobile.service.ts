@@ -1180,6 +1180,7 @@ export class MobileService implements OnModuleInit {
     if (!tokenRows[0]?.push_token) return;
 
     await this.notificationsService.notifyNewMessage({
+      userId: recipientUserId,
       token: tokenRows[0].push_token,
       senderName,
       message,
@@ -1551,6 +1552,7 @@ export class MobileService implements OnModuleInit {
     if (!tokenRows[0]?.push_token) return;
 
     await this.notificationsService.notifyClientNewOffer({
+      userId: clientUserId,
       token: tokenRows[0].push_token,
       workerName,
       amount,
@@ -1698,6 +1700,7 @@ export class MobileService implements OnModuleInit {
     if (!tokenRows[0]?.push_token) return;
 
     await this.notificationsService.notifyWorkerOfferAccepted({
+      userId: workerUserId,
       token: tokenRows[0].push_token,
       clientName,
       jobTitle,
@@ -1971,13 +1974,29 @@ export class MobileService implements OnModuleInit {
     });
     // Notificar al cliente
     const clientRows = await this.dataSource.query<any[]>(
-      `SELECT client_user_id FROM job_requests WHERE id = $1`,
-      [params.requestId],
+      `
+      SELECT jr.client_user_id, jr.title, u.first_name as worker_name, pt.token
+      FROM job_requests jr
+      JOIN users u ON u.id = $2
+      LEFT JOIN push_tokens pt ON pt.user_id = jr.client_user_id
+      WHERE jr.id = $1
+      `,
+      [params.requestId, params.workerUserId],
     );
     if (clientRows[0]) {
-      this.realtimeGateway.emitToUser(clientRows[0].client_user_id, 'job.worker_arrived', {
+      const clientUserId = clientRows[0].client_user_id;
+      this.realtimeGateway.emitToUser(clientUserId, 'job.worker_arrived', {
         requestId: params.requestId,
       });
+      if (clientRows[0].token) {
+        await this.notificationsService.notifyWorkerArrived({
+          userId: clientUserId,
+          token: clientRows[0].token,
+          workerName: clientRows[0].worker_name,
+          jobTitle: clientRows[0].title,
+          requestId: params.requestId,
+        }).catch((e) => this.logger.error('Failed to send worker arrived notification', e));
+      }
     }
 
     return { requestId: params.requestId, workerArrived: true };
@@ -2054,6 +2073,27 @@ export class MobileService implements OnModuleInit {
     // Notificar a ambos
     this.realtimeGateway.emitToUser(params.workerUserId, 'job.completed', { requestId: params.requestId });
     this.realtimeGateway.emitToUser(req.client_user_id, 'job.completed', { requestId: params.requestId });
+
+    // Send push notification to client
+    const infoRows = await this.dataSource.query<any[]>(
+      `
+      SELECT jr.title, u.first_name as worker_name, pt.token
+      FROM job_requests jr
+      JOIN users u ON u.id = $2
+      LEFT JOIN push_tokens pt ON pt.user_id = jr.client_user_id
+      WHERE jr.id = $1
+      `,
+      [params.requestId, params.workerUserId],
+    );
+    if (infoRows[0]?.token) {
+      await this.notificationsService.notifyJobFinished({
+        userId: req.client_user_id,
+        token: infoRows[0].token,
+        workerName: infoRows[0].worker_name,
+        jobTitle: infoRows[0].title,
+        requestId: params.requestId,
+      }).catch((e) => this.logger.error('Failed to send job finished notification', e));
+    }
 
     this.logger.log(`[completeJob] Trabajo ${params.requestId} completado por worker ${params.workerUserId}`);
 
@@ -4248,15 +4288,15 @@ Reglas obligatorias:
     const workerIds = params.waveWorkers.map((worker) => worker.workerId);
     const tokenRows = await this.dataSource.query<any[]>(
       `
-      SELECT token
+      SELECT user_id, token
       FROM push_tokens
       WHERE user_id = ANY($1::uuid[])
       `,
       [workerIds],
     );
 
-    const tokens = tokenRows.map((row) => String(row.token ?? '')).filter(Boolean);
-    if (tokens.length === 0) {
+    const users = tokenRows.map((row) => ({ userId: row.user_id, token: row.token }));
+    if (users.length === 0) {
       return;
     }
 
@@ -4264,7 +4304,7 @@ Reglas obligatorias:
       ...params.waveWorkers.map((worker) => worker.distanceKm),
     );
     await this.notificationsService.notifyWorkersForJobWave({
-      tokens,
+      users,
       jobId: params.requestId,
       category: params.category,
       offeredPrice: `Bs ${Math.round(params.budget)}`,

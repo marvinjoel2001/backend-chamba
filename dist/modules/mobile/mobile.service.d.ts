@@ -80,7 +80,9 @@ export declare class MobileService implements OnModuleInit {
             facePhotoUrl: any;
             idPhotoVerified: any;
             facePhotoVerified: any;
+            isBlocked: any;
         };
+        token: string;
     }>;
     checkIdentifier(identifier: string): Promise<{
         exists: boolean;
@@ -423,6 +425,16 @@ export declare class MobileService implements OnModuleInit {
         threads: {
             id: any;
             requestId: any;
+            request: {
+                id: any;
+                title: any;
+                description: any;
+                status: any;
+                budget: any;
+                category: any;
+                workerId: any;
+                clientId: any;
+            } | null;
             counterpart: {
                 id: any;
                 firstName: any;
@@ -456,8 +468,9 @@ export declare class MobileService implements OnModuleInit {
     }>;
     private notifyRecipientOfNewMessage;
     getIncomingRequest(workerUserId: string): Promise<{
-        request: null;
+        requests: never[];
         offerLifetimeSeconds?: undefined;
+        request?: undefined;
     } | {
         offerLifetimeSeconds: number;
         request: {
@@ -473,6 +486,10 @@ export declare class MobileService implements OnModuleInit {
             client: {
                 id: any;
                 name: string;
+                profilePhotoUrl: any;
+                rating: number;
+                reviews: number;
+                isVerified: boolean;
             };
             workerOffer: {
                 id: any;
@@ -481,7 +498,44 @@ export declare class MobileService implements OnModuleInit {
                 expiresAt: any;
                 secondsRemaining: number | null;
             } | null;
-        };
+            offerLifetimeSeconds: number;
+        } | null;
+        requests: {
+            id: any;
+            title: any;
+            description: any;
+            category: any;
+            budget: number;
+            priceType: any;
+            address: any;
+            status: any;
+            distanceKm: number | null;
+            client: {
+                id: any;
+                name: string;
+                profilePhotoUrl: any;
+                rating: number;
+                reviews: number;
+                isVerified: boolean;
+            };
+            workerOffer: {
+                id: any;
+                amount: number;
+                status: any;
+                expiresAt: any;
+                secondsRemaining: number | null;
+            } | null;
+            offerLifetimeSeconds: number;
+        }[];
+    }>;
+    blockUser(blockerUserId: string, blockedUserId: string): Promise<{
+        success: boolean;
+    }>;
+    reportRequest(requestId: string, reporterUserId: string, reason: string): Promise<{
+        success: boolean;
+    }>;
+    dismissRequest(requestId: string, workerUserId: string): Promise<{
+        success: boolean;
     }>;
     upsertOffer(params: {
         requestId: string;
@@ -811,7 +865,7 @@ export declare class MobileService implements OnModuleInit {
     private normalizeAiCategories;
     private parseAiCategories;
     private classifyRequestCategoriesWithAi;
-    private parseAiCategoriesFromGeminiText;
+    private parseAiCategoriesFromText;
     private listActiveCategoryCatalogForAi;
     private toCategoryId;
     private validateBase64Images;
