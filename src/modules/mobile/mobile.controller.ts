@@ -262,6 +262,31 @@ export class MobileController {
     return this.mobileService.getIncomingRequest(workerUserId);
   }
 
+  @Post('mobile/users/:userId/block')
+  blockUser(
+    @Param('userId') userId: string,
+    @Body('blockedUserId') blockedUserId: string,
+  ) {
+    return this.mobileService.blockUser(userId, blockedUserId);
+  }
+
+  @Post('mobile/requests/:requestId/report')
+  reportRequest(
+    @Param('requestId') requestId: string,
+    @Body('reporterUserId') reporterUserId: string,
+    @Body('reason') reason: string,
+  ) {
+    return this.mobileService.reportRequest(requestId, reporterUserId, reason);
+  }
+
+  @Post('mobile/requests/:requestId/dismiss')
+  dismissRequest(
+    @Param('requestId') requestId: string,
+    @Body('workerUserId') workerUserId: string,
+  ) {
+    return this.mobileService.dismissRequest(requestId, workerUserId);
+  }
+
   @Post('mobile/offers/counter')
   upsertOffer(
     @Body('requestId') requestId: string,

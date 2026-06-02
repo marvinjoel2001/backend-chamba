@@ -1209,6 +1209,10 @@ export class MobileService implements OnModuleInit {
              c.id AS client_id,
              c.first_name AS client_first_name,
              c.last_name AS client_last_name,
+             c.profile_photo_url AS client_photo_url,
+             c.average_rating AS client_rating,
+             c.completed_jobs AS client_reviews,
+             c.verification_status AS client_verification,
              jo.id AS offer_id,
              jo.amount AS offer_amount,
              jo.status AS offer_status,
@@ -1227,6 +1231,9 @@ export class MobileService implements OnModuleInit {
        AND jo.status <> 'expired'
        AND (jo.status <> 'pending' OR jo.expires_at IS NULL OR jo.expires_at > NOW())
       WHERE jr.client_user_id <> $1
+        AND jr.id NOT IN (SELECT request_id FROM dismissed_requests WHERE worker_user_id = $1)
+        AND jr.client_user_id NOT IN (SELECT blocked_user_id FROM user_blocks WHERE blocker_user_id = $1)
+        AND jr.id NOT IN (SELECT request_id FROM request_reports WHERE reporter_user_id = $1)
         AND (
           (
             jr.status IN ('searching', 'negotiating')
@@ -1267,50 +1274,84 @@ export class MobileService implements OnModuleInit {
         CASE WHEN jr.status = 'assigned' THEN 0 ELSE 1 END,
         distance_km ASC NULLS LAST,
         jr.created_at DESC
-      LIMIT 1
       `,
       [workerUserId],
     );
 
-    const row = rows[0];
-    if (!row) {
-      return { request: null };
+    if (rows.length === 0) {
+      return { requests: [] };
     }
 
-    const offerLifetimeSeconds = await this.getOfferLifetimeSeconds(
-      row.price_type,
+    const requests = await Promise.all(
+      rows.map(async (row) => {
+        const offerLifetimeSeconds = await this.getOfferLifetimeSeconds(
+          row.price_type,
+        );
+        return {
+          id: row.request_id,
+          title: row.title,
+          description: row.description,
+          category: row.category,
+          budget: Number(row.budget),
+          priceType: row.price_type,
+          address: row.address,
+          status: row.status,
+          distanceKm: row.distance_km == null ? null : Number(row.distance_km),
+          client: {
+            id: row.client_id,
+            name: `${row.client_first_name} ${row.client_last_name ?? ''}`.trim(),
+            profilePhotoUrl: row.client_photo_url ?? null,
+            rating: Number(row.client_rating ?? 0),
+            reviews: Number(row.client_reviews ?? 0),
+            isVerified: row.client_verification === 'verified',
+          },
+          workerOffer: row.offer_id
+            ? {
+                id: row.offer_id,
+                amount: Number(row.offer_amount ?? 0),
+                status: row.offer_status ?? 'pending',
+                expiresAt: row.offer_expires_at ?? null,
+                secondsRemaining:
+                  row.offer_seconds_left == null
+                    ? null
+                    : Math.max(0, Math.floor(Number(row.offer_seconds_left))),
+              }
+            : null,
+          offerLifetimeSeconds,
+        };
+      })
     );
 
+    // Keep backwards compatibility for a moment while transition happens
     return {
-      offerLifetimeSeconds,
-      request: {
-        id: row.request_id,
-        title: row.title,
-        description: row.description,
-        category: row.category,
-        budget: Number(row.budget),
-        priceType: row.price_type,
-        address: row.address,
-        status: row.status,
-        distanceKm: row.distance_km == null ? null : Number(row.distance_km),
-        client: {
-          id: row.client_id,
-          name: `${row.client_first_name} ${row.client_last_name ?? ''}`.trim(),
-        },
-        workerOffer: row.offer_id
-          ? {
-              id: row.offer_id,
-              amount: Number(row.offer_amount ?? 0),
-              status: row.offer_status ?? 'pending',
-              expiresAt: row.offer_expires_at ?? null,
-              secondsRemaining:
-                row.offer_seconds_left == null
-                  ? null
-                  : Math.max(0, Math.floor(Number(row.offer_seconds_left))),
-            }
-          : null,
-      },
+      offerLifetimeSeconds: requests.length > 0 ? requests[0].offerLifetimeSeconds : 120,
+      request: requests.length > 0 ? requests[0] : null,
+      requests,
     };
+  }
+
+  async blockUser(blockerUserId: string, blockedUserId: string) {
+    await this.dataSource.query(
+      `INSERT INTO user_blocks (blocker_user_id, blocked_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [blockerUserId, blockedUserId]
+    );
+    return { success: true };
+  }
+
+  async reportRequest(requestId: string, reporterUserId: string, reason: string) {
+    await this.dataSource.query(
+      `INSERT INTO request_reports (request_id, reporter_user_id, reason) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [requestId, reporterUserId, reason]
+    );
+    return { success: true };
+  }
+
+  async dismissRequest(requestId: string, workerUserId: string) {
+    await this.dataSource.query(
+      `INSERT INTO dismissed_requests (request_id, worker_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [requestId, workerUserId]
+    );
+    return { success: true };
   }
   async upsertOffer(params: {
     requestId: string;
@@ -2820,6 +2861,32 @@ export class MobileService implements OnModuleInit {
       );
       `,
       `CREATE INDEX IF NOT EXISTS idx_dispute_messages_dispute ON dispute_messages(dispute_id, created_at ASC);`,
+      `
+      CREATE TABLE IF NOT EXISTS user_blocks (
+        blocker_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        blocked_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (blocker_user_id, blocked_user_id)
+      );
+      `,
+      `
+      CREATE TABLE IF NOT EXISTS request_reports (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        request_id UUID NOT NULL REFERENCES job_requests(id) ON DELETE CASCADE,
+        reporter_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reason TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (request_id, reporter_user_id)
+      );
+      `,
+      `
+      CREATE TABLE IF NOT EXISTS dismissed_requests (
+        request_id UUID NOT NULL REFERENCES job_requests(id) ON DELETE CASCADE,
+        worker_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (request_id, worker_user_id)
+      );
+      `
     ];
 
     for (const statement of statements) {
