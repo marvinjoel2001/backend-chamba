@@ -988,6 +988,13 @@ export class MobileService implements OnModuleInit {
       `
       SELECT t.id AS thread_id,
              t.request_id,
+             jr.title AS request_title,
+             jr.description AS request_description,
+             jr.status AS request_status,
+             jr.budget AS request_budget,
+             jr.category AS request_category,
+             jr.worker_id AS request_worker_id,
+             jr.client_id AS request_client_id,
              CASE WHEN t.client_user_id = $1 THEN t.worker_user_id ELSE t.client_user_id END AS counterpart_id,
              u.first_name AS counterpart_first_name,
              u.last_name AS counterpart_last_name,
@@ -997,6 +1004,7 @@ export class MobileService implements OnModuleInit {
       FROM chat_threads t
       JOIN users u
         ON u.id = CASE WHEN t.client_user_id = $1 THEN t.worker_user_id ELSE t.client_user_id END
+      LEFT JOIN job_requests jr ON jr.id = t.request_id
       LEFT JOIN LATERAL (
         SELECT m.content, m.created_at
         FROM chat_messages m
@@ -1014,6 +1022,16 @@ export class MobileService implements OnModuleInit {
       threads: rows.map((row) => ({
         id: row.thread_id,
         requestId: row.request_id ?? null,
+        request: row.request_id ? {
+          id: row.request_id,
+          title: row.request_title,
+          description: row.request_description,
+          status: row.request_status,
+          budget: row.request_budget,
+          category: row.request_category,
+          workerId: row.request_worker_id,
+          clientId: row.request_client_id,
+        } : null,
         counterpart: {
           id: row.counterpart_id,
           firstName: row.counterpart_first_name,
