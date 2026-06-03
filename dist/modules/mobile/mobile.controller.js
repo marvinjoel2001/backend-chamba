@@ -233,15 +233,13 @@ let MobileController = class MobileController {
     getWorkerHistory(workerUserId) {
         return this.mobileService.getWorkerHistory(workerUserId);
     }
-    updateActiveSkills(userId, skills) {
-        return this.mobileService.updateActiveSkills(userId, skills);
-    }
-    async getNotifications(userId) {
+    async getNotifications(userId, page, limit) {
         if (!userId) {
-            return [];
+            return { items: [], hasMore: false };
         }
-        const items = await this.notificationsService.getUserNotifications(userId);
-        return items;
+        const pageNum = Math.max(1, parseInt(page || '1', 10));
+        const limitNum = Math.min(50, Math.max(1, parseInt(limit || '20', 10)));
+        return this.notificationsService.getUserNotifications(userId, pageNum, limitNum);
     }
     async markNotificationsRead(userId) {
         if (!userId) {
@@ -684,18 +682,12 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getWorkerHistory", null);
 __decorate([
-    (0, common_1.Post)('users/:userId/active-skills'),
-    __param(0, (0, common_1.Param)('userId')),
-    __param(1, (0, common_1.Body)('skills')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Array]),
-    __metadata("design:returntype", void 0)
-], MobileController.prototype, "updateActiveSkills", null);
-__decorate([
     (0, common_1.Get)('mobile/notifications'),
     __param(0, (0, common_1.Query)('userId')),
+    __param(1, (0, common_1.Query)('page')),
+    __param(2, (0, common_1.Query)('limit')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, String, String]),
     __metadata("design:returntype", Promise)
 ], MobileController.prototype, "getNotifications", null);
 __decorate([

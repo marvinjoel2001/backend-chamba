@@ -695,8 +695,10 @@ export declare class MobileController {
             };
         }[];
     }>;
-    updateActiveSkills(userId: string, skills: string[]): any;
-    getNotifications(userId: string): Promise<import("../notifications/entities/notification.entity").Notification[]>;
+    getNotifications(userId: string, page?: string, limit?: string): Promise<{
+        items: import("../notifications/entities/notification.entity").Notification[];
+        hasMore: boolean;
+    }>;
     markNotificationsRead(userId: string): Promise<{
         success: boolean;
     }>;

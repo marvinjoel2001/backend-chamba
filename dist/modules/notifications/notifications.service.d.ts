@@ -58,6 +58,9 @@ export declare class NotificationsService {
         jobTitle: string;
         requestId: string;
     }): Promise<string | null>;
-    getUserNotifications(userId: string): Promise<Notification[]>;
+    getUserNotifications(userId: string, page?: number, limit?: number): Promise<{
+        items: Notification[];
+        hasMore: boolean;
+    }>;
     markNotificationsAsRead(userId: string): Promise<void>;
 }

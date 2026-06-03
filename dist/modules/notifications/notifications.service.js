@@ -160,12 +160,18 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             data: { type, requestId: params.requestId },
         });
     }
-    async getUserNotifications(userId) {
-        return this.notificationRepository.find({
+    async getUserNotifications(userId, page = 1, limit = 20) {
+        const skip = (page - 1) * limit;
+        const [items, total] = await this.notificationRepository.findAndCount({
             where: { userId },
             order: { createdAt: 'DESC' },
-            take: 50,
+            take: limit,
+            skip,
         });
+        return {
+            items,
+            hasMore: skip + items.length < total,
+        };
     }
     async markNotificationsAsRead(userId) {
         await this.notificationRepository.update({ userId, isRead: false }, { isRead: true });
