@@ -1074,11 +1074,12 @@ export class MobileService implements OnModuleInit {
   }
 
   async broadcastNotification(payload: {
-    target: 'all' | 'workers' | 'clients';
+    target: 'all' | 'workers' | 'clients' | 'custom';
     type: 'push' | 'toast';
     title: string;
     body: string;
     toastType?: 'info' | 'success' | 'error';
+    userIds?: string[];
   }) {
     if (payload.type === 'toast') {
       this.realtimeGateway.server.emit('notification.toast', {
@@ -1086,6 +1087,7 @@ export class MobileService implements OnModuleInit {
         title: payload.title,
         body: payload.body,
         toastType: payload.toastType ?? 'info',
+        userIds: payload.userIds,
       });
       return { success: true, method: 'socket' };
     } else {
@@ -1102,6 +1104,11 @@ export class MobileService implements OnModuleInit {
       } else if (payload.target === 'clients') {
         query += ` AND u.type = $1`;
         args.push('client');
+      } else if (payload.target === 'custom' && payload.userIds && payload.userIds.length > 0) {
+        query += ` AND u.id = ANY($1::uuid[])`;
+        args.push(payload.userIds);
+      } else if (payload.target === 'custom') {
+        return { success: true, method: 'push', count: 0 };
       }
 
       const rows = await this.dataSource.query<any[]>(query, args);
@@ -1115,6 +1122,29 @@ export class MobileService implements OnModuleInit {
 
       return { success: true, method: 'push', count };
     }
+  }
+
+  async getPushUsers() {
+    const query = `
+      SELECT DISTINCT ON (u.id)
+        u.id, 
+        u.first_name as "firstName", 
+        u.last_name as "lastName", 
+        u.type, 
+        pt.last_seen_at as "lastSeenAt"
+      FROM push_tokens pt
+      JOIN users u ON u.id = pt.user_id
+      WHERE pt.token IS NOT NULL
+      ORDER BY u.id, pt.last_seen_at DESC
+    `;
+    const rows = await this.dataSource.query<any[]>(query);
+    // Sort globally by lastSeenAt DESC and limit to 500
+    rows.sort((a, b) => {
+      const dateA = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : 0;
+      const dateB = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : 0;
+      return dateB - dateA;
+    });
+    return rows.slice(0, 500);
   }
 
   async sendMessage(params: {

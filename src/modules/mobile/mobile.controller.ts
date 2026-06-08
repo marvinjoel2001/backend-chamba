@@ -272,14 +272,20 @@ export class MobileController {
   @Post('mobile/admin/notifications/broadcast')
   broadcastNotification(
     @Body() payload: {
-      target: 'all' | 'workers' | 'clients';
+      target: 'all' | 'workers' | 'clients' | 'custom';
       type: 'push' | 'toast';
       title: string;
       body: string;
       toastType?: 'info' | 'success' | 'error';
+      userIds?: string[];
     },
   ) {
     return this.mobileService.broadcastNotification(payload);
+  }
+
+  @Get('mobile/admin/push-users')
+  getPushUsers() {
+    return this.mobileService.getPushUsers();
   }
 
   @Get('mobile/incoming-request')
