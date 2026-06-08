@@ -261,6 +261,14 @@ export class MobileController {
     return this.mobileService.sendMessage({ threadId, senderUserId, content });
   }
 
+  @Post('mobile/messages/:threadId/archive')
+  archiveThread(
+    @Param('threadId') threadId: string,
+    @Body('userId') userId: string,
+  ) {
+    return this.mobileService.archiveThread({ threadId, userId });
+  }
+
   @Get('mobile/incoming-request')
   getIncomingRequest(@Query('workerUserId') workerUserId: string) {
     return this.mobileService.getIncomingRequest(workerUserId);
