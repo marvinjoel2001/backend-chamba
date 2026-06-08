@@ -3686,13 +3686,24 @@ export class MobileService implements OnModuleInit {
       ];
     }
 
-    const nvidiaApiKey =
-      this.configService.get<string>('NVIDIA_API_KEY')?.trim() ?? '';
-    if (!nvidiaApiKey) {
+    const geminiApiKey = this.configService.get<string>('GEMINI_API_KEY')?.trim() ?? '';
+    const nvidiaApiKey = this.configService.get<string>('NVIDIA_API_KEY')?.trim() ?? '';
+
+    let endpointUrl = '';
+    let apiKey = '';
+    let modelName = '';
+
+    if (geminiApiKey) {
+      endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+      apiKey = geminiApiKey;
+      modelName = this.configService.get<string>('GEMINI_MODEL')?.trim() || 'gemini-2.0-flash';
+    } else if (nvidiaApiKey) {
+      endpointUrl = 'https://integrate.api.nvidia.com/v1/chat/completions';
+      apiKey = nvidiaApiKey;
+      modelName = this.configService.get<string>('NVIDIA_MODEL')?.trim() || 'minimaxai/minimax-m2.7';
+    } else {
       this.logger.warn(
-        '[Nvidia AI] NVIDIA_API_KEY no configurada → usando fallback "' +
-          fallbackCategory +
-          '". Configúrala en backend/.env',
+        `[AI] GEMINI_API_KEY o NVIDIA_API_KEY no configurada → usando fallback "${fallbackCategory}".`
       );
       return [
         {
@@ -3703,12 +3714,8 @@ export class MobileService implements OnModuleInit {
       ];
     }
 
-    const nvidiaModel =
-      this.configService.get<string>('NVIDIA_MODEL')?.trim() ||
-      'minimaxai/minimax-m2.7';
-
     this.logger.log(
-      `[Nvidia AI] Clasificando: "${params.title}" | "${params.description.slice(0, 60)}…"`,
+      `[AI] Clasificando con ${geminiApiKey ? 'Gemini' : 'Nvidia'}: "${params.title}" | "${params.description.slice(0, 60)}…"`,
     );
 
     const categoryCatalog = catalog
@@ -3740,7 +3747,7 @@ Reglas obligatorias:
 7) No agregues texto fuera del JSON.
 `.trim();
 
-    const endpoint = new URL('https://integrate.api.nvidia.com/v1/chat/completions');
+    const endpoint = new URL(endpointUrl);
 
     const controller = new AbortController();
     const timeout = setTimeout(
@@ -3753,10 +3760,10 @@ Reglas obligatorias:
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${nvidiaApiKey}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: nvidiaModel,
+          model: modelName,
           messages: [{ role: 'user', content: prompt }],
           temperature: 0,
           top_p: 0.95,
