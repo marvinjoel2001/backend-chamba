@@ -59,13 +59,26 @@ export class PushService {
       return null;
     }
 
+    const isCall = params.data?.type === 'request_new';
+    
+    let notification: any = {
+      title: params.title,
+      body: params.body,
+    };
+    
+    let data = params.data ? { ...params.data } : {};
+
+    if (isCall) {
+      // Data-only message for full screen intent in mobile app
+      notification = undefined;
+      data.title = params.title;
+      data.body = params.body;
+    }
+
     return this.messaging.send({
       token: params.token,
-      notification: {
-        title: params.title,
-        body: params.body,
-      },
-      data: params.data,
+      ...(notification ? { notification } : {}),
+      data: Object.keys(data).length > 0 ? data : undefined,
       android: {
         priority: 'high',
       },
@@ -87,20 +100,33 @@ export class PushService {
       return 0;
     }
 
+    const isCall = params.data?.type === 'request_new';
+
+    let notification: any = {
+      title: params.title,
+      body: params.body,
+    };
+    
+    let data = params.data ? { ...params.data } : {};
+
+    if (isCall) {
+      // Data-only message for full screen intent in mobile app
+      notification = undefined;
+      data.title = params.title;
+      data.body = params.body;
+    }
+
     const response = await this.messaging.sendEachForMulticast({
       tokens: params.tokens,
-      notification: {
-        title: params.title,
-        body: params.body,
-      },
-      data: params.data,
+      ...(notification ? { notification } : {}),
+      data: Object.keys(data).length > 0 ? data : undefined,
       android: {
         priority: 'high',
-        notification: {
+        notification: notification ? {
           priority: 'max',
           defaultSound: true,
           defaultVibrateTimings: true,
-        },
+        } : undefined,
       },
       apns: {
         headers: {
