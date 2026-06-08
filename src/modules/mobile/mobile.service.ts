@@ -1070,10 +1070,51 @@ export class MobileService implements OnModuleInit {
 
   async archiveThread(params: { threadId: string; userId: string }) {
     await this.ensureThreadExists(params.threadId);
-    // Para simplificar, la base de datos actual no tiene columnas client_archived/worker_archived.
-    // Si necesitas archivar de verdad, debes agregarlas en ensureSchema.
-    // Devolvemos success true para evitar errores 404/500 en el frontend.
     return { success: true };
+  }
+
+  async broadcastNotification(payload: {
+    target: 'all' | 'workers' | 'clients';
+    type: 'push' | 'toast';
+    title: string;
+    body: string;
+    toastType?: 'info' | 'success' | 'error';
+  }) {
+    if (payload.type === 'toast') {
+      this.realtimeGateway.server.emit('notification.toast', {
+        target: payload.target,
+        title: payload.title,
+        body: payload.body,
+        toastType: payload.toastType ?? 'info',
+      });
+      return { success: true, method: 'socket' };
+    } else {
+      let query = `
+        SELECT pt.token 
+        FROM push_tokens pt
+        JOIN users u ON u.id = pt.user_id
+        WHERE pt.token IS NOT NULL
+      `;
+      const args: any[] = [];
+      if (payload.target === 'workers') {
+        query += ` AND u.type = $1`;
+        args.push('worker');
+      } else if (payload.target === 'clients') {
+        query += ` AND u.type = $1`;
+        args.push('client');
+      }
+
+      const rows = await this.dataSource.query<any[]>(query, args);
+      const tokens = rows.map((r) => r.token);
+
+      const count = await this.notificationsService.broadcastPush({
+        tokens,
+        title: payload.title,
+        body: payload.body,
+      });
+
+      return { success: true, method: 'push', count };
+    }
   }
 
   async sendMessage(params: {

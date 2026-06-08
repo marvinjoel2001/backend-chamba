@@ -269,6 +269,19 @@ export class MobileController {
     return this.mobileService.archiveThread({ threadId, userId });
   }
 
+  @Post('mobile/admin/notifications/broadcast')
+  broadcastNotification(
+    @Body() payload: {
+      target: 'all' | 'workers' | 'clients';
+      type: 'push' | 'toast';
+      title: string;
+      body: string;
+      toastType?: 'info' | 'success' | 'error';
+    },
+  ) {
+    return this.mobileService.broadcastNotification(payload);
+  }
+
   @Get('mobile/incoming-request')
   getIncomingRequest(@Query('workerUserId') workerUserId: string) {
     return this.mobileService.getIncomingRequest(workerUserId);

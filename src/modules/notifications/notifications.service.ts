@@ -39,6 +39,20 @@ export class NotificationsService {
     };
   }
 
+  async broadcastPush(params: {
+    tokens: string[];
+    title: string;
+    body: string;
+  }): Promise<number> {
+    if (params.tokens.length === 0) return 0;
+    return this.pushService.sendToTokens({
+      tokens: params.tokens,
+      title: params.title,
+      body: params.body,
+      data: { type: 'broadcast' },
+    });
+  }
+
   async notifyWorkersForJobWave(params: {
     users: { userId: string; token: string }[];
     jobId: string;
