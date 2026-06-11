@@ -2766,12 +2766,22 @@ export class MobileService implements OnModuleInit {
 
     await this.getUserById(params.workerUserId);
     await this.getUserById(params.clientUserId);
-    await this.getRequestById(params.requestId);
+    const req = await this.getRequestById(params.requestId);
 
-    await this.dataSource.query(
+    if (req.status !== 'completed') {
+      throw new BadRequestException('Request is not completed yet');
+    }
+
+    if (req.client_user_id !== params.clientUserId) {
+      throw new BadRequestException('Client user ID does not match the request');
+    }
+
+    const insertResult = await this.dataSource.query(
       `
       INSERT INTO worker_reviews (request_id, worker_user_id, client_user_id, stars, comment)
       VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (request_id) DO NOTHING
+      RETURNING id
       `,
       [
         params.requestId,
@@ -2782,12 +2792,20 @@ export class MobileService implements OnModuleInit {
       ],
     );
 
+    if (!insertResult.length) {
+      return { saved: false, alreadyReviewed: true };
+    }
+
     const rows = await this.dataSource.query<any[]>(
       `
-      SELECT COALESCE(AVG(stars), 0) AS average_rating,
-             COUNT(*)::text AS completed_jobs
-      FROM worker_reviews
-      WHERE worker_user_id = $1
+      SELECT COALESCE(AVG(r.stars), 0) AS average_rating,
+             (SELECT COUNT(*)::text
+              FROM job_requests jr
+              JOIN job_offers jo ON jo.request_id = jr.id
+              WHERE jo.worker_user_id = $1 AND jo.status = 'accepted' AND jr.status = 'completed'
+             ) AS completed_jobs
+      FROM worker_reviews r
+      WHERE r.worker_user_id = $1
       `,
       [params.workerUserId],
     );
@@ -2907,6 +2925,7 @@ export class MobileService implements OnModuleInit {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       `,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_reviews_request ON worker_reviews(request_id);`,
       `
       CREATE TABLE IF NOT EXISTS job_request_photos (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -4814,6 +4833,78 @@ Reglas obligatorias:
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       })),
+    };
+  }
+
+  // ─── Admin: Get User Disputes ───
+
+  async getUserDisputes(userId: string) {
+    const madeRows = await this.dataSource.query<any[]>(
+      `
+      SELECT d.id, d.request_id, d.reported_by, d.reported_user, d.reason,
+             d.description, d.status, d.resolution, d.resolved_by,
+             d.resolved_at, d.created_at, d.updated_at,
+             u_by.first_name AS reporter_first_name,
+             u_by.last_name AS reporter_last_name,
+             u_by.type AS reporter_type,
+             u_rep.first_name AS reported_first_name,
+             u_rep.last_name AS reported_last_name,
+             u_rep.type AS reported_type,
+             jr.title AS request_title
+      FROM disputes d
+      LEFT JOIN users u_by ON u_by.id = d.reported_by
+      LEFT JOIN users u_rep ON u_rep.id = d.reported_user
+      LEFT JOIN job_requests jr ON jr.id = d.request_id
+      WHERE d.reported_by = $1
+      ORDER BY d.created_at DESC
+      LIMIT 100
+      `,
+      [userId],
+    );
+
+    const receivedRows = await this.dataSource.query<any[]>(
+      `
+      SELECT d.id, d.request_id, d.reported_by, d.reported_user, d.reason,
+             d.description, d.status, d.resolution, d.resolved_by,
+             d.resolved_at, d.created_at, d.updated_at,
+             u_by.first_name AS reporter_first_name,
+             u_by.last_name AS reporter_last_name,
+             u_by.type AS reporter_type,
+             u_rep.first_name AS reported_first_name,
+             u_rep.last_name AS reported_last_name,
+             u_rep.type AS reported_type,
+             jr.title AS request_title
+      FROM disputes d
+      LEFT JOIN users u_by ON u_by.id = d.reported_by
+      LEFT JOIN users u_rep ON u_rep.id = d.reported_user
+      LEFT JOIN job_requests jr ON jr.id = d.request_id
+      WHERE d.reported_user = $1
+      ORDER BY d.created_at DESC
+      LIMIT 100
+      `,
+      [userId],
+    );
+
+    const mapRow = (r: any) => ({
+      id: r.id,
+      requestId: r.request_id,
+      requestTitle: r.request_title,
+      reason: r.reason,
+      description: r.description,
+      status: r.status,
+      resolution: r.resolution,
+      resolvedBy: r.resolved_by,
+      resolvedAt: r.resolved_at,
+      createdAt: r.created_at,
+      reporterName: [r.reporter_first_name, r.reporter_last_name].filter(Boolean).join(' '),
+      reporterType: r.reporter_type,
+      reportedName: [r.reported_first_name, r.reported_last_name].filter(Boolean).join(' '),
+      reportedType: r.reported_type,
+    });
+
+    return {
+      made: madeRows.map(mapRow),
+      received: receivedRows.map(mapRow),
     };
   }
 }

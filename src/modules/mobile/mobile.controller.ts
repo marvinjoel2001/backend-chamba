@@ -525,6 +525,11 @@ export class MobileController {
   }
   // --- Disputes ---
 
+  @Get('mobile/admin/users/:userId/disputes')
+  getUserDisputes(@Param('userId') userId: string) {
+    return this.mobileService.getUserDisputes(userId);
+  }
+
   @Get('mobile/admin/disputes')
   listDisputes(@Query('status') status?: string) {
     return this.mobileService.listDisputes({ status: status || undefined });
