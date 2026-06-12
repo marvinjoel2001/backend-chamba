@@ -611,6 +611,28 @@ export class MobileController {
     });
   }
 
+  // --- Admin: AI Config ---
+
+  @Get('mobile/admin/ai-config')
+  getAiConfig() {
+    return this.mobileService.getAiConfig();
+  }
+
+  @Post('mobile/admin/ai-config')
+  updateAiConfig(
+    @Body('activeProvider') activeProvider: string,
+    @Body('geminiKey') geminiKey: string,
+    @Body('nvidiaKey') nvidiaKey: string,
+    @Body('deepseekKey') deepseekKey: string,
+  ) {
+    return this.mobileService.updateAiConfig({
+      activeProvider,
+      geminiKey,
+      nvidiaKey,
+      deepseekKey,
+    });
+  }
+
   // --- Admin: Categories CRUD ---
 
   @Get('mobile/admin/categories')

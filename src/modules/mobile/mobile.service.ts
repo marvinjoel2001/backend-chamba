@@ -49,7 +49,7 @@ export class MobileService implements OnModuleInit {
   private static readonly WORKER_NOTIFICATION_WAVE_SIZE = 5;
   private static readonly WORKER_NOTIFICATION_WAVE_DELAY_MS = 7000;
   private static readonly DEFAULT_CATEGORY = 'General';
-  private static readonly GEMINI_TIMEOUT_MS = 9000;
+  private static readonly GEMINI_TIMEOUT_MS = 25000;
 
   constructor(
     private readonly configService: ConfigService,
@@ -3776,24 +3776,28 @@ export class MobileService implements OnModuleInit {
       ];
     }
 
-    const geminiApiKey = this.configService.get<string>('GEMINI_API_KEY')?.trim() ?? '';
-    const nvidiaApiKey = this.configService.get<string>('NVIDIA_API_KEY')?.trim() ?? '';
+    const aiConfig = await this.getAiConfig();
+    const activeProvider = aiConfig.activeProvider || 'nvidia';
 
     let endpointUrl = '';
     let apiKey = '';
     let modelName = '';
 
-    if (geminiApiKey) {
-      endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
-      apiKey = geminiApiKey;
-      modelName = this.configService.get<string>('GEMINI_MODEL')?.trim() || 'gemini-2.0-flash';
-    } else if (nvidiaApiKey) {
+    if (activeProvider === 'nvidia' && aiConfig.nvidiaKey) {
       endpointUrl = 'https://integrate.api.nvidia.com/v1/chat/completions';
-      apiKey = nvidiaApiKey;
+      apiKey = aiConfig.nvidiaKey;
       modelName = this.configService.get<string>('NVIDIA_MODEL')?.trim() || 'minimaxai/minimax-m2.7';
+    } else if (activeProvider === 'gemini' && aiConfig.geminiKey) {
+      endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+      apiKey = aiConfig.geminiKey;
+      modelName = 'gemini-2.0-flash';
+    } else if (activeProvider === 'deepseek' && aiConfig.deepseekKey) {
+      endpointUrl = 'https://api.deepseek.com/v1/chat/completions';
+      apiKey = aiConfig.deepseekKey;
+      modelName = 'deepseek-chat';
     } else {
       this.logger.warn(
-        `[AI] GEMINI_API_KEY o NVIDIA_API_KEY no configurada → usando fallback "${fallbackCategory}".`
+        `[AI] API Key no configurada para ${activeProvider} → usando fallback "${fallbackCategory}".`
       );
       return [
         {
@@ -3805,7 +3809,7 @@ export class MobileService implements OnModuleInit {
     }
 
     this.logger.log(
-      `[AI] Clasificando con ${geminiApiKey ? 'Gemini' : 'Nvidia'}: "${params.title}" | "${params.description.slice(0, 60)}…"`,
+      `[AI] Clasificando con ${activeProvider}: "${params.title}" | "${params.description.slice(0, 60)}…"`,
     );
 
     const categoryCatalog = catalog
@@ -3867,7 +3871,7 @@ Reglas obligatorias:
       if (!response.ok) {
         const errBody = await response.text().catch(() => '');
         this.logger.error(
-          `[Nvidia AI] HTTP ${response.status} → fallback "${fallbackCategory}" | detalle: ${errBody.slice(0, 300)}`,
+          `[${activeProvider}] HTTP ${response.status} → fallback "${fallbackCategory}" | detalle: ${errBody.slice(0, 300)}`,
         );
         return [
           {
@@ -3889,7 +3893,7 @@ Reglas obligatorias:
       const text =
         payload.choices?.[0]?.message?.content?.trim() ?? '';
       if (!text) {
-        this.logger.warn('[Nvidia AI] Respuesta vacía → fallback');
+        this.logger.warn(`[${activeProvider}] Respuesta vacía → fallback`);
         return [
           {
             id: this.toCategoryId(fallbackCategory),
@@ -3906,12 +3910,12 @@ Reglas obligatorias:
       });
       if (parsed.length > 0) {
         this.logger.log(
-          `[Nvidia AI] Categorías detectadas: ${parsed.map((c) => c.name).join(', ')}`,
+          `[${activeProvider}] Categorías detectadas: ${parsed.map((c) => c.name).join(', ')}`,
         );
         return parsed;
       }
 
-      this.logger.warn('[Nvidia AI] No se pudo parsear respuesta → fallback');
+      this.logger.warn(`[${activeProvider}] No se pudo parsear respuesta → fallback`);
       return [
         {
           id: this.toCategoryId(fallbackCategory),
@@ -3921,7 +3925,7 @@ Reglas obligatorias:
       ];
     } catch (err) {
       const msg = (err as Error)?.message ?? String(err);
-      this.logger.error(`[Nvidia AI] Error: ${msg} → fallback "${fallbackCategory}"`);
+      this.logger.error(`[${activeProvider}] Error: ${msg} → fallback "${fallbackCategory}"`);
       return [
         {
           id: this.toCategoryId(fallbackCategory),
@@ -4695,6 +4699,51 @@ Reglas obligatorias:
     );
 
     return { commissionPercent: percent };
+  }
+
+  // ─── Admin: AI Config ───
+
+  async getAiConfig() {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT value_json FROM app_config WHERE key = 'ai_config' LIMIT 1`,
+    );
+    const defaultVal = {
+      activeProvider: 'nvidia',
+      geminiKey: '',
+      nvidiaKey: '',
+      deepseekKey: '',
+    };
+    if (rows[0]) {
+      const val = typeof rows[0].value_json === 'string' ? JSON.parse(rows[0].value_json) : rows[0].value_json;
+      return { ...defaultVal, ...val };
+    }
+    return defaultVal;
+  }
+
+  async updateAiConfig(params: {
+    activeProvider: string;
+    geminiKey: string;
+    nvidiaKey: string;
+    deepseekKey: string;
+  }) {
+    const value = {
+      activeProvider: params.activeProvider || 'nvidia',
+      geminiKey: params.geminiKey || '',
+      nvidiaKey: params.nvidiaKey || '',
+      deepseekKey: params.deepseekKey || '',
+    };
+
+    await this.dataSource.query(
+      `
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ('ai_config', $1::jsonb, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
+      `,
+      [JSON.stringify(value)],
+    );
+
+    return value;
   }
 
   // ─── Admin: Category Update & Delete ───
