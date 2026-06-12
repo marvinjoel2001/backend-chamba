@@ -50,13 +50,21 @@ let PushService = PushService_1 = class PushService {
         if (!this.messaging) {
             return null;
         }
+        const isCall = params.data?.type === 'request_new';
+        let notification = {
+            title: params.title,
+            body: params.body,
+        };
+        let data = params.data ? { ...params.data } : {};
+        if (isCall) {
+            notification = undefined;
+            data.title = params.title;
+            data.body = params.body;
+        }
         return this.messaging.send({
             token: params.token,
-            notification: {
-                title: params.title,
-                body: params.body,
-            },
-            data: params.data,
+            ...(notification ? { notification } : {}),
+            data: Object.keys(data).length > 0 ? data : undefined,
             android: {
                 priority: 'high',
             },
@@ -71,20 +79,28 @@ let PushService = PushService_1 = class PushService {
         if (!this.messaging || params.tokens.length === 0) {
             return 0;
         }
+        const isCall = params.data?.type === 'request_new';
+        let notification = {
+            title: params.title,
+            body: params.body,
+        };
+        let data = params.data ? { ...params.data } : {};
+        if (isCall) {
+            notification = undefined;
+            data.title = params.title;
+            data.body = params.body;
+        }
         const response = await this.messaging.sendEachForMulticast({
             tokens: params.tokens,
-            notification: {
-                title: params.title,
-                body: params.body,
-            },
-            data: params.data,
+            ...(notification ? { notification } : {}),
+            data: Object.keys(data).length > 0 ? data : undefined,
             android: {
                 priority: 'high',
-                notification: {
+                notification: notification ? {
                     priority: 'max',
                     defaultSound: true,
                     defaultVibrateTimings: true,
-                },
+                } : undefined,
             },
             apns: {
                 headers: {
@@ -97,7 +113,17 @@ let PushService = PushService_1 = class PushService {
                 },
             },
         });
+        if (response.failureCount > 0) {
+            response.responses.forEach((resp, idx) => {
+                if (!resp.success) {
+                    this.logger.error(`FCM multicast send failed for token ${params.tokens[idx].substring(0, 20)}...: [${resp.error?.code}] - ${resp.error?.message}`);
+                }
+            });
+        }
         return response.successCount;
+    }
+    getProjectId() {
+        return this.configService.get('FIREBASE_PROJECT_ID') || null;
     }
     normalizePrivateKey(privateKey) {
         if (!privateKey) {

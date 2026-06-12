@@ -10,6 +10,7 @@ exports.UsersModule = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const realtime_module_1 = require("../realtime/realtime.module");
+const notifications_module_1 = require("../notifications/notifications.module");
 const user_entity_1 = require("./entities/user.entity");
 const users_controller_1 = require("./users.controller");
 const users_service_1 = require("./users.service");
@@ -18,7 +19,7 @@ let UsersModule = class UsersModule {
 exports.UsersModule = UsersModule;
 exports.UsersModule = UsersModule = __decorate([
     (0, common_1.Module)({
-        imports: [typeorm_1.TypeOrmModule.forFeature([user_entity_1.User]), realtime_module_1.RealtimeModule],
+        imports: [typeorm_1.TypeOrmModule.forFeature([user_entity_1.User]), realtime_module_1.RealtimeModule, notifications_module_1.NotificationsModule],
         controllers: [users_controller_1.UsersController],
         providers: [users_service_1.UsersService],
     })

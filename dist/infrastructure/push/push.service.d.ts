@@ -18,5 +18,6 @@ export declare class PushService {
         body: string;
         data?: Record<string, string>;
     }): Promise<number>;
+    getProjectId(): string | null;
     private normalizePrivateKey;
 }

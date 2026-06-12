@@ -2,12 +2,14 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ReviewWorkerVerificationDto } from './dto/review-worker-verification.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -19,11 +21,15 @@ const USER_CACHE_TTL = 120;
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
     private readonly redisService: RedisService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly notificationsService: NotificationsService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
@@ -169,6 +175,23 @@ export class UsersService {
     await this.redisService.del(`${USER_CACHE_PREFIX}${userId}`);
 
     this.emitVerificationUpdate(updated);
+
+    // Push notification al worker
+    const message = this.buildVerificationMessage(updated);
+    const newVerificationStatus = updated.verificationStatus as string;
+    if (newVerificationStatus === 'verified' || newVerificationStatus === 'not_verified') {
+      const tokenRows = await this.dataSource.query<any[]>(
+        `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+        [userId],
+      );
+      this.notificationsService.notifyVerificationUpdated({
+        userId,
+        token: tokenRows[0]?.push_token || null,
+        status: newVerificationStatus === 'verified' ? 'verified' : 'rejected',
+        message,
+      }).catch(e => this.logger.error('Failed to notify verification update', e));
+    }
+
     return updated;
   }
 

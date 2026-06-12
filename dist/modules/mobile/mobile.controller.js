@@ -144,6 +144,15 @@ let MobileController = class MobileController {
     sendThreadMessage(threadId, senderUserId, content) {
         return this.mobileService.sendMessage({ threadId, senderUserId, content });
     }
+    archiveThread(threadId, userId) {
+        return this.mobileService.archiveThread({ threadId, userId });
+    }
+    broadcastNotification(payload) {
+        return this.mobileService.broadcastNotification(payload);
+    }
+    getPushUsers() {
+        return this.mobileService.getPushUsers();
+    }
     getIncomingRequest(workerUserId) {
         return this.mobileService.getIncomingRequest(workerUserId);
     }
@@ -260,6 +269,9 @@ let MobileController = class MobileController {
             comment,
         });
     }
+    getUserDisputes(userId) {
+        return this.mobileService.getUserDisputes(userId);
+    }
     listDisputes(status) {
         return this.mobileService.listDisputes({ status: status || undefined });
     }
@@ -302,6 +314,17 @@ let MobileController = class MobileController {
     updateCommissionConfig(commissionPercent) {
         return this.mobileService.updateCommissionConfig({
             commissionPercent: Number(commissionPercent),
+        });
+    }
+    getAiConfig() {
+        return this.mobileService.getAiConfig();
+    }
+    updateAiConfig(activeProvider, geminiKey, nvidiaKey, deepseekKey) {
+        return this.mobileService.updateAiConfig({
+            activeProvider,
+            geminiKey,
+            nvidiaKey,
+            deepseekKey,
         });
     }
     listAllCategories() {
@@ -494,6 +517,27 @@ __decorate([
     __metadata("design:paramtypes", [String, String, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "sendThreadMessage", null);
+__decorate([
+    (0, common_1.Post)('mobile/messages/:threadId/archive'),
+    __param(0, (0, common_1.Param)('threadId')),
+    __param(1, (0, common_1.Body)('userId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "archiveThread", null);
+__decorate([
+    (0, common_1.Post)('mobile/admin/notifications/broadcast'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "broadcastNotification", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/push-users'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getPushUsers", null);
 __decorate([
     (0, common_1.Get)('mobile/incoming-request'),
     __param(0, (0, common_1.Query)('workerUserId')),
@@ -717,6 +761,13 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "createReview", null);
 __decorate([
+    (0, common_1.Get)('mobile/admin/users/:userId/disputes'),
+    __param(0, (0, common_1.Param)('userId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getUserDisputes", null);
+__decorate([
     (0, common_1.Get)('mobile/admin/disputes'),
     __param(0, (0, common_1.Query)('status')),
     __metadata("design:type", Function),
@@ -786,6 +837,22 @@ __decorate([
     __metadata("design:paramtypes", [Number]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "updateCommissionConfig", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/ai-config'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getAiConfig", null);
+__decorate([
+    (0, common_1.Post)('mobile/admin/ai-config'),
+    __param(0, (0, common_1.Body)('activeProvider')),
+    __param(1, (0, common_1.Body)('geminiKey')),
+    __param(2, (0, common_1.Body)('nvidiaKey')),
+    __param(3, (0, common_1.Body)('deepseekKey')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "updateAiConfig", null);
 __decorate([
     (0, common_1.Get)('mobile/admin/categories'),
     __metadata("design:type", Function),

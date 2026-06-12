@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var UsersService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UsersService = void 0;
 const common_1 = require("@nestjs/common");
@@ -18,18 +19,24 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const redis_service_1 = require("../../infrastructure/redis/redis.service");
 const realtime_gateway_1 = require("../realtime/realtime.gateway");
+const notifications_service_1 = require("../notifications/notifications.service");
 const user_entity_1 = require("./entities/user.entity");
 const USERS_ALL_CACHE_KEY = 'users:all';
 const USER_CACHE_PREFIX = 'users:';
 const USER_CACHE_TTL = 120;
-let UsersService = class UsersService {
+let UsersService = UsersService_1 = class UsersService {
     usersRepository;
     redisService;
     realtimeGateway;
-    constructor(usersRepository, redisService, realtimeGateway) {
+    notificationsService;
+    dataSource;
+    logger = new common_1.Logger(UsersService_1.name);
+    constructor(usersRepository, redisService, realtimeGateway, notificationsService, dataSource) {
         this.usersRepository = usersRepository;
         this.redisService = redisService;
         this.realtimeGateway = realtimeGateway;
+        this.notificationsService = notificationsService;
+        this.dataSource = dataSource;
     }
     async create(createUserDto) {
         const existingEmail = await this.usersRepository.findOne({
@@ -132,6 +139,17 @@ let UsersService = class UsersService {
         await this.redisService.del(USERS_ALL_CACHE_KEY);
         await this.redisService.del(`${USER_CACHE_PREFIX}${userId}`);
         this.emitVerificationUpdate(updated);
+        const message = this.buildVerificationMessage(updated);
+        const newVerificationStatus = updated.verificationStatus;
+        if (newVerificationStatus === 'verified' || newVerificationStatus === 'not_verified') {
+            const tokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`, [userId]);
+            this.notificationsService.notifyVerificationUpdated({
+                userId,
+                token: tokenRows[0]?.push_token || null,
+                status: newVerificationStatus === 'verified' ? 'verified' : 'rejected',
+                message,
+            }).catch(e => this.logger.error('Failed to notify verification update', e));
+        }
         return updated;
     }
     async findNearbyWorkers(params) {
@@ -224,11 +242,13 @@ let UsersService = class UsersService {
     }
 };
 exports.UsersService = UsersService;
-exports.UsersService = UsersService = __decorate([
+exports.UsersService = UsersService = UsersService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         redis_service_1.RedisService,
-        realtime_gateway_1.RealtimeGateway])
+        realtime_gateway_1.RealtimeGateway,
+        notifications_service_1.NotificationsService,
+        typeorm_2.DataSource])
 ], UsersService);
 //# sourceMappingURL=users.service.js.map

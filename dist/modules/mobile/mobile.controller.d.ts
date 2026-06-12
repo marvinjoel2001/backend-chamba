@@ -418,6 +418,26 @@ export declare class MobileController {
             createdAt: any;
         };
     }>;
+    archiveThread(threadId: string, userId: string): Promise<{
+        success: boolean;
+    }>;
+    broadcastNotification(payload: {
+        target: 'all' | 'workers' | 'clients' | 'custom';
+        type: 'push' | 'toast';
+        title: string;
+        body: string;
+        toastType?: 'info' | 'success' | 'error';
+        userIds?: string[];
+    }): Promise<{
+        success: boolean;
+        method: string;
+        count?: undefined;
+    } | {
+        success: boolean;
+        method: string;
+        count: number;
+    }>;
+    getPushUsers(): Promise<any[]>;
     getIncomingRequest(workerUserId: string): Promise<{
         requests: never[];
         offerLifetimeSeconds?: undefined;
@@ -708,9 +728,50 @@ export declare class MobileController {
     }>;
     createReview(requestId: string, workerUserId: string, clientUserId: string, stars: number, comment?: string): Promise<{
         saved: boolean;
+        alreadyReviewed: boolean;
+        workerUserId?: undefined;
+        averageRating?: undefined;
+        completedJobs?: undefined;
+    } | {
+        saved: boolean;
         workerUserId: string;
         averageRating: number;
         completedJobs: number;
+        alreadyReviewed?: undefined;
+    }>;
+    getUserDisputes(userId: string): Promise<{
+        made: {
+            id: any;
+            requestId: any;
+            requestTitle: any;
+            reason: any;
+            description: any;
+            status: any;
+            resolution: any;
+            resolvedBy: any;
+            resolvedAt: any;
+            createdAt: any;
+            reporterName: string;
+            reporterType: any;
+            reportedName: string;
+            reportedType: any;
+        }[];
+        received: {
+            id: any;
+            requestId: any;
+            requestTitle: any;
+            reason: any;
+            description: any;
+            status: any;
+            resolution: any;
+            resolvedBy: any;
+            resolvedAt: any;
+            createdAt: any;
+            reporterName: string;
+            reporterType: any;
+            reportedName: string;
+            reportedType: any;
+        }[];
     }>;
     listDisputes(status?: string): Promise<{
         disputes: {
@@ -777,6 +838,13 @@ export declare class MobileController {
     }>;
     updateCommissionConfig(commissionPercent: number): Promise<{
         commissionPercent: number;
+    }>;
+    getAiConfig(): Promise<any>;
+    updateAiConfig(activeProvider: string, geminiKey: string, nvidiaKey: string, deepseekKey: string): Promise<{
+        activeProvider: string;
+        geminiKey: string;
+        nvidiaKey: string;
+        deepseekKey: string;
     }>;
     listAllCategories(): Promise<{
         categories: {

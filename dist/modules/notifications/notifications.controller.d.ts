@@ -6,6 +6,7 @@ export declare class NotificationsController {
     status(): {
         provider: string;
         enabled: boolean;
+        projectId: string | null;
         note: string;
     };
     sendTestPush(payload: SendTestPushDto): Promise<{

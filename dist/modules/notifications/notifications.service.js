@@ -30,6 +30,9 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
     isPushEnabled() {
         return this.pushService.isEnabled();
     }
+    getProjectId() {
+        return this.pushService.getProjectId();
+    }
     async sendTestPush(payload) {
         const enabled = this.pushService.isEnabled();
         const messageId = await this.pushService.sendToToken({
@@ -38,12 +41,23 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             body: payload.body ?? 'Notificacion de prueba desde backend',
             data: {
                 type: 'test',
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
             },
         });
         return {
             enabled,
             messageId,
         };
+    }
+    async broadcastPush(params) {
+        if (params.tokens.length === 0)
+            return 0;
+        return this.pushService.sendToTokens({
+            tokens: params.tokens,
+            title: params.title,
+            body: params.body,
+            data: { type: 'broadcast', click_action: 'FLUTTER_NOTIFICATION_CLICK' },
+        });
     }
     async notifyWorkersForJobWave(params) {
         const title = `📍 Trabajo nuevo cerca: ${params.category}`;
@@ -55,7 +69,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { jobId: params.jobId },
+            data: { jobId: params.jobId, deep_link: `/request/${params.jobId}` },
         }));
         if (notifications.length > 0) {
             await this.notificationRepository.save(notifications);
@@ -68,6 +82,8 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             data: {
                 type,
                 jobId: params.jobId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/request/${params.jobId}`
             },
         });
     }
@@ -80,7 +96,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId },
+            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
         }));
         return this.pushService.sendToToken({
             token: params.token,
@@ -89,6 +105,8 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             data: {
                 type,
                 requestId: params.requestId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/request/${params.requestId}`
             },
         });
     }
@@ -101,7 +119,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId },
+            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
         }));
         return this.pushService.sendToToken({
             token: params.token,
@@ -110,6 +128,8 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             data: {
                 type,
                 requestId: params.requestId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/request/${params.requestId}`
             },
         });
     }
@@ -121,6 +141,8 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             data: {
                 type: 'message_new',
                 threadId: params.threadId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/chat/${params.threadId}`
             },
         });
     }
@@ -133,13 +155,18 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId },
+            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
         }));
         return this.pushService.sendToToken({
             token: params.token,
             title,
             body,
-            data: { type, requestId: params.requestId },
+            data: {
+                type,
+                requestId: params.requestId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/request/${params.requestId}`
+            },
         });
     }
     async notifyJobFinished(params) {
@@ -151,13 +178,242 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId },
+            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
         }));
         return this.pushService.sendToToken({
             token: params.token,
             title,
             body,
-            data: { type, requestId: params.requestId },
+            data: {
+                type,
+                requestId: params.requestId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/request/${params.requestId}`
+            },
+        });
+    }
+    async notifyJobCancelled(params) {
+        const title = `❌ Trabajo Cancelado`;
+        const body = `${params.cancelerName} canceló el trabajo: ${params.jobTitle}`;
+        const type = 'job_cancelled';
+        await this.notificationRepository.save(this.notificationRepository.create({
+            userId: params.userId,
+            title,
+            body,
+            type,
+            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+        }));
+        if (!params.token)
+            return null;
+        return this.pushService.sendToToken({
+            token: params.token,
+            title,
+            body,
+            data: {
+                type,
+                requestId: params.requestId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/request/${params.requestId}`
+            },
+        });
+    }
+    async notifySupportMessage(params) {
+        const title = `🎧 Soporte Chamba`;
+        const body = params.message.length > 60 ? params.message.substring(0, 60) + '...' : params.message;
+        const type = 'support_message';
+        await this.notificationRepository.save(this.notificationRepository.create({
+            userId: params.userId,
+            title,
+            body,
+            type,
+            data: { deep_link: `/support` },
+        }));
+        if (!params.token)
+            return null;
+        return this.pushService.sendToToken({
+            token: params.token,
+            title,
+            body,
+            data: {
+                type,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/support`
+            },
+        });
+    }
+    async notifyVerificationUpdated(params) {
+        const title = params.status === 'verified' ? `✅ Cuenta Verificada` : `⚠️ Problema con tu verificación`;
+        const body = params.message;
+        const type = 'verification_update';
+        await this.notificationRepository.save(this.notificationRepository.create({
+            userId: params.userId,
+            title,
+            body,
+            type,
+            data: { deep_link: `/profile` },
+        }));
+        if (!params.token)
+            return null;
+        return this.pushService.sendToToken({
+            token: params.token,
+            title,
+            body,
+            data: {
+                type,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/profile`
+            },
+        });
+    }
+    async notifyWorkerCounterOffer(params) {
+        const title = `💰 ${params.clientName} subió su precio`;
+        const body = `Nuevo precio: Bs ${Math.round(params.newAmount)} para: ${params.jobTitle}`;
+        const type = 'counter_offer';
+        await this.notificationRepository.save(this.notificationRepository.create({
+            userId: params.userId,
+            title,
+            body,
+            type,
+            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+        }));
+        if (!params.token)
+            return null;
+        return this.pushService.sendToToken({
+            token: params.token,
+            title,
+            body,
+            data: {
+                type,
+                requestId: params.requestId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/request/${params.requestId}`,
+            },
+        });
+    }
+    async notifyOfferRejected(params) {
+        const title = `😔 Oferta no seleccionada`;
+        const body = `El cliente eligió a otro trabajador para: ${params.jobTitle}`;
+        const type = 'offer_rejected';
+        await this.notificationRepository.save(this.notificationRepository.create({
+            userId: params.userId,
+            title,
+            body,
+            type,
+            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+        }));
+        if (!params.token)
+            return null;
+        return this.pushService.sendToToken({
+            token: params.token,
+            title,
+            body,
+            data: {
+                type,
+                requestId: params.requestId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/request/${params.requestId}`,
+            },
+        });
+    }
+    async notifyNewReview(params) {
+        const starsEmoji = '⭐'.repeat(Math.min(params.stars, 5));
+        const title = `${starsEmoji} Nueva calificación`;
+        const body = `${params.clientName} te calificó con ${params.stars} estrellas en: ${params.jobTitle}`;
+        const type = 'new_review';
+        await this.notificationRepository.save(this.notificationRepository.create({
+            userId: params.userId,
+            title,
+            body,
+            type,
+            data: { requestId: params.requestId, stars: params.stars, deep_link: `/profile` },
+        }));
+        if (!params.token)
+            return null;
+        return this.pushService.sendToToken({
+            token: params.token,
+            title,
+            body,
+            data: {
+                type,
+                requestId: params.requestId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/profile`,
+            },
+        });
+    }
+    async notifyClientConfirmedArrival(params) {
+        const title = `✅ Llegada confirmada`;
+        const body = `${params.clientName} confirmó tu llegada. Ya puedes iniciar: ${params.jobTitle}`;
+        const type = 'arrival_confirmed';
+        await this.notificationRepository.save(this.notificationRepository.create({
+            userId: params.userId,
+            title,
+            body,
+            type,
+            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+        }));
+        if (!params.token)
+            return null;
+        return this.pushService.sendToToken({
+            token: params.token,
+            title,
+            body,
+            data: {
+                type,
+                requestId: params.requestId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/request/${params.requestId}`,
+            },
+        });
+    }
+    async notifyDisputeResolved(params) {
+        const title = `📋 Tu queja fue resuelta`;
+        const body = params.resolution.length > 80 ? params.resolution.substring(0, 80) + '...' : params.resolution;
+        const type = 'dispute_resolved';
+        await this.notificationRepository.save(this.notificationRepository.create({
+            userId: params.userId,
+            title,
+            body,
+            type,
+            data: { disputeId: params.disputeId, deep_link: `/support` },
+        }));
+        if (!params.token)
+            return null;
+        return this.pushService.sendToToken({
+            token: params.token,
+            title,
+            body,
+            data: {
+                type,
+                disputeId: params.disputeId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/support`,
+            },
+        });
+    }
+    async notifyDisputeCreated(params) {
+        const title = `⚠️ Se abrió una queja`;
+        const body = `Motivo: ${params.reason.length > 60 ? params.reason.substring(0, 60) + '...' : params.reason}`;
+        const type = 'dispute_created';
+        await this.notificationRepository.save(this.notificationRepository.create({
+            userId: params.userId,
+            title,
+            body,
+            type,
+            data: { disputeId: params.disputeId, deep_link: `/support` },
+        }));
+        if (!params.token)
+            return null;
+        return this.pushService.sendToToken({
+            token: params.token,
+            title,
+            body,
+            data: {
+                type,
+                disputeId: params.disputeId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/support`,
+            },
         });
     }
     async getUserNotifications(userId, page = 1, limit = 20) {

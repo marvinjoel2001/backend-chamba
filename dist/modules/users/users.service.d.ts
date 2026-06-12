@@ -1,6 +1,7 @@
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ReviewWorkerVerificationDto } from './dto/review-worker-verification.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -9,7 +10,10 @@ export declare class UsersService {
     private readonly usersRepository;
     private readonly redisService;
     private readonly realtimeGateway;
-    constructor(usersRepository: Repository<User>, redisService: RedisService, realtimeGateway: RealtimeGateway);
+    private readonly notificationsService;
+    private readonly dataSource;
+    private readonly logger;
+    constructor(usersRepository: Repository<User>, redisService: RedisService, realtimeGateway: RealtimeGateway, notificationsService: NotificationsService, dataSource: DataSource);
     create(createUserDto: CreateUserDto): Promise<User>;
     findAll(): Promise<User[]>;
     findOne(id: string): Promise<User>;

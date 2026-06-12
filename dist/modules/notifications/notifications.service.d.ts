@@ -8,10 +8,16 @@ export declare class NotificationsService {
     private readonly logger;
     constructor(pushService: PushService, notificationRepository: Repository<Notification>);
     isPushEnabled(): boolean;
+    getProjectId(): string | null;
     sendTestPush(payload: SendTestPushDto): Promise<{
         enabled: boolean;
         messageId: string | null;
     }>;
+    broadcastPush(params: {
+        tokens: string[];
+        title: string;
+        body: string;
+    }): Promise<number>;
     notifyWorkersForJobWave(params: {
         users: {
             userId: string;
@@ -57,6 +63,65 @@ export declare class NotificationsService {
         workerName: string;
         jobTitle: string;
         requestId: string;
+    }): Promise<string | null>;
+    notifyJobCancelled(params: {
+        userId: string;
+        token: string | null;
+        cancelerName: string;
+        jobTitle: string;
+        requestId: string;
+    }): Promise<string | null>;
+    notifySupportMessage(params: {
+        userId: string;
+        token: string | null;
+        message: string;
+    }): Promise<string | null>;
+    notifyVerificationUpdated(params: {
+        userId: string;
+        token: string | null;
+        status: 'verified' | 'rejected';
+        message: string;
+    }): Promise<string | null>;
+    notifyWorkerCounterOffer(params: {
+        userId: string;
+        token: string | null;
+        clientName: string;
+        newAmount: number;
+        jobTitle: string;
+        requestId: string;
+    }): Promise<string | null>;
+    notifyOfferRejected(params: {
+        userId: string;
+        token: string | null;
+        jobTitle: string;
+        requestId: string;
+    }): Promise<string | null>;
+    notifyNewReview(params: {
+        userId: string;
+        token: string | null;
+        clientName: string;
+        stars: number;
+        jobTitle: string;
+        requestId: string;
+    }): Promise<string | null>;
+    notifyClientConfirmedArrival(params: {
+        userId: string;
+        token: string | null;
+        clientName: string;
+        jobTitle: string;
+        requestId: string;
+    }): Promise<string | null>;
+    notifyDisputeResolved(params: {
+        userId: string;
+        token: string | null;
+        resolution: string;
+        disputeId: string;
+    }): Promise<string | null>;
+    notifyDisputeCreated(params: {
+        userId: string;
+        token: string | null;
+        reason: string;
+        disputeId: string;
     }): Promise<string | null>;
     getUserNotifications(userId: string, page?: number, limit?: number): Promise<{
         items: Notification[];

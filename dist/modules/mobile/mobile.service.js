@@ -31,7 +31,7 @@ let MobileService = class MobileService {
     static WORKER_NOTIFICATION_WAVE_SIZE = 5;
     static WORKER_NOTIFICATION_WAVE_DELAY_MS = 7000;
     static DEFAULT_CATEGORY = 'General';
-    static GEMINI_TIMEOUT_MS = 9000;
+    static GEMINI_TIMEOUT_MS = 25000;
     constructor(configService, dataSource, storageService, notificationsService, realtimeGateway) {
         this.configService = configService;
         this.dataSource = dataSource;
@@ -821,6 +821,75 @@ let MobileService = class MobileService {
             })),
         };
     }
+    async archiveThread(params) {
+        await this.ensureThreadExists(params.threadId);
+        return { success: true };
+    }
+    async broadcastNotification(payload) {
+        if (payload.type === 'toast') {
+            this.realtimeGateway.server.emit('notification.toast', {
+                target: payload.target,
+                title: payload.title,
+                body: payload.body,
+                toastType: payload.toastType ?? 'info',
+                userIds: payload.userIds,
+            });
+            return { success: true, method: 'socket' };
+        }
+        else {
+            let query = `
+        SELECT pt.token 
+        FROM push_tokens pt
+        JOIN users u ON u.id = pt.user_id
+        WHERE pt.token IS NOT NULL
+      `;
+            const args = [];
+            if (payload.target === 'workers') {
+                query += ` AND u.type = $1`;
+                args.push('worker');
+            }
+            else if (payload.target === 'clients') {
+                query += ` AND u.type = $1`;
+                args.push('client');
+            }
+            else if (payload.target === 'custom' && payload.userIds && payload.userIds.length > 0) {
+                query += ` AND u.id = ANY($1::uuid[])`;
+                args.push(payload.userIds);
+            }
+            else if (payload.target === 'custom') {
+                return { success: true, method: 'push', count: 0 };
+            }
+            const rows = await this.dataSource.query(query, args);
+            const tokens = rows.map((r) => r.token);
+            const count = await this.notificationsService.broadcastPush({
+                tokens,
+                title: payload.title,
+                body: payload.body,
+            });
+            return { success: true, method: 'push', count };
+        }
+    }
+    async getPushUsers() {
+        const query = `
+      SELECT DISTINCT ON (u.id)
+        u.id, 
+        u.first_name as "firstName", 
+        u.last_name as "lastName", 
+        u.type, 
+        pt.last_seen_at as "lastSeenAt"
+      FROM push_tokens pt
+      JOIN users u ON u.id = pt.user_id
+      WHERE pt.token IS NOT NULL
+      ORDER BY u.id, pt.last_seen_at DESC
+    `;
+        const rows = await this.dataSource.query(query);
+        rows.sort((a, b) => {
+            const dateA = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : 0;
+            const dateB = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : 0;
+            return dateB - dateA;
+        });
+        return rows.slice(0, 500);
+    }
     async sendMessage(params) {
         if (!params.content?.trim()) {
             throw new common_1.BadRequestException('content is required');
@@ -879,7 +948,7 @@ let MobileService = class MobileService {
         const senderName = senderRows[0]
             ? `${senderRows[0].first_name} ${senderRows[0].last_name ?? ''}`.trim()
             : 'Alguien';
-        const tokenRows = await this.dataSource.query(`SELECT push_token FROM users WHERE id = $1 AND push_token IS NOT NULL`, [recipientUserId]);
+        const tokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1`, [recipientUserId]);
         if (!tokenRows[0]?.push_token)
             return;
         await this.notificationsService.notifyNewMessage({
@@ -1025,6 +1094,10 @@ let MobileService = class MobileService {
     }
     async reportRequest(requestId, reporterUserId, reason) {
         await this.dataSource.query(`INSERT INTO request_reports (request_id, reporter_user_id, reason) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, [requestId, reporterUserId, reason]);
+        const reqRes = await this.dataSource.query('SELECT client_user_id FROM job_requests WHERE id = $1', [requestId]);
+        const reportedUserId = reqRes.length > 0 ? reqRes[0].client_user_id : null;
+        await this.dataSource.query(`INSERT INTO disputes (request_id, reported_by, reported_user, reason, description)
+       VALUES ($1, $2, $3, $4, $5)`, [requestId, reporterUserId, reportedUserId, 'Reporte de Publicación Inapropiada', reason]);
         return { success: true };
     }
     async dismissRequest(requestId, workerUserId) {
@@ -1154,7 +1227,7 @@ let MobileService = class MobileService {
         if (!requestRows[0])
             return;
         const clientUserId = requestRows[0].client_user_id;
-        const tokenRows = await this.dataSource.query(`SELECT push_token FROM users WHERE id = $1 AND push_token IS NOT NULL`, [clientUserId]);
+        const tokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1`, [clientUserId]);
         if (!tokenRows[0]?.push_token)
             return;
         await this.notificationsService.notifyClientNewOffer({
@@ -1226,6 +1299,19 @@ let MobileService = class MobileService {
         this.notifyWorkerOfAcceptedOffer(offer.request_id, offer.worker_user_id, params.clientUserId).catch((err) => {
             this.logger.warn('Failed to send push notification for accepted offer:', err.message);
         });
+        if (rejectedRows.length > 0) {
+            const requestRows = await this.dataSource.query(`SELECT title FROM job_requests WHERE id = $1`, [offer.request_id]);
+            const jobTitle = requestRows[0]?.title ?? 'un trabajo';
+            for (const rejected of rejectedRows) {
+                const tokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`, [rejected.worker_user_id]);
+                this.notificationsService.notifyOfferRejected({
+                    userId: rejected.worker_user_id,
+                    token: tokenRows[0]?.push_token || null,
+                    jobTitle,
+                    requestId: offer.request_id,
+                }).catch(e => this.logger.error('Failed to notify offer rejected', e));
+            }
+        }
         return {
             accepted: true,
             requestId: offer.request_id,
@@ -1331,6 +1417,18 @@ let MobileService = class MobileService {
         };
         for (const row of workerRows) {
             this.realtimeGateway.emitToUser(row.worker_user_id, 'offer.client_counter', payload);
+        }
+        const client = await this.getUserById(params.clientUserId);
+        for (const row of workerRows) {
+            const tokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`, [row.worker_user_id]);
+            this.notificationsService.notifyWorkerCounterOffer({
+                userId: row.worker_user_id,
+                token: tokenRows[0]?.push_token || null,
+                clientName: client.firstName,
+                newAmount: params.amount,
+                jobTitle: request.title,
+                requestId: params.requestId,
+            }).catch(e => this.logger.error('Failed to notify counter offer', e));
         }
         this.logger.log(`[clientCounterOffer] Cliente ${params.clientUserId} contraofertó Bs ${params.amount} en solicitud ${params.requestId}`);
         return { requestId: params.requestId, newBudget: params.amount };
@@ -1470,6 +1568,20 @@ let MobileService = class MobileService {
             this.realtimeGateway.emitToUser(offerRows[0].worker_user_id, 'job.client_confirmed', {
                 requestId: params.requestId,
             });
+            const infoRows = await this.dataSource.query(`SELECT jr.title, u.first_name AS client_name, pt.token
+         FROM job_requests jr
+         JOIN users u ON u.id = $2
+         LEFT JOIN push_tokens pt ON pt.user_id = $3 ORDER BY pt.last_seen_at DESC LIMIT 1`, [params.requestId, params.clientUserId, offerRows[0].worker_user_id]);
+            const workerTokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`, [offerRows[0].worker_user_id]);
+            const clientUser = await this.getUserById(params.clientUserId);
+            const reqInfo = await this.getRequestById(params.requestId);
+            this.notificationsService.notifyClientConfirmedArrival({
+                userId: offerRows[0].worker_user_id,
+                token: workerTokenRows[0]?.push_token || null,
+                clientName: clientUser.firstName,
+                jobTitle: reqInfo.title,
+                requestId: params.requestId,
+            }).catch(e => this.logger.error('Failed to notify arrival confirmed', e));
         }
         return { requestId: params.requestId, clientConfirmedArrival: true };
     }
@@ -1522,7 +1634,7 @@ let MobileService = class MobileService {
     }
     async cancelJob(params) {
         const rows = await this.dataSource.query(`
-      SELECT jr.id, jr.client_user_id, jo.worker_user_id
+      SELECT jr.id, jr.title, jr.client_user_id, jo.worker_user_id
       FROM job_requests jr
       LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
       WHERE jr.id = $1
@@ -1547,6 +1659,18 @@ let MobileService = class MobileService {
         }
         if (req.worker_user_id) {
             this.realtimeGateway.emitToUser(req.worker_user_id, 'job.cancelled', { requestId: params.requestId });
+        }
+        const canceler = await this.getUserById(params.userId);
+        const targetUserId = req.client_user_id === params.userId ? req.worker_user_id : req.client_user_id;
+        if (targetUserId) {
+            const tokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`, [targetUserId]);
+            await this.notificationsService.notifyJobCancelled({
+                userId: targetUserId,
+                token: tokenRows[0]?.push_token || null,
+                cancelerName: canceler.firstName,
+                jobTitle: req.title,
+                requestId: params.requestId,
+            }).catch(e => this.logger.error('Failed to notify cancel', e));
         }
         return { requestId: params.requestId, status: 'cancelled' };
     }
@@ -1964,10 +2088,18 @@ let MobileService = class MobileService {
         }
         await this.getUserById(params.workerUserId);
         await this.getUserById(params.clientUserId);
-        await this.getRequestById(params.requestId);
-        await this.dataSource.query(`
+        const req = await this.getRequestById(params.requestId);
+        if (req.status !== 'completed') {
+            throw new common_1.BadRequestException('Request is not completed yet');
+        }
+        if (req.client_user_id !== params.clientUserId) {
+            throw new common_1.BadRequestException('Client user ID does not match the request');
+        }
+        const insertResult = await this.dataSource.query(`
       INSERT INTO worker_reviews (request_id, worker_user_id, client_user_id, stars, comment)
       VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (request_id) DO NOTHING
+      RETURNING id
       `, [
             params.requestId,
             params.workerUserId,
@@ -1975,11 +2107,18 @@ let MobileService = class MobileService {
             params.stars,
             params.comment ?? null,
         ]);
+        if (!insertResult.length) {
+            return { saved: false, alreadyReviewed: true };
+        }
         const rows = await this.dataSource.query(`
-      SELECT COALESCE(AVG(stars), 0) AS average_rating,
-             COUNT(*)::text AS completed_jobs
-      FROM worker_reviews
-      WHERE worker_user_id = $1
+      SELECT COALESCE(AVG(r.stars), 0) AS average_rating,
+             (SELECT COUNT(*)::text
+              FROM job_requests jr
+              JOIN job_offers jo ON jo.request_id = jr.id
+              WHERE jo.worker_user_id = $1 AND jo.status = 'accepted' AND jr.status = 'completed'
+             ) AS completed_jobs
+      FROM worker_reviews r
+      WHERE r.worker_user_id = $1
       `, [params.workerUserId]);
         await this.dataSource.query(`
       UPDATE users
@@ -1992,6 +2131,16 @@ let MobileService = class MobileService {
             Number(rows[0]?.average_rating ?? 0),
             Number(rows[0]?.completed_jobs ?? 0),
         ]);
+        const clientUser = await this.getUserById(params.clientUserId);
+        const workerTokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`, [params.workerUserId]);
+        this.notificationsService.notifyNewReview({
+            userId: params.workerUserId,
+            token: workerTokenRows[0]?.push_token || null,
+            clientName: clientUser.firstName,
+            stars: params.stars,
+            jobTitle: req.title,
+            requestId: params.requestId,
+        }).catch(e => this.logger.error('Failed to notify new review', e));
         return {
             saved: true,
             workerUserId: params.workerUserId,
@@ -2039,6 +2188,7 @@ let MobileService = class MobileService {
             `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS client_confirmed_arrival BOOLEAN NOT NULL DEFAULT false;`,
             `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NULL;`,
             `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS work_started_at TIMESTAMPTZ NULL;`,
+            `ALTER TABLE job_requests ADD COLUMN IF NOT EXISTS payment_method TEXT NOT NULL DEFAULT 'Efectivo';`,
             `
       CREATE TABLE IF NOT EXISTS job_offers (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2091,6 +2241,7 @@ let MobileService = class MobileService {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       `,
+            `CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_reviews_request ON worker_reviews(request_id);`,
             `
       CREATE TABLE IF NOT EXISTS job_request_photos (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2804,11 +2955,28 @@ let MobileService = class MobileService {
                 },
             ];
         }
-        const nvidiaApiKey = this.configService.get('NVIDIA_API_KEY')?.trim() ?? '';
-        if (!nvidiaApiKey) {
-            this.logger.warn('[Nvidia AI] NVIDIA_API_KEY no configurada → usando fallback "' +
-                fallbackCategory +
-                '". Configúrala en backend/.env');
+        const aiConfig = await this.getAiConfig();
+        const activeProvider = aiConfig.activeProvider || 'nvidia';
+        let endpointUrl = '';
+        let apiKey = '';
+        let modelName = '';
+        if (activeProvider === 'nvidia' && aiConfig.nvidiaKey) {
+            endpointUrl = 'https://integrate.api.nvidia.com/v1/chat/completions';
+            apiKey = aiConfig.nvidiaKey;
+            modelName = this.configService.get('NVIDIA_MODEL')?.trim() || 'minimaxai/minimax-m2.7';
+        }
+        else if (activeProvider === 'gemini' && aiConfig.geminiKey) {
+            endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+            apiKey = aiConfig.geminiKey;
+            modelName = 'gemini-2.0-flash';
+        }
+        else if (activeProvider === 'deepseek' && aiConfig.deepseekKey) {
+            endpointUrl = 'https://api.deepseek.com/v1/chat/completions';
+            apiKey = aiConfig.deepseekKey;
+            modelName = 'deepseek-chat';
+        }
+        else {
+            this.logger.warn(`[AI] API Key no configurada para ${activeProvider} → usando fallback "${fallbackCategory}".`);
             return [
                 {
                     id: this.toCategoryId(fallbackCategory),
@@ -2817,9 +2985,7 @@ let MobileService = class MobileService {
                 },
             ];
         }
-        const nvidiaModel = this.configService.get('NVIDIA_MODEL')?.trim() ||
-            'minimaxai/minimax-m2.7';
-        this.logger.log(`[Nvidia AI] Clasificando: "${params.title}" | "${params.description.slice(0, 60)}…"`);
+        this.logger.log(`[AI] Clasificando con ${activeProvider}: "${params.title}" | "${params.description.slice(0, 60)}…"`);
         const categoryCatalog = catalog
             .map((item) => `- id: ${item.id}, nombre: ${item.name}`)
             .join('\n');
@@ -2847,7 +3013,7 @@ Reglas obligatorias:
 6) Si hay duda, incluye "trabajo_general" / "General".
 7) No agregues texto fuera del JSON.
 `.trim();
-        const endpoint = new URL('https://integrate.api.nvidia.com/v1/chat/completions');
+        const endpoint = new URL(endpointUrl);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), MobileService_1.GEMINI_TIMEOUT_MS);
         try {
@@ -2855,10 +3021,10 @@ Reglas obligatorias:
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${nvidiaApiKey}`,
+                    Authorization: `Bearer ${apiKey}`,
                 },
                 body: JSON.stringify({
-                    model: nvidiaModel,
+                    model: modelName,
                     messages: [{ role: 'user', content: prompt }],
                     temperature: 0,
                     top_p: 0.95,
@@ -2870,7 +3036,7 @@ Reglas obligatorias:
             });
             if (!response.ok) {
                 const errBody = await response.text().catch(() => '');
-                this.logger.error(`[Nvidia AI] HTTP ${response.status} → fallback "${fallbackCategory}" | detalle: ${errBody.slice(0, 300)}`);
+                this.logger.error(`[${activeProvider}] HTTP ${response.status} → fallback "${fallbackCategory}" | detalle: ${errBody.slice(0, 300)}`);
                 return [
                     {
                         id: this.toCategoryId(fallbackCategory),
@@ -2882,7 +3048,7 @@ Reglas obligatorias:
             const payload = (await response.json());
             const text = payload.choices?.[0]?.message?.content?.trim() ?? '';
             if (!text) {
-                this.logger.warn('[Nvidia AI] Respuesta vacía → fallback');
+                this.logger.warn(`[${activeProvider}] Respuesta vacía → fallback`);
                 return [
                     {
                         id: this.toCategoryId(fallbackCategory),
@@ -2897,10 +3063,10 @@ Reglas obligatorias:
                 fallbackCategory,
             });
             if (parsed.length > 0) {
-                this.logger.log(`[Nvidia AI] Categorías detectadas: ${parsed.map((c) => c.name).join(', ')}`);
+                this.logger.log(`[${activeProvider}] Categorías detectadas: ${parsed.map((c) => c.name).join(', ')}`);
                 return parsed;
             }
-            this.logger.warn('[Nvidia AI] No se pudo parsear respuesta → fallback');
+            this.logger.warn(`[${activeProvider}] No se pudo parsear respuesta → fallback`);
             return [
                 {
                     id: this.toCategoryId(fallbackCategory),
@@ -2911,7 +3077,7 @@ Reglas obligatorias:
         }
         catch (err) {
             const msg = err?.message ?? String(err);
-            this.logger.error(`[Nvidia AI] Error: ${msg} → fallback "${fallbackCategory}"`);
+            this.logger.error(`[${activeProvider}] Error: ${msg} → fallback "${fallbackCategory}"`);
             return [
                 {
                     id: this.toCategoryId(fallbackCategory),
@@ -3371,6 +3537,15 @@ Reglas obligatorias:
             params.reason.trim(),
             params.description?.trim() || null,
         ]);
+        if (params.reportedUser) {
+            const tokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`, [params.reportedUser]);
+            this.notificationsService.notifyDisputeCreated({
+                userId: params.reportedUser,
+                token: tokenRows[0]?.push_token || null,
+                reason: params.reason,
+                disputeId: rows[0].id,
+            }).catch(e => this.logger.error('Failed to notify dispute created', e));
+        }
         return { dispute: { id: rows[0].id, status: rows[0].status, createdAt: rows[0].created_at } };
     }
     async resolveDispute(params) {
@@ -3386,10 +3561,21 @@ Reglas obligatorias:
           updated_at = NOW()
       WHERE id = $1
       `, [params.disputeId, params.resolution.trim(), params.resolvedBy || 'admin']);
+        const disputeRows = await this.dataSource.query(`SELECT reported_by FROM disputes WHERE id = $1 LIMIT 1`, [params.disputeId]);
+        if (disputeRows[0]?.reported_by) {
+            const userId = disputeRows[0].reported_by;
+            const tokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`, [userId]);
+            this.notificationsService.notifyDisputeResolved({
+                userId,
+                token: tokenRows[0]?.push_token || null,
+                resolution: params.resolution,
+                disputeId: params.disputeId,
+            }).catch(e => this.logger.error('Failed to notify dispute resolved', e));
+        }
         return { disputeId: params.disputeId, status: 'resolved' };
     }
     async adminCancelJob(params) {
-        const rows = await this.dataSource.query(`SELECT id, client_user_id, status FROM job_requests WHERE id = $1 LIMIT 1`, [params.requestId]);
+        const rows = await this.dataSource.query(`SELECT id, title, client_user_id, status FROM job_requests WHERE id = $1 LIMIT 1`, [params.requestId]);
         if (!rows[0])
             throw new common_1.NotFoundException('Request not found');
         const req = rows[0];
@@ -3406,6 +3592,26 @@ Reglas obligatorias:
             status: 'cancelled',
             timestamp: new Date().toISOString(),
         });
+        if (req.client_user_id) {
+            const clientTokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`, [req.client_user_id]);
+            await this.notificationsService.notifyJobCancelled({
+                userId: req.client_user_id,
+                token: clientTokenRows[0]?.push_token || null,
+                cancelerName: 'Soporte',
+                jobTitle: req.title,
+                requestId: params.requestId,
+            }).catch(e => this.logger.error('Failed to notify client cancel', e));
+        }
+        if (offerRows[0]?.worker_user_id) {
+            const workerTokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`, [offerRows[0].worker_user_id]);
+            await this.notificationsService.notifyJobCancelled({
+                userId: offerRows[0].worker_user_id,
+                token: workerTokenRows[0]?.push_token || null,
+                cancelerName: 'Soporte',
+                jobTitle: req.title,
+                requestId: params.requestId,
+            }).catch(e => this.logger.error('Failed to notify worker cancel', e));
+        }
         return { requestId: params.requestId, status: 'cancelled' };
     }
     async getCancellationStats() {
@@ -3454,6 +3660,35 @@ Reglas obligatorias:
       DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
       `, [JSON.stringify({ percent })]);
         return { commissionPercent: percent };
+    }
+    async getAiConfig() {
+        const rows = await this.dataSource.query(`SELECT value_json FROM app_config WHERE key = 'ai_config' LIMIT 1`);
+        const defaultVal = {
+            activeProvider: 'nvidia',
+            geminiKey: '',
+            nvidiaKey: '',
+            deepseekKey: '',
+        };
+        if (rows[0]) {
+            const val = typeof rows[0].value_json === 'string' ? JSON.parse(rows[0].value_json) : rows[0].value_json;
+            return { ...defaultVal, ...val };
+        }
+        return defaultVal;
+    }
+    async updateAiConfig(params) {
+        const value = {
+            activeProvider: params.activeProvider || 'nvidia',
+            geminiKey: params.geminiKey || '',
+            nvidiaKey: params.nvidiaKey || '',
+            deepseekKey: params.deepseekKey || '',
+        };
+        await this.dataSource.query(`
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ('ai_config', $1::jsonb, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
+      `, [JSON.stringify(value)]);
+        return value;
     }
     async updateCategory(params) {
         const sets = [];
@@ -3543,6 +3778,18 @@ Reglas obligatorias:
             senderType: params.senderType,
             timestamp: rows[0].created_at,
         });
+        if (params.senderType === 'admin') {
+            const disputeRows = await this.dataSource.query(`SELECT reported_by FROM disputes WHERE id = $1 LIMIT 1`, [params.disputeId]);
+            const userId = disputeRows[0]?.reported_by;
+            if (userId) {
+                const tokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`, [userId]);
+                await this.notificationsService.notifySupportMessage({
+                    userId,
+                    token: tokenRows[0]?.push_token || null,
+                    message: params.content,
+                }).catch(e => this.logger.error('Failed to notify support message', e));
+            }
+        }
         return { messageId: rows[0].id, createdAt: rows[0].created_at };
     }
     async deleteCategory(categoryId) {
@@ -3562,6 +3809,66 @@ Reglas obligatorias:
                 createdAt: row.created_at,
                 updatedAt: row.updated_at,
             })),
+        };
+    }
+    async getUserDisputes(userId) {
+        const madeRows = await this.dataSource.query(`
+      SELECT d.id, d.request_id, d.reported_by, d.reported_user, d.reason,
+             d.description, d.status, d.resolution, d.resolved_by,
+             d.resolved_at, d.created_at, d.updated_at,
+             u_by.first_name AS reporter_first_name,
+             u_by.last_name AS reporter_last_name,
+             u_by.type AS reporter_type,
+             u_rep.first_name AS reported_first_name,
+             u_rep.last_name AS reported_last_name,
+             u_rep.type AS reported_type,
+             jr.title AS request_title
+      FROM disputes d
+      LEFT JOIN users u_by ON u_by.id = d.reported_by
+      LEFT JOIN users u_rep ON u_rep.id = d.reported_user
+      LEFT JOIN job_requests jr ON jr.id = d.request_id
+      WHERE d.reported_by = $1
+      ORDER BY d.created_at DESC
+      LIMIT 100
+      `, [userId]);
+        const receivedRows = await this.dataSource.query(`
+      SELECT d.id, d.request_id, d.reported_by, d.reported_user, d.reason,
+             d.description, d.status, d.resolution, d.resolved_by,
+             d.resolved_at, d.created_at, d.updated_at,
+             u_by.first_name AS reporter_first_name,
+             u_by.last_name AS reporter_last_name,
+             u_by.type AS reporter_type,
+             u_rep.first_name AS reported_first_name,
+             u_rep.last_name AS reported_last_name,
+             u_rep.type AS reported_type,
+             jr.title AS request_title
+      FROM disputes d
+      LEFT JOIN users u_by ON u_by.id = d.reported_by
+      LEFT JOIN users u_rep ON u_rep.id = d.reported_user
+      LEFT JOIN job_requests jr ON jr.id = d.request_id
+      WHERE d.reported_user = $1
+      ORDER BY d.created_at DESC
+      LIMIT 100
+      `, [userId]);
+        const mapRow = (r) => ({
+            id: r.id,
+            requestId: r.request_id,
+            requestTitle: r.request_title,
+            reason: r.reason,
+            description: r.description,
+            status: r.status,
+            resolution: r.resolution,
+            resolvedBy: r.resolved_by,
+            resolvedAt: r.resolved_at,
+            createdAt: r.created_at,
+            reporterName: [r.reporter_first_name, r.reporter_last_name].filter(Boolean).join(' '),
+            reporterType: r.reporter_type,
+            reportedName: [r.reported_first_name, r.reported_last_name].filter(Boolean).join(' '),
+            reportedType: r.reported_type,
+        });
+        return {
+            made: madeRows.map(mapRow),
+            received: receivedRows.map(mapRow),
         };
     }
 };

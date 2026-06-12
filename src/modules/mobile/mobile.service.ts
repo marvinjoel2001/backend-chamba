@@ -1419,10 +1419,23 @@ export class MobileService implements OnModuleInit {
   }
 
   async reportRequest(requestId: string, reporterUserId: string, reason: string) {
+    // 1. Lo ocultamos del feed del worker
     await this.dataSource.query(
       `INSERT INTO request_reports (request_id, reporter_user_id, reason) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
       [requestId, reporterUserId, reason]
     );
+
+    // 2. Obtenemos el creador de la publicación (el cliente) para reportarlo
+    const reqRes = await this.dataSource.query('SELECT client_user_id FROM job_requests WHERE id = $1', [requestId]);
+    const reportedUserId = reqRes.length > 0 ? reqRes[0].client_user_id : null;
+
+    // 3. Creamos una disputa oficial para que el Admin la vea en el panel
+    await this.dataSource.query(
+      `INSERT INTO disputes (request_id, reported_by, reported_user, reason, description)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [requestId, reporterUserId, reportedUserId, 'Reporte de Publicación Inapropiada', reason]
+    );
+
     return { success: true };
   }
 
@@ -1743,6 +1756,27 @@ export class MobileService implements OnModuleInit {
       this.logger.warn('Failed to send push notification for accepted offer:', err.message);
     });
 
+    // Push notification: notificar a los workers cuyas ofertas fueron rechazadas
+    if (rejectedRows.length > 0) {
+      const requestRows = await this.dataSource.query<any[]>(
+        `SELECT title FROM job_requests WHERE id = $1`,
+        [offer.request_id],
+      );
+      const jobTitle = requestRows[0]?.title ?? 'un trabajo';
+      for (const rejected of rejectedRows) {
+        const tokenRows = await this.dataSource.query<any[]>(
+          `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+          [rejected.worker_user_id],
+        );
+        this.notificationsService.notifyOfferRejected({
+          userId: rejected.worker_user_id,
+          token: tokenRows[0]?.push_token || null,
+          jobTitle,
+          requestId: offer.request_id,
+        }).catch(e => this.logger.error('Failed to notify offer rejected', e));
+      }
+    }
+
     return {
       accepted: true,
       requestId: offer.request_id,
@@ -1936,6 +1970,23 @@ export class MobileService implements OnModuleInit {
       this.realtimeGateway.emitToUser(row.worker_user_id, 'offer.client_counter', payload);
     }
 
+    // Push notification a cada worker con oferta pendiente
+    const client = await this.getUserById(params.clientUserId);
+    for (const row of workerRows) {
+      const tokenRows = await this.dataSource.query<any[]>(
+        `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+        [row.worker_user_id],
+      );
+      this.notificationsService.notifyWorkerCounterOffer({
+        userId: row.worker_user_id,
+        token: tokenRows[0]?.push_token || null,
+        clientName: client.firstName,
+        newAmount: params.amount,
+        jobTitle: request.title,
+        requestId: params.requestId,
+      }).catch(e => this.logger.error('Failed to notify counter offer', e));
+    }
+
     this.logger.log(
       `[clientCounterOffer] Cliente ${params.clientUserId} contraofertó Bs ${params.amount} en solicitud ${params.requestId}`,
     );
@@ -2104,6 +2155,29 @@ export class MobileService implements OnModuleInit {
       this.realtimeGateway.emitToUser(offerRows[0].worker_user_id, 'job.client_confirmed', {
         requestId: params.requestId,
       });
+
+      // Push notification al worker
+      const infoRows = await this.dataSource.query<any[]>(
+        `SELECT jr.title, u.first_name AS client_name, pt.token
+         FROM job_requests jr
+         JOIN users u ON u.id = $2
+         LEFT JOIN push_tokens pt ON pt.user_id = $3 ORDER BY pt.last_seen_at DESC LIMIT 1`,
+        [params.requestId, params.clientUserId, offerRows[0].worker_user_id],
+      );
+      // Re-query token for worker properly
+      const workerTokenRows = await this.dataSource.query<any[]>(
+        `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+        [offerRows[0].worker_user_id],
+      );
+      const clientUser = await this.getUserById(params.clientUserId);
+      const reqInfo = await this.getRequestById(params.requestId);
+      this.notificationsService.notifyClientConfirmedArrival({
+        userId: offerRows[0].worker_user_id,
+        token: workerTokenRows[0]?.push_token || null,
+        clientName: clientUser.firstName,
+        jobTitle: reqInfo.title,
+        requestId: params.requestId,
+      }).catch(e => this.logger.error('Failed to notify arrival confirmed', e));
     }
 
     return { requestId: params.requestId, clientConfirmedArrival: true };
@@ -2182,7 +2256,7 @@ export class MobileService implements OnModuleInit {
   async cancelJob(params: { requestId: string; userId: string }) {
     const rows = await this.dataSource.query<any[]>(
       `
-      SELECT jr.id, jr.client_user_id, jo.worker_user_id
+      SELECT jr.id, jr.title, jr.client_user_id, jo.worker_user_id
       FROM job_requests jr
       LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
       WHERE jr.id = $1
@@ -2219,6 +2293,23 @@ export class MobileService implements OnModuleInit {
     }
     if (req.worker_user_id) {
       this.realtimeGateway.emitToUser(req.worker_user_id, 'job.cancelled', { requestId: params.requestId });
+    }
+
+    // Notificación Push
+    const canceler = await this.getUserById(params.userId);
+    const targetUserId = req.client_user_id === params.userId ? req.worker_user_id : req.client_user_id;
+    if (targetUserId) {
+      const tokenRows = await this.dataSource.query<any[]>(
+        `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+        [targetUserId],
+      );
+      await this.notificationsService.notifyJobCancelled({
+        userId: targetUserId,
+        token: tokenRows[0]?.push_token || null,
+        cancelerName: canceler.firstName,
+        jobTitle: req.title,
+        requestId: params.requestId,
+      }).catch(e => this.logger.error('Failed to notify cancel', e));
     }
 
     return { requestId: params.requestId, status: 'cancelled' };
@@ -2824,6 +2915,21 @@ export class MobileService implements OnModuleInit {
         Number(rows[0]?.completed_jobs ?? 0),
       ],
     );
+
+    // Push notification al worker: nueva reseña
+    const clientUser = await this.getUserById(params.clientUserId);
+    const workerTokenRows = await this.dataSource.query<any[]>(
+      `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+      [params.workerUserId],
+    );
+    this.notificationsService.notifyNewReview({
+      userId: params.workerUserId,
+      token: workerTokenRows[0]?.push_token || null,
+      clientName: clientUser.firstName,
+      stars: params.stars,
+      jobTitle: req.title,
+      requestId: params.requestId,
+    }).catch(e => this.logger.error('Failed to notify new review', e));
 
     return {
       saved: true,
@@ -4571,6 +4677,20 @@ Reglas obligatorias:
       ],
     );
 
+    // Push notification al usuario reportado
+    if (params.reportedUser) {
+      const tokenRows = await this.dataSource.query<any[]>(
+        `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+        [params.reportedUser],
+      );
+      this.notificationsService.notifyDisputeCreated({
+        userId: params.reportedUser,
+        token: tokenRows[0]?.push_token || null,
+        reason: params.reason,
+        disputeId: rows[0].id,
+      }).catch(e => this.logger.error('Failed to notify dispute created', e));
+    }
+
     return { dispute: { id: rows[0].id, status: rows[0].status, createdAt: rows[0].created_at } };
   }
 
@@ -4596,6 +4716,25 @@ Reglas obligatorias:
       [params.disputeId, params.resolution.trim(), params.resolvedBy || 'admin'],
     );
 
+    // Push notification al usuario que reportó
+    const disputeRows = await this.dataSource.query<any[]>(
+      `SELECT reported_by FROM disputes WHERE id = $1 LIMIT 1`,
+      [params.disputeId],
+    );
+    if (disputeRows[0]?.reported_by) {
+      const userId = disputeRows[0].reported_by;
+      const tokenRows = await this.dataSource.query<any[]>(
+        `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+        [userId],
+      );
+      this.notificationsService.notifyDisputeResolved({
+        userId,
+        token: tokenRows[0]?.push_token || null,
+        resolution: params.resolution,
+        disputeId: params.disputeId,
+      }).catch(e => this.logger.error('Failed to notify dispute resolved', e));
+    }
+
     return { disputeId: params.disputeId, status: 'resolved' };
   }
 
@@ -4603,7 +4742,7 @@ Reglas obligatorias:
 
   async adminCancelJob(params: { requestId: string }) {
     const rows = await this.dataSource.query<any[]>(
-      `SELECT id, client_user_id, status FROM job_requests WHERE id = $1 LIMIT 1`,
+      `SELECT id, title, client_user_id, status FROM job_requests WHERE id = $1 LIMIT 1`,
       [params.requestId],
     );
     if (!rows[0]) throw new NotFoundException('Request not found');
@@ -4635,6 +4774,36 @@ Reglas obligatorias:
       status: 'cancelled',
       timestamp: new Date().toISOString(),
     });
+
+    // Notify client
+    if (req.client_user_id) {
+      const clientTokenRows = await this.dataSource.query<any[]>(
+        `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+        [req.client_user_id]
+      );
+      await this.notificationsService.notifyJobCancelled({
+        userId: req.client_user_id,
+        token: clientTokenRows[0]?.push_token || null,
+        cancelerName: 'Soporte',
+        jobTitle: req.title,
+        requestId: params.requestId,
+      }).catch(e => this.logger.error('Failed to notify client cancel', e));
+    }
+    
+    // Notify worker
+    if (offerRows[0]?.worker_user_id) {
+      const workerTokenRows = await this.dataSource.query<any[]>(
+        `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+        [offerRows[0].worker_user_id]
+      );
+      await this.notificationsService.notifyJobCancelled({
+        userId: offerRows[0].worker_user_id,
+        token: workerTokenRows[0]?.push_token || null,
+        cancelerName: 'Soporte',
+        jobTitle: req.title,
+        requestId: params.requestId,
+      }).catch(e => this.logger.error('Failed to notify worker cancel', e));
+    }
 
     return { requestId: params.requestId, status: 'cancelled' };
   }
@@ -4853,6 +5022,25 @@ Reglas obligatorias:
       senderType: params.senderType,
       timestamp: rows[0].created_at,
     });
+
+    if (params.senderType === 'admin') {
+      const disputeRows = await this.dataSource.query<any[]>(
+        `SELECT reported_by FROM disputes WHERE id = $1 LIMIT 1`,
+        [params.disputeId]
+      );
+      const userId = disputeRows[0]?.reported_by;
+      if (userId) {
+        const tokenRows = await this.dataSource.query<any[]>(
+          `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+          [userId]
+        );
+        await this.notificationsService.notifySupportMessage({
+          userId,
+          token: tokenRows[0]?.push_token || null,
+          message: params.content,
+        }).catch(e => this.logger.error('Failed to notify support message', e));
+      }
+    }
 
     return { messageId: rows[0].id, createdAt: rows[0].created_at };
   }

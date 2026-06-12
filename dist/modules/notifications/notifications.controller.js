@@ -57,6 +57,7 @@ let NotificationsController = class NotificationsController {
         return {
             provider: 'firebase-fcm',
             enabled: this.notificationsService.isPushEnabled(),
+            projectId: this.notificationsService.getProjectId(),
             note: 'FCM wiring listo. Completa FIREBASE_* para envios reales.',
         };
     }

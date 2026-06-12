@@ -454,6 +454,29 @@ export declare class MobileService implements OnModuleInit {
             createdAt: any;
         }[];
     }>;
+    archiveThread(params: {
+        threadId: string;
+        userId: string;
+    }): Promise<{
+        success: boolean;
+    }>;
+    broadcastNotification(payload: {
+        target: 'all' | 'workers' | 'clients' | 'custom';
+        type: 'push' | 'toast';
+        title: string;
+        body: string;
+        toastType?: 'info' | 'success' | 'error';
+        userIds?: string[];
+    }): Promise<{
+        success: boolean;
+        method: string;
+        count?: undefined;
+    } | {
+        success: boolean;
+        method: string;
+        count: number;
+    }>;
+    getPushUsers(): Promise<any[]>;
     sendMessage(params: {
         threadId: string;
         senderUserId: string;
@@ -834,9 +857,16 @@ export declare class MobileService implements OnModuleInit {
         comment?: string;
     }): Promise<{
         saved: boolean;
+        alreadyReviewed: boolean;
+        workerUserId?: undefined;
+        averageRating?: undefined;
+        completedJobs?: undefined;
+    } | {
+        saved: boolean;
         workerUserId: string;
         averageRating: number;
         completedJobs: number;
+        alreadyReviewed?: undefined;
     }>;
     private ensureSchema;
     private seedData;
@@ -948,6 +978,18 @@ export declare class MobileService implements OnModuleInit {
     }): Promise<{
         commissionPercent: number;
     }>;
+    getAiConfig(): Promise<any>;
+    updateAiConfig(params: {
+        activeProvider: string;
+        geminiKey: string;
+        nvidiaKey: string;
+        deepseekKey: string;
+    }): Promise<{
+        activeProvider: string;
+        geminiKey: string;
+        nvidiaKey: string;
+        deepseekKey: string;
+    }>;
     updateCategory(params: {
         id: string;
         name?: string;
@@ -1000,6 +1042,40 @@ export declare class MobileService implements OnModuleInit {
             active: any;
             createdAt: any;
             updatedAt: any;
+        }[];
+    }>;
+    getUserDisputes(userId: string): Promise<{
+        made: {
+            id: any;
+            requestId: any;
+            requestTitle: any;
+            reason: any;
+            description: any;
+            status: any;
+            resolution: any;
+            resolvedBy: any;
+            resolvedAt: any;
+            createdAt: any;
+            reporterName: string;
+            reporterType: any;
+            reportedName: string;
+            reportedType: any;
+        }[];
+        received: {
+            id: any;
+            requestId: any;
+            requestTitle: any;
+            reason: any;
+            description: any;
+            status: any;
+            resolution: any;
+            resolvedBy: any;
+            resolvedAt: any;
+            createdAt: any;
+            reporterName: string;
+            reporterType: any;
+            reportedName: string;
+            reportedType: any;
         }[];
     }>;
 }
