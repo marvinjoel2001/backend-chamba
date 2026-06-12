@@ -19,6 +19,10 @@ export class NotificationsService {
     return this.pushService.isEnabled();
   }
 
+  getProjectId(): string | null {
+    return this.pushService.getProjectId();
+  }
+
   async sendTestPush(payload: SendTestPushDto): Promise<{
     enabled: boolean;
     messageId: string | null;

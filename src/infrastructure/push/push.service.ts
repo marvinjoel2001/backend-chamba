@@ -140,7 +140,21 @@ export class PushService {
       },
     });
 
+    if (response.failureCount > 0) {
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          this.logger.error(
+            `FCM multicast send failed for token ${params.tokens[idx].substring(0, 20)}...: [${resp.error?.code}] - ${resp.error?.message}`,
+          );
+        }
+      });
+    }
+
     return response.successCount;
+  }
+
+  getProjectId(): string | null {
+    return this.configService.get<string>('FIREBASE_PROJECT_ID') || null;
   }
 
   private normalizePrivateKey(privateKey?: string): string | null {
