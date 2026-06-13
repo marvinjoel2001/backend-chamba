@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DatabaseBootstrapService } from './database.bootstrap.service';
+import { InitialBaselineSchema1717000000000 } from './migrations/1717000000000-InitialBaselineSchema';
 
 @Module({
   imports: [
@@ -20,6 +21,9 @@ import { DatabaseBootstrapService } from './database.bootstrap.service';
           ? { rejectUnauthorized: false }
           : false,
         autoLoadEntities: true,
+        migrations: [InitialBaselineSchema1717000000000],
+        migrationsRun: true,
+        migrationsTableName: 'typeorm_migrations',
       }),
     }),
   ],

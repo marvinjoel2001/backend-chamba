@@ -43,4 +43,6 @@ export const envValidationSchema = Joi.object({
   FIREBASE_PROJECT_ID: Joi.string().allow('').optional(),
   FIREBASE_CLIENT_EMAIL: Joi.string().allow('').optional(),
   FIREBASE_PRIVATE_KEY: Joi.string().allow('').optional(),
+
+  USE_QUEUE_DISPATCH: Joi.boolean().truthy('true').falsy('false').default(false),
 });

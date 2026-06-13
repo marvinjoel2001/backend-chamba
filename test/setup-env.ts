@@ -12,7 +12,7 @@ const defaults: Record<string, string> = {
   DATABASE_USERNAME: 'postgres',
   DATABASE_PASSWORD: 'sistemas123',
   DATABASE_NAME: 'chamba_test',
-  DATABASE_SYNC: 'true',
+  DATABASE_SYNC: 'false',
   DATABASE_SSL: 'false',
   REDIS_HOST: 'localhost',
   REDIS_PORT: '6379',
@@ -33,6 +33,7 @@ const defaults: Record<string, string> = {
   FIREBASE_CLIENT_EMAIL: '',
   FIREBASE_PRIVATE_KEY: '',
   API_LOGS_RETENTION_DAYS: '30',
+  USE_QUEUE_DISPATCH: 'false',
 };
 
 for (const [key, value] of Object.entries(defaults)) {

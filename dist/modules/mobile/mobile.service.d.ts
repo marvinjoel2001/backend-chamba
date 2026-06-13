@@ -4,6 +4,15 @@ import { DataSource } from 'typeorm';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { MobileRequestRepository } from './shared/mobile-request.repository';
+import { MobileGeoHelpers } from './shared/mobile-geo.helpers';
+import { MobileCatalogService } from './services/mobile-catalog.service';
+import { MobileChatService } from './services/mobile-chat.service';
+import { MobileDisputesService } from './services/mobile-disputes.service';
+import { MobileOffersService } from './services/mobile-offers.service';
+import { MobileRequestsService } from './services/mobile-requests.service';
+import { MobileUsersService } from './services/mobile-users.service';
+import { MobileAdminService } from './services/mobile-admin.service';
 type CreateRequestInput = {
     clientUserId: string;
     title: string;
@@ -33,6 +42,15 @@ export declare class MobileService implements OnModuleInit {
     private readonly storageService;
     private readonly notificationsService;
     private readonly realtimeGateway;
+    private readonly repo;
+    private readonly geoHelpers;
+    private readonly catalogService;
+    private readonly chatService;
+    private readonly disputesService;
+    private readonly offersService;
+    private readonly requestsService;
+    private readonly usersService;
+    private readonly adminService;
     private readonly logger;
     private static readonly OFFER_LIFETIME_SECONDS;
     private static readonly OFFER_LIFETIME_CONFIG_KEY;
@@ -41,7 +59,7 @@ export declare class MobileService implements OnModuleInit {
     private static readonly WORKER_NOTIFICATION_WAVE_DELAY_MS;
     private static readonly DEFAULT_CATEGORY;
     private static readonly GEMINI_TIMEOUT_MS;
-    constructor(configService: ConfigService, dataSource: DataSource, storageService: StorageService, notificationsService: NotificationsService, realtimeGateway: RealtimeGateway);
+    constructor(configService: ConfigService, dataSource: DataSource, storageService: StorageService, notificationsService: NotificationsService, realtimeGateway: RealtimeGateway, repo: MobileRequestRepository, geoHelpers: MobileGeoHelpers, catalogService: MobileCatalogService, chatService: MobileChatService, disputesService: MobileDisputesService, offersService: MobileOffersService, requestsService: MobileRequestsService, usersService: MobileUsersService, adminService: MobileAdminService);
     onModuleInit(): Promise<void>;
     register(input: {
         type?: string;
@@ -334,28 +352,6 @@ export declare class MobileService implements OnModuleInit {
                 createdAt: any;
             }[];
             id: any;
-            clientUserId: any;
-            title: any;
-            description: any;
-            category: any;
-            aiCategories: {
-                id: string;
-                name: string;
-                confidence: number;
-            }[];
-            budget: number;
-            priceType: any;
-            address: any;
-            status: any;
-            createdAt: any;
-            pendingOffersCount: number;
-        } | {
-            photos: {
-                id: any;
-                url: any;
-                createdAt: any;
-            }[];
-            id: any;
             client_user_id: any;
             title: any;
             description: any;
@@ -371,6 +367,28 @@ export declare class MobileService implements OnModuleInit {
             status: any;
             location: any;
             created_at: any;
+        } | {
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
+            id: any;
+            clientUserId: any;
+            title: any;
+            description: any;
+            category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
+            budget: number;
+            priceType: any;
+            address: any;
+            status: any;
+            createdAt: any;
+            pendingOffersCount: number;
         };
         metrics: {
             offersCount: number;
@@ -398,28 +416,6 @@ export declare class MobileService implements OnModuleInit {
                 createdAt: any;
             }[];
             id: any;
-            clientUserId: any;
-            title: any;
-            description: any;
-            category: any;
-            aiCategories: {
-                id: string;
-                name: string;
-                confidence: number;
-            }[];
-            budget: number;
-            priceType: any;
-            address: any;
-            status: any;
-            createdAt: any;
-            pendingOffersCount: number;
-        } | {
-            photos: {
-                id: any;
-                url: any;
-                createdAt: any;
-            }[];
-            id: any;
             client_user_id: any;
             title: any;
             description: any;
@@ -435,6 +431,28 @@ export declare class MobileService implements OnModuleInit {
             status: any;
             location: any;
             created_at: any;
+        } | {
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
+            id: any;
+            clientUserId: any;
+            title: any;
+            description: any;
+            category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
+            budget: number;
+            priceType: any;
+            address: any;
+            status: any;
+            createdAt: any;
+            pendingOffersCount: number;
         };
         offers: {
             id: any;
@@ -548,7 +566,6 @@ export declare class MobileService implements OnModuleInit {
             createdAt: any;
         };
     }>;
-    private notifyRecipientOfNewMessage;
     getIncomingRequest(workerUserId: string): Promise<{
         requests: never[];
         offerLifetimeSeconds?: undefined;
@@ -634,7 +651,6 @@ export declare class MobileService implements OnModuleInit {
             status: string;
         };
     }>;
-    private notifyClientOfNewOffer;
     acceptOffer(params: {
         offerId: string;
         clientUserId: string;
@@ -643,7 +659,6 @@ export declare class MobileService implements OnModuleInit {
         requestId: any;
         workerUserId: any;
     }>;
-    private notifyWorkerOfAcceptedOffer;
     discardOffer(params: {
         requestId: string;
         workerUserId: string;
@@ -981,39 +996,6 @@ export declare class MobileService implements OnModuleInit {
             offerAmount: number | null;
         }[];
     }>;
-    private extractTopCategories;
-    private listFallbackCategories;
-    private normalizePriceTypeKey;
-    private getOfferLifetimeConfig;
-    private resolveOfferLifetimeSeconds;
-    private getOfferLifetimeSeconds;
-    private getWorkerNotificationRadiusKm;
-    private resolveRequest;
-    private findLatestClientRequest;
-    private getRequestById;
-    private getUserById;
-    private getUserByIdWithPhotoMeta;
-    private normalizePhone;
-    private buildRequestTitle;
-    private normalizeAiCategories;
-    private parseAiCategories;
-    private classifyRequestCategoriesWithAi;
-    private parseAiCategoriesFromText;
-    private listActiveCategoryCatalogForAi;
-    private toCategoryId;
-    private validateBase64Images;
-    private ensureDataUri;
-    private validateUploadedImages;
-    private ensureSecureImageUrl;
-    private uploadRequestPhotos;
-    private persistUploadedRequestPhotos;
-    private getRequestPhotos;
-    private ensureThreadExists;
-    private ensureThreadAndInitialMessage;
-    private seedOffersForRequest;
-    private dispatchWorkerNotificationWave;
-    private expireStaleOffers;
-    private ensureCategoriesExist;
     listDisputes(params?: {
         status?: string;
     }): Promise<{

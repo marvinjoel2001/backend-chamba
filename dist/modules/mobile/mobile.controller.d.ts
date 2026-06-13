@@ -286,28 +286,6 @@ export declare class MobileController {
                 createdAt: any;
             }[];
             id: any;
-            clientUserId: any;
-            title: any;
-            description: any;
-            category: any;
-            aiCategories: {
-                id: string;
-                name: string;
-                confidence: number;
-            }[];
-            budget: number;
-            priceType: any;
-            address: any;
-            status: any;
-            createdAt: any;
-            pendingOffersCount: number;
-        } | {
-            photos: {
-                id: any;
-                url: any;
-                createdAt: any;
-            }[];
-            id: any;
             client_user_id: any;
             title: any;
             description: any;
@@ -323,6 +301,28 @@ export declare class MobileController {
             status: any;
             location: any;
             created_at: any;
+        } | {
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
+            id: any;
+            clientUserId: any;
+            title: any;
+            description: any;
+            category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
+            budget: number;
+            priceType: any;
+            address: any;
+            status: any;
+            createdAt: any;
+            pendingOffersCount: number;
         };
         metrics: {
             offersCount: number;
@@ -347,28 +347,6 @@ export declare class MobileController {
                 createdAt: any;
             }[];
             id: any;
-            clientUserId: any;
-            title: any;
-            description: any;
-            category: any;
-            aiCategories: {
-                id: string;
-                name: string;
-                confidence: number;
-            }[];
-            budget: number;
-            priceType: any;
-            address: any;
-            status: any;
-            createdAt: any;
-            pendingOffersCount: number;
-        } | {
-            photos: {
-                id: any;
-                url: any;
-                createdAt: any;
-            }[];
-            id: any;
             client_user_id: any;
             title: any;
             description: any;
@@ -384,6 +362,28 @@ export declare class MobileController {
             status: any;
             location: any;
             created_at: any;
+        } | {
+            photos: {
+                id: any;
+                url: any;
+                createdAt: any;
+            }[];
+            id: any;
+            clientUserId: any;
+            title: any;
+            description: any;
+            category: any;
+            aiCategories: {
+                id: string;
+                name: string;
+                confidence: number;
+            }[];
+            budget: number;
+            priceType: any;
+            address: any;
+            status: any;
+            createdAt: any;
+            pendingOffersCount: number;
         };
         offers: {
             id: any;

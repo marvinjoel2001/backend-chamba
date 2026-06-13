@@ -2,7 +2,7 @@
 
 Documento para retomar el trabajo en otra PC. Resume **qué se hizo**, **cómo correr/probar**, y **qué falta** (con pasos concretos).
 
-Última actualización: 2026-06-13.
+Última actualización: 2026-06-13 (sesión 2).
 
 ---
 
@@ -77,7 +77,7 @@ docker rm -f chamba-test-pg chamba-test-redis
 
 ---
 
-## 2. PENDIENTE — Fase 1b: activar las migraciones ("el flip")
+## 2. ✅ COMPLETO — Fase 1b: activar las migraciones ("el flip")
 
 Es el siguiente paso. Apaga el `synchronize: true` (peligroso en prod) y hace que las migraciones sean la fuente del esquema. **Riesgo medio** (toca el arranque) → validar con la suite tras cada cambio.
 
@@ -111,7 +111,7 @@ npm run migration:run
 
 ---
 
-## 3. PENDIENTE — Fase 2: partir el god-service (`mobile.service.ts`, ~5.400 líneas)
+## 3. ✅ COMPLETO — Fase 2: partir el god-service (`mobile.service.ts`, ~5.400 líneas)
 
 Refactor mecánico (mover métodos tal cual, sin reescribir lógica). Un sub-PR por dominio, corriendo la suite tras cada uno.
 
@@ -132,7 +132,7 @@ Orden sugerido (menor a mayor acoplamiento): helpers → auth → catalog → ch
 
 ---
 
-## 4. PENDIENTE — Fase 3: dispatch por cola (en vez de `setTimeout`)
+## 4. ✅ COMPLETO — Fase 3: dispatch por cola (en vez de `setTimeout`)
 
 Hoy las "olas" de notificación a workers se agendan con `setTimeout` en memoria (`seedOffersForRequest`) → se pierden si el proceso reinicia y no anda con múltiples instancias. Existe `QueuesService` (wrapper Redis) **sin consumidor**.
 

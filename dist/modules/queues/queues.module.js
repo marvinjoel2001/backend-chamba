@@ -9,13 +9,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.QueuesModule = void 0;
 const common_1 = require("@nestjs/common");
 const queues_service_1 = require("./queues.service");
+const wave_dispatch_queue_service_1 = require("./wave-dispatch.queue.service");
 let QueuesModule = class QueuesModule {
 };
 exports.QueuesModule = QueuesModule;
 exports.QueuesModule = QueuesModule = __decorate([
     (0, common_1.Module)({
-        providers: [queues_service_1.QueuesService],
-        exports: [queues_service_1.QueuesService],
+        providers: [queues_service_1.QueuesService, wave_dispatch_queue_service_1.WaveDispatchQueueService],
+        exports: [queues_service_1.QueuesService, wave_dispatch_queue_service_1.WaveDispatchQueueService],
     })
 ], QueuesModule);
 //# sourceMappingURL=queues.module.js.map

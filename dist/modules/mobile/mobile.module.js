@@ -11,16 +11,39 @@ const common_1 = require("@nestjs/common");
 const storage_module_1 = require("../../infrastructure/storage/storage.module");
 const notifications_module_1 = require("../notifications/notifications.module");
 const realtime_module_1 = require("../realtime/realtime.module");
+const queues_module_1 = require("../queues/queues.module");
 const mobile_controller_1 = require("./mobile.controller");
 const mobile_service_1 = require("./mobile.service");
+const mobile_request_repository_1 = require("./shared/mobile-request.repository");
+const mobile_geo_helpers_1 = require("./shared/mobile-geo.helpers");
+const mobile_catalog_service_1 = require("./services/mobile-catalog.service");
+const mobile_chat_service_1 = require("./services/mobile-chat.service");
+const mobile_disputes_service_1 = require("./services/mobile-disputes.service");
+const mobile_offers_service_1 = require("./services/mobile-offers.service");
+const mobile_requests_service_1 = require("./services/mobile-requests.service");
+const mobile_users_service_1 = require("./services/mobile-users.service");
+const mobile_admin_service_1 = require("./services/mobile-admin.service");
+const wave_dispatch_processor_service_1 = require("./services/wave-dispatch.processor.service");
 let MobileModule = class MobileModule {
 };
 exports.MobileModule = MobileModule;
 exports.MobileModule = MobileModule = __decorate([
     (0, common_1.Module)({
-        imports: [storage_module_1.StorageModule, notifications_module_1.NotificationsModule, realtime_module_1.RealtimeModule],
+        imports: [storage_module_1.StorageModule, notifications_module_1.NotificationsModule, realtime_module_1.RealtimeModule, queues_module_1.QueuesModule],
         controllers: [mobile_controller_1.MobileController],
-        providers: [mobile_service_1.MobileService],
+        providers: [
+            mobile_service_1.MobileService,
+            mobile_request_repository_1.MobileRequestRepository,
+            mobile_geo_helpers_1.MobileGeoHelpers,
+            mobile_catalog_service_1.MobileCatalogService,
+            mobile_chat_service_1.MobileChatService,
+            mobile_disputes_service_1.MobileDisputesService,
+            mobile_offers_service_1.MobileOffersService,
+            mobile_requests_service_1.MobileRequestsService,
+            mobile_users_service_1.MobileUsersService,
+            mobile_admin_service_1.MobileAdminService,
+            wave_dispatch_processor_service_1.WaveDispatchProcessorService,
+        ],
         exports: [mobile_service_1.MobileService],
     })
 ], MobileModule);
