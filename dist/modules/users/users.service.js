@@ -85,6 +85,10 @@ let UsersService = UsersService_1 = class UsersService {
     }
     async update(id, updateUserDto) {
         const user = await this.findOne(id);
+        if (updateUserDto.password !== undefined &&
+            updateUserDto.password.trim().length < 4) {
+            throw new common_1.BadRequestException('password must be at least 4 characters');
+        }
         if (updateUserDto.phone && updateUserDto.phone !== user.phone) {
             const existingPhone = await this.usersRepository.findOne({
                 where: { phone: updateUserDto.phone },
@@ -93,8 +97,24 @@ let UsersService = UsersService_1 = class UsersService {
                 throw new common_1.ConflictException('A user with this phone already exists');
             }
         }
-        const merged = this.usersRepository.merge(user, updateUserDto);
+        if (updateUserDto.email && updateUserDto.email !== user.email) {
+            const existingEmail = await this.usersRepository.findOne({
+                where: { email: updateUserDto.email },
+            });
+            if (existingEmail && existingEmail.id !== id) {
+                throw new common_1.ConflictException('A user with this email already exists');
+            }
+        }
+        const { password, ...userFields } = updateUserDto;
+        const merged = this.usersRepository.merge(user, userFields);
         const updated = await this.usersRepository.save(merged);
+        if (password) {
+            await this.dataSource.query(`
+        INSERT INTO auth_credentials (user_id, password)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id) DO UPDATE SET password = EXCLUDED.password
+        `, [id, password]);
+        }
         await this.redisService.del(USERS_ALL_CACHE_KEY);
         await this.redisService.del(`${USER_CACHE_PREFIX}${id}`);
         return updated;

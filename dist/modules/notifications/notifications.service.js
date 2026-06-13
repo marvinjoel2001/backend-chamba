@@ -429,6 +429,11 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             hasMore: skip + items.length < total,
         };
     }
+    async getUnreadCount(userId) {
+        return this.notificationRepository.count({
+            where: { userId, isRead: false },
+        });
+    }
     async markNotificationsAsRead(userId) {
         await this.notificationRepository.update({ userId, isRead: false }, { isRead: true });
     }

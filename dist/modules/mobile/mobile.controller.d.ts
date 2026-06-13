@@ -38,6 +38,54 @@ export declare class MobileController {
         };
         token: string;
     }>;
+    googleLogin(idToken: string): Promise<{
+        requiresRegistration: boolean;
+        googleData: {
+            email: any;
+            firstName: any;
+            lastName: any;
+            googleId: any;
+        };
+        user?: undefined;
+        token?: undefined;
+    } | {
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            isBlocked: any;
+        };
+        token: string;
+        requiresRegistration?: undefined;
+        googleData?: undefined;
+    }>;
+    googleRegister(email: string, firstName: string, lastName: string | undefined, googleId: string, type: 'worker' | 'client'): Promise<{
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            isBlocked: any;
+        };
+        token: string;
+    }>;
     checkIdentifier(identifier: string): Promise<{
         exists: boolean;
     }>;
@@ -401,8 +449,9 @@ export declare class MobileController {
             lastMessageAt: any;
         }[];
     }>;
-    getThreadMessages(threadId: string): Promise<{
+    getThreadMessages(threadId: string, limit?: string, before?: string): Promise<{
         threadId: string;
+        hasMore: boolean;
         messages: {
             id: any;
             senderUserId: any;
@@ -661,6 +710,8 @@ export declare class MobileController {
             latitude: number;
             longitude: number;
             updatedAt: any;
+            createdAt: any;
+            photoUrl: any;
         }[];
     }>;
     getAdminWallet(period?: string): Promise<{
@@ -678,6 +729,22 @@ export declare class MobileController {
     }>;
     updateAdminWorkerNotificationSettings(radiusKm: number): Promise<{
         radiusKm: number;
+    }>;
+    getRequestNotifiedWorkers(requestId: string): Promise<{
+        requestId: string;
+        total: number;
+        workers: {
+            id: any;
+            firstName: any;
+            lastName: any;
+            profilePhotoUrl: any;
+            phone: any;
+            averageRating: number;
+            completedJobs: number;
+            notifiedAt: any;
+            offerStatus: any;
+            offerAmount: number | null;
+        }[];
     }>;
     setWorkerAvailability(workerUserId: string, available: boolean): Promise<{
         workerId: any;
@@ -707,6 +774,7 @@ export declare class MobileController {
             requestStatus: any;
             acceptedAt: any;
             threadId: any;
+            photoUrl: any;
             client: {
                 id: any;
                 firstName: any;
@@ -715,9 +783,35 @@ export declare class MobileController {
             };
         }[];
     }>;
+    getClientHistory(clientUserId: string): Promise<{
+        clientUserId: string;
+        jobs: {
+            requestId: any;
+            title: any;
+            description: any;
+            category: any;
+            address: any;
+            amount: number | null;
+            offerId: any;
+            offerStatus: any;
+            requestStatus: any;
+            createdAt: any;
+            threadId: any;
+            photoUrl: any;
+            worker: {
+                id: any;
+                firstName: any;
+                lastName: any;
+                profilePhotoUrl: any;
+            } | null;
+        }[];
+    }>;
     getNotifications(userId: string, page?: string, limit?: string): Promise<{
         items: import("../notifications/entities/notification.entity").Notification[];
         hasMore: boolean;
+    }>;
+    getUnreadCount(userId: string): Promise<{
+        count: number;
     }>;
     markNotificationsRead(userId: string): Promise<{
         success: boolean;
@@ -806,7 +900,25 @@ export declare class MobileController {
         disputeId: string;
         status: string;
     }>;
-    getDisputeMessages(disputeId: string): Promise<{
+    getUserActiveDisputes(userId: string): Promise<{
+        disputes: {
+            id: any;
+            requestId: any;
+            requestTitle: any;
+            reportedBy: any;
+            reportedUser: any;
+            reason: any;
+            description: any;
+            status: any;
+            resolution: any;
+            resolvedBy: any;
+            resolvedAt: any;
+            createdAt: any;
+            updatedAt: any;
+            unreadCount: any;
+        }[];
+    }>;
+    getDisputeMessages(disputeId: string, readBy?: string): Promise<{
         messages: {
             id: any;
             disputeId: any;

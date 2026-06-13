@@ -43,6 +43,18 @@ let MobileController = class MobileController {
     login(identifier, password) {
         return this.mobileService.login(identifier, password);
     }
+    googleLogin(idToken) {
+        return this.mobileService.googleLogin(idToken);
+    }
+    googleRegister(email, firstName, lastName, googleId, type) {
+        return this.mobileService.googleRegister({
+            email,
+            firstName,
+            lastName,
+            googleId,
+            type,
+        });
+    }
     checkIdentifier(identifier) {
         return this.mobileService.checkIdentifier(identifier);
     }
@@ -138,8 +150,11 @@ let MobileController = class MobileController {
     getMessages(userId) {
         return this.mobileService.getMessages(userId);
     }
-    getThreadMessages(threadId) {
-        return this.mobileService.getThreadMessages(threadId);
+    getThreadMessages(threadId, limit, before) {
+        return this.mobileService.getThreadMessages(threadId, {
+            limit: parseNumber(limit),
+            before,
+        });
     }
     sendThreadMessage(threadId, senderUserId, content) {
         return this.mobileService.sendMessage({ threadId, senderUserId, content });
@@ -226,6 +241,9 @@ let MobileController = class MobileController {
             radiusKm: Number(radiusKm),
         });
     }
+    getRequestNotifiedWorkers(requestId) {
+        return this.mobileService.getRequestNotifiedWorkers(requestId);
+    }
     setWorkerAvailability(workerUserId, available) {
         return this.mobileService.setWorkerAvailability(workerUserId, available);
     }
@@ -242,6 +260,9 @@ let MobileController = class MobileController {
     getWorkerHistory(workerUserId) {
         return this.mobileService.getWorkerHistory(workerUserId);
     }
+    getClientHistory(clientUserId) {
+        return this.mobileService.getClientHistory(clientUserId);
+    }
     async getNotifications(userId, page, limit) {
         if (!userId) {
             return { items: [], hasMore: false };
@@ -249,6 +270,13 @@ let MobileController = class MobileController {
         const pageNum = Math.max(1, parseInt(page || '1', 10));
         const limitNum = Math.min(50, Math.max(1, parseInt(limit || '20', 10)));
         return this.notificationsService.getUserNotifications(userId, pageNum, limitNum);
+    }
+    async getUnreadCount(userId) {
+        if (!userId) {
+            return { count: 0 };
+        }
+        const count = await this.notificationsService.getUnreadCount(userId);
+        return { count };
     }
     async markNotificationsRead(userId) {
         if (!userId) {
@@ -291,8 +319,11 @@ let MobileController = class MobileController {
             resolvedBy: resolvedBy ?? 'admin',
         });
     }
-    getDisputeMessages(disputeId) {
-        return this.mobileService.getDisputeMessages(disputeId);
+    getUserActiveDisputes(userId) {
+        return this.mobileService.getUserActiveDisputes(userId);
+    }
+    getDisputeMessages(disputeId, readBy) {
+        return this.mobileService.getDisputeMessages(disputeId, readBy);
     }
     sendDisputeMessage(disputeId, senderType, senderId, content) {
         return this.mobileService.sendDisputeMessage({
@@ -364,6 +395,24 @@ __decorate([
     __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "login", null);
+__decorate([
+    (0, common_1.Post)('auth/google'),
+    __param(0, (0, common_1.Body)('idToken')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "googleLogin", null);
+__decorate([
+    (0, common_1.Post)('auth/google/register'),
+    __param(0, (0, common_1.Body)('email')),
+    __param(1, (0, common_1.Body)('firstName')),
+    __param(2, (0, common_1.Body)('lastName')),
+    __param(3, (0, common_1.Body)('googleId')),
+    __param(4, (0, common_1.Body)('type')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object, String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "googleRegister", null);
 __decorate([
     (0, common_1.Post)('auth/check-identifier'),
     __param(0, (0, common_1.Body)('identifier')),
@@ -504,8 +553,10 @@ __decorate([
 __decorate([
     (0, common_1.Get)('mobile/messages/:threadId'),
     __param(0, (0, common_1.Param)('threadId')),
+    __param(1, (0, common_1.Query)('limit')),
+    __param(2, (0, common_1.Query)('before')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, String, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getThreadMessages", null);
 __decorate([
@@ -695,6 +746,13 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "updateAdminWorkerNotificationSettings", null);
 __decorate([
+    (0, common_1.Get)('mobile/admin/requests/:requestId/notified-workers'),
+    __param(0, (0, common_1.Param)('requestId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getRequestNotifiedWorkers", null);
+__decorate([
     (0, common_1.Post)('mobile/worker/availability'),
     __param(0, (0, common_1.Body)('workerUserId')),
     __param(1, (0, common_1.Body)('available', common_1.ParseBoolPipe)),
@@ -726,6 +784,13 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getWorkerHistory", null);
 __decorate([
+    (0, common_1.Get)('mobile/client/history'),
+    __param(0, (0, common_1.Query)('clientUserId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getClientHistory", null);
+__decorate([
     (0, common_1.Get)('mobile/notifications'),
     __param(0, (0, common_1.Query)('userId')),
     __param(1, (0, common_1.Query)('page')),
@@ -734,6 +799,13 @@ __decorate([
     __metadata("design:paramtypes", [String, String, String]),
     __metadata("design:returntype", Promise)
 ], MobileController.prototype, "getNotifications", null);
+__decorate([
+    (0, common_1.Get)('mobile/notifications/unread-count'),
+    __param(0, (0, common_1.Query)('userId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], MobileController.prototype, "getUnreadCount", null);
 __decorate([
     (0, common_1.Patch)('mobile/notifications/read'),
     __param(0, (0, common_1.Body)('userId')),
@@ -795,10 +867,18 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "resolveDispute", null);
 __decorate([
-    (0, common_1.Get)('mobile/disputes/:disputeId/messages'),
-    __param(0, (0, common_1.Param)('disputeId')),
+    (0, common_1.Get)('mobile/disputes/user/:userId'),
+    __param(0, (0, common_1.Param)('userId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getUserActiveDisputes", null);
+__decorate([
+    (0, common_1.Get)('mobile/disputes/:disputeId/messages'),
+    __param(0, (0, common_1.Param)('disputeId')),
+    __param(1, (0, common_1.Query)('readBy')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getDisputeMessages", null);
 __decorate([

@@ -84,6 +84,61 @@ export declare class MobileService implements OnModuleInit {
         };
         token: string;
     }>;
+    private verifyGoogleToken;
+    googleLogin(idToken: string): Promise<{
+        requiresRegistration: boolean;
+        googleData: {
+            email: any;
+            firstName: any;
+            lastName: any;
+            googleId: any;
+        };
+        user?: undefined;
+        token?: undefined;
+    } | {
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            isBlocked: any;
+        };
+        token: string;
+        requiresRegistration?: undefined;
+        googleData?: undefined;
+    }>;
+    googleRegister(params: {
+        email: string;
+        firstName: string;
+        lastName?: string;
+        googleId: string;
+        type: 'worker' | 'client';
+    }): Promise<{
+        user: {
+            id: any;
+            type: any;
+            firstName: any;
+            lastName: any;
+            email: any;
+            phone: any;
+            profilePhotoUrl: any;
+            verificationStatus: any;
+            idPhotoUrl: any;
+            facePhotoUrl: any;
+            idPhotoVerified: any;
+            facePhotoVerified: any;
+            isBlocked: any;
+        };
+        token: string;
+    }>;
     checkIdentifier(identifier: string): Promise<{
         exists: boolean;
     }>;
@@ -445,8 +500,12 @@ export declare class MobileService implements OnModuleInit {
             lastMessageAt: any;
         }[];
     }>;
-    getThreadMessages(threadId: string): Promise<{
+    getThreadMessages(threadId: string, opts?: {
+        limit?: number;
+        before?: string;
+    }): Promise<{
         threadId: string;
+        hasMore: boolean;
         messages: {
             id: any;
             senderUserId: any;
@@ -750,6 +809,8 @@ export declare class MobileService implements OnModuleInit {
             latitude: number;
             longitude: number;
             updatedAt: any;
+            createdAt: any;
+            photoUrl: any;
         }[];
     }>;
     getAdminWallet(params: {
@@ -841,12 +902,36 @@ export declare class MobileService implements OnModuleInit {
             requestStatus: any;
             acceptedAt: any;
             threadId: any;
+            photoUrl: any;
             client: {
                 id: any;
                 firstName: any;
                 lastName: any;
                 profilePhotoUrl: any;
             };
+        }[];
+    }>;
+    getClientHistory(clientUserId: string): Promise<{
+        clientUserId: string;
+        jobs: {
+            requestId: any;
+            title: any;
+            description: any;
+            category: any;
+            address: any;
+            amount: number | null;
+            offerId: any;
+            offerStatus: any;
+            requestStatus: any;
+            createdAt: any;
+            threadId: any;
+            photoUrl: any;
+            worker: {
+                id: any;
+                firstName: any;
+                lastName: any;
+                profilePhotoUrl: any;
+            } | null;
         }[];
     }>;
     createReview(params: {
@@ -880,9 +965,27 @@ export declare class MobileService implements OnModuleInit {
     }): Promise<{
         radiusKm: number;
     }>;
+    getRequestNotifiedWorkers(requestId: string): Promise<{
+        requestId: string;
+        total: number;
+        workers: {
+            id: any;
+            firstName: any;
+            lastName: any;
+            profilePhotoUrl: any;
+            phone: any;
+            averageRating: number;
+            completedJobs: number;
+            notifiedAt: any;
+            offerStatus: any;
+            offerAmount: number | null;
+        }[];
+    }>;
     private extractTopCategories;
     private listFallbackCategories;
     private normalizePriceTypeKey;
+    private getOfferLifetimeConfig;
+    private resolveOfferLifetimeSeconds;
     private getOfferLifetimeSeconds;
     private getWorkerNotificationRadiusKm;
     private resolveRequest;
@@ -1008,7 +1111,7 @@ export declare class MobileService implements OnModuleInit {
             updatedAt: any;
         };
     }>;
-    getDisputeMessages(disputeId: string): Promise<{
+    getDisputeMessages(disputeId: string, readBy?: string): Promise<{
         messages: {
             id: any;
             disputeId: any;
@@ -1017,6 +1120,24 @@ export declare class MobileService implements OnModuleInit {
             senderName: string;
             content: any;
             createdAt: any;
+        }[];
+    }>;
+    getUserActiveDisputes(userId: string): Promise<{
+        disputes: {
+            id: any;
+            requestId: any;
+            requestTitle: any;
+            reportedBy: any;
+            reportedUser: any;
+            reason: any;
+            description: any;
+            status: any;
+            resolution: any;
+            resolvedBy: any;
+            resolvedAt: any;
+            createdAt: any;
+            updatedAt: any;
+            unreadCount: any;
         }[];
     }>;
     sendDisputeMessage(params: {

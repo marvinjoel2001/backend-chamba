@@ -587,6 +587,12 @@ export class NotificationsService {
     };
   }
 
+  async getUnreadCount(userId: string): Promise<number> {
+    return this.notificationRepository.count({
+      where: { userId, isRead: false },
+    });
+  }
+
   async markNotificationsAsRead(userId: string): Promise<void> {
     await this.notificationRepository.update(
       { userId, isRead: false },

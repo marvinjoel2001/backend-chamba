@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 type CaptureLogInput = {
@@ -15,13 +20,70 @@ type CaptureLogInput = {
 };
 
 @Injectable()
-export class ApiLogsService implements OnModuleInit {
+export class ApiLogsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ApiLogsService.name);
+
+  // Días que se conservan los logs de requests antes de purgarlos.
+  private readonly retentionDays = Math.max(
+    1,
+    Math.floor(Number(process.env.API_LOGS_RETENTION_DAYS) || 30),
+  );
+  private static readonly PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1 día
+  private purgeTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly dataSource: DataSource) {}
 
   async onModuleInit(): Promise<void> {
     await this.ensureSchema();
+
+    // Purga inicial + diaria (fire-and-forget para no bloquear el arranque).
+    void this.purgeOldLogs().catch(() => undefined);
+    this.purgeTimer = setInterval(() => {
+      void this.purgeOldLogs().catch(() => undefined);
+    }, ApiLogsService.PURGE_INTERVAL_MS);
+    // No mantener vivo el proceso solo por este timer.
+    this.purgeTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.purgeTimer) {
+      clearInterval(this.purgeTimer);
+      this.purgeTimer = null;
+    }
+  }
+
+  // Borra logs más antiguos que `retentionDays`, en lotes para no bloquear la tabla.
+  async purgeOldLogs(): Promise<void> {
+    const maxBatches = 50;
+    const batchSize = 5000;
+    let totalDeleted = 0;
+
+    for (let i = 0; i < maxBatches; i += 1) {
+      const deleted = await this.dataSource.query<{ id: string }[]>(
+        `
+        DELETE FROM api_request_logs
+        WHERE id IN (
+          SELECT id FROM api_request_logs
+          WHERE created_at < NOW() - ($1 || ' days')::interval
+          ORDER BY id ASC
+          LIMIT $2
+        )
+        RETURNING id
+        `,
+        [String(this.retentionDays), batchSize],
+      );
+
+      totalDeleted += deleted.length;
+      if (deleted.length < batchSize) {
+        break;
+      }
+    }
+
+    if (totalDeleted > 0) {
+      this.logger.log(
+        `Purga de api_request_logs: ${totalDeleted} registros con más de ${this.retentionDays} días eliminados`,
+      );
+    }
   }
 
   async capture(input: CaptureLogInput): Promise<void> {

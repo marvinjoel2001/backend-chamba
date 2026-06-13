@@ -15,6 +15,7 @@ const class_validator_1 = require("class-validator");
 const create_user_dto_1 = require("./create-user.dto");
 const user_entity_1 = require("../entities/user.entity");
 class UpdateUserDto extends (0, swagger_1.PartialType)(create_user_dto_1.CreateUserDto) {
+    password;
     isAvailable;
     isBlocked;
     profilePhotoUrl;
@@ -25,6 +26,13 @@ class UpdateUserDto extends (0, swagger_1.PartialType)(create_user_dto_1.CreateU
     facePhotoVerified;
 }
 exports.UpdateUserDto = UpdateUserDto;
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ example: 'nuevaClave123', description: 'Nueva contraseña (mín. 4 caracteres). Solo admin.' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(4),
+    __metadata("design:type", String)
+], UpdateUserDto.prototype, "password", void 0);
 __decorate([
     (0, swagger_1.ApiPropertyOptional)({ example: true }),
     (0, class_validator_1.IsOptional)(),

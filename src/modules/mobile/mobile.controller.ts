@@ -55,6 +55,28 @@ export class MobileController {
     return this.mobileService.login(identifier, password);
   }
 
+  @Post('auth/google')
+  googleLogin(@Body('idToken') idToken: string) {
+    return this.mobileService.googleLogin(idToken);
+  }
+
+  @Post('auth/google/register')
+  googleRegister(
+    @Body('email') email: string,
+    @Body('firstName') firstName: string,
+    @Body('lastName') lastName: string | undefined,
+    @Body('googleId') googleId: string,
+    @Body('type') type: 'worker' | 'client',
+  ) {
+    return this.mobileService.googleRegister({
+      email,
+      firstName,
+      lastName,
+      googleId,
+      type,
+    });
+  }
+
   @Post('auth/check-identifier')
   checkIdentifier(@Body('identifier') identifier: string) {
     return this.mobileService.checkIdentifier(identifier);
@@ -248,8 +270,15 @@ export class MobileController {
   }
 
   @Get('mobile/messages/:threadId')
-  getThreadMessages(@Param('threadId') threadId: string) {
-    return this.mobileService.getThreadMessages(threadId);
+  getThreadMessages(
+    @Param('threadId') threadId: string,
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
+  ) {
+    return this.mobileService.getThreadMessages(threadId, {
+      limit: parseNumber(limit),
+      before,
+    });
   }
 
   @Post('mobile/messages/:threadId')
@@ -444,6 +473,11 @@ export class MobileController {
     });
   }
 
+  @Get('mobile/admin/requests/:requestId/notified-workers')
+  getRequestNotifiedWorkers(@Param('requestId') requestId: string) {
+    return this.mobileService.getRequestNotifiedWorkers(requestId);
+  }
+
   @Post('mobile/worker/availability')
   setWorkerAvailability(
     @Body('workerUserId') workerUserId: string,
@@ -475,6 +509,11 @@ export class MobileController {
     return this.mobileService.getWorkerHistory(workerUserId);
   }
 
+  @Get('mobile/client/history')
+  getClientHistory(@Query('clientUserId') clientUserId: string) {
+    return this.mobileService.getClientHistory(clientUserId);
+  }
+
   // --- Notificaciones ---
   @Get('mobile/notifications')
   async getNotifications(
@@ -488,6 +527,15 @@ export class MobileController {
     const pageNum = Math.max(1, parseInt(page || '1', 10));
     const limitNum = Math.min(50, Math.max(1, parseInt(limit || '20', 10)));
     return this.notificationsService.getUserNotifications(userId, pageNum, limitNum);
+  }
+
+  @Get('mobile/notifications/unread-count')
+  async getUnreadCount(@Query('userId') userId: string) {
+    if (!userId) {
+      return { count: 0 };
+    }
+    const count = await this.notificationsService.getUnreadCount(userId);
+    return { count };
   }
 
   @Patch('mobile/notifications/read')
@@ -565,9 +613,17 @@ export class MobileController {
     });
   }
 
+  @Get('mobile/disputes/user/:userId')
+  getUserActiveDisputes(@Param('userId') userId: string) {
+    return this.mobileService.getUserActiveDisputes(userId);
+  }
+
   @Get('mobile/disputes/:disputeId/messages')
-  getDisputeMessages(@Param('disputeId') disputeId: string) {
-    return this.mobileService.getDisputeMessages(disputeId);
+  getDisputeMessages(
+    @Param('disputeId') disputeId: string,
+    @Query('readBy') readBy?: string,
+  ) {
+    return this.mobileService.getDisputeMessages(disputeId, readBy);
   }
 
   @Post('mobile/disputes/:disputeId/messages')

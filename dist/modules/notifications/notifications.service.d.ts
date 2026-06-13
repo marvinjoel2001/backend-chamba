@@ -127,5 +127,6 @@ export declare class NotificationsService {
         items: Notification[];
         hasMore: boolean;
     }>;
+    getUnreadCount(userId: string): Promise<number>;
     markNotificationsAsRead(userId: string): Promise<void>;
 }

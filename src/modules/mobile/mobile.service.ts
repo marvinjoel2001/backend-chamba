@@ -223,6 +223,134 @@ export class MobileService implements OnModuleInit {
     };
   }
 
+  private async verifyGoogleToken(idToken: string) {
+    try {
+      const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+      if (!response.ok) {
+        throw new UnauthorizedException('Token de Google invalido');
+      }
+      const data = await response.json();
+      return {
+        email: data.email,
+        firstName: data.given_name,
+        lastName: data.family_name,
+        googleId: data.sub,
+      };
+    } catch (error) {
+      throw new UnauthorizedException('Fallo al verificar el token de Google');
+    }
+  }
+
+  async googleLogin(idToken: string) {
+    const googleData = await this.verifyGoogleToken(idToken);
+    
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT u.id, u.type, u.first_name, u.last_name, u.email, u.phone,
+             u.profile_photo_url, u.verification_status, u.id_photo_url,
+             u.face_photo_url, u.id_photo_verified, u.face_photo_verified, u.is_blocked,
+             u.google_id
+      FROM users u
+      WHERE LOWER(u.email) = LOWER($1) OR u.google_id = $2
+      LIMIT 1
+      `,
+      [googleData.email, googleData.googleId]
+    );
+
+    const row = rows[0];
+
+    if (!row) {
+      return {
+        requiresRegistration: true,
+        googleData,
+      };
+    }
+
+    if (!row.google_id) {
+      await this.dataSource.query(
+        `UPDATE users SET google_id = $1 WHERE id = $2`,
+        [googleData.googleId, row.id]
+      );
+    }
+
+    return {
+      user: {
+        id: row.id,
+        type: row.type,
+        firstName: row.first_name,
+        lastName: row.last_name ?? null,
+        email: row.email,
+        phone: row.phone ?? null,
+        profilePhotoUrl: row.profile_photo_url ?? null,
+        verificationStatus: row.verification_status ?? 'not_verified',
+        idPhotoUrl: row.id_photo_url ?? null,
+        facePhotoUrl: row.face_photo_url ?? null,
+        idPhotoVerified: row.id_photo_verified,
+        facePhotoVerified: row.face_photo_verified,
+        isBlocked: row.is_blocked,
+      },
+      token: 'fake-jwt-token-for-now',
+    };
+  }
+
+  async googleRegister(params: {
+    email: string;
+    firstName: string;
+    lastName?: string;
+    googleId: string;
+    type: 'worker' | 'client';
+  }) {
+    const existingRows = await this.dataSource.query<any[]>(
+      `SELECT id FROM users WHERE LOWER(email) = LOWER($1) OR google_id = $2 LIMIT 1`,
+      [params.email, params.googleId]
+    );
+
+    if (existingRows[0]) {
+      throw new ConflictException('Usuario ya existe');
+    }
+
+    return await this.dataSource.transaction(async (manager) => {
+      const createdRows = await manager.query<any[]>(
+        `
+        INSERT INTO users (
+          type, email, first_name, last_name, is_available, google_id
+        )
+        VALUES ($1, $2, $3, $4, false, $5)
+        RETURNING id, type, first_name, last_name, email, phone, profile_photo_url,
+                  verification_status, id_photo_url, face_photo_url,
+                  id_photo_verified, face_photo_verified, is_blocked
+        `,
+        [params.type, params.email, params.firstName, params.lastName ?? null, params.googleId]
+      );
+
+      const row = createdRows[0];
+
+      await manager.query(
+        `INSERT INTO auth_credentials (user_id, password) VALUES ($1, NULL)`,
+        [row.id]
+      );
+
+      return {
+        user: {
+          id: row.id,
+          type: row.type,
+          firstName: row.first_name,
+          lastName: row.last_name ?? null,
+          email: row.email,
+          phone: row.phone ?? null,
+          profilePhotoUrl: row.profile_photo_url ?? null,
+          verificationStatus: row.verification_status ?? 'not_verified',
+          idPhotoUrl: row.id_photo_url ?? null,
+          facePhotoUrl: row.face_photo_url ?? null,
+          idPhotoVerified: row.id_photo_verified,
+          facePhotoVerified: row.face_photo_verified,
+          isBlocked: row.is_blocked,
+        },
+        token: 'fake-jwt-token-for-now',
+      };
+    });
+  }
+
   async checkIdentifier(identifier: string) {
     const normalized = identifier?.trim();
     if (!normalized) {
@@ -1044,22 +1172,42 @@ export class MobileService implements OnModuleInit {
     };
   }
 
-  async getThreadMessages(threadId: string) {
+  async getThreadMessages(
+    threadId: string,
+    opts?: { limit?: number; before?: string },
+  ) {
     await this.ensureThreadExists(threadId);
 
+    // Paginación: traemos los mensajes MÁS RECIENTES (hasta `limit`), no todo el historial.
+    // Por defecto 100; con `before` (cursor) se cargan los más antiguos al hacer scroll.
+    const limit = Math.min(200, Math.max(1, Math.floor(opts?.limit ?? 100)));
+    const before =
+      opts?.before && !Number.isNaN(Date.parse(opts.before))
+        ? new Date(opts.before).toISOString()
+        : null;
+
+    // Pedimos limit + 1 para saber si hay más mensajes antiguos.
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT id, sender_user_id, content, created_at
       FROM chat_messages
       WHERE thread_id = $1
-      ORDER BY created_at ASC
+        AND ($2::timestamptz IS NULL OR created_at < $2::timestamptz)
+      ORDER BY created_at DESC
+      LIMIT $3
       `,
-      [threadId],
+      [threadId, before, limit + 1],
     );
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    // Invertimos a orden cronológico ascendente para mostrar en el chat.
+    page.reverse();
 
     return {
       threadId,
-      messages: rows.map((row) => ({
+      hasMore,
+      messages: page.map((row) => ({
         id: row.id,
         senderUserId: row.sender_user_id,
         content: row.content,
@@ -1362,9 +1510,12 @@ export class MobileService implements OnModuleInit {
       return { requests: [] };
     }
 
-    const requests = await Promise.all(
-      rows.map(async (row) => {
-        const offerLifetimeSeconds = await this.getOfferLifetimeSeconds(
+    // Cargamos la config de tiempos UNA sola vez y la resolvemos por fila en memoria
+    // (antes se hacía una consulta a app_config por cada solicitud → N+1).
+    const offerLifetimeConfig = await this.getOfferLifetimeConfig();
+    const requests = rows.map((row) => {
+        const offerLifetimeSeconds = this.resolveOfferLifetimeSeconds(
+          offerLifetimeConfig,
           row.price_type,
         );
         return {
@@ -1399,8 +1550,7 @@ export class MobileService implements OnModuleInit {
             : null,
           offerLifetimeSeconds,
         };
-      })
-    );
+      });
 
     // Keep backwards compatibility for a moment while transition happens
     return {
@@ -1487,7 +1637,10 @@ export class MobileService implements OnModuleInit {
     let offerId = '';
 
     if (existingRows[0]) {
-      const rows = await this.dataSource.query<any[]>(
+      // El id de la oferta no cambia al actualizar; lo tomamos de existingRows.
+      // (No usamos RETURNING: con UPDATE...RETURNING, query() devuelve [rows, count]
+      //  en esta versión de TypeORM y rows[0] no sería la fila.)
+      await this.dataSource.query(
         `
         UPDATE job_offers
         SET amount = $2,
@@ -1496,7 +1649,6 @@ export class MobileService implements OnModuleInit {
             expires_at = NOW() + ($4::int * INTERVAL '1 second'),
             created_at = NOW()
         WHERE id = $1
-        RETURNING id
         `,
         [
           existingRows[0].id,
@@ -1505,7 +1657,7 @@ export class MobileService implements OnModuleInit {
           offerLifetimeSeconds,
         ],
       );
-      offerId = rows[0].id;
+      offerId = existingRows[0].id;
     } else {
       const rows = await this.dataSource.query<any[]>(
         `
@@ -2157,14 +2309,6 @@ export class MobileService implements OnModuleInit {
       });
 
       // Push notification al worker
-      const infoRows = await this.dataSource.query<any[]>(
-        `SELECT jr.title, u.first_name AS client_name, pt.token
-         FROM job_requests jr
-         JOIN users u ON u.id = $2
-         LEFT JOIN push_tokens pt ON pt.user_id = $3 ORDER BY pt.last_seen_at DESC LIMIT 1`,
-        [params.requestId, params.clientUserId, offerRows[0].worker_user_id],
-      );
-      // Re-query token for worker properly
       const workerTokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
         [offerRows[0].worker_user_id],
@@ -2426,10 +2570,18 @@ export class MobileService implements OnModuleInit {
              jr.budget,
              jr.address,
              jr.updated_at,
+             jr.created_at,
              u.first_name AS client_first_name,
              u.last_name AS client_last_name,
              ST_Y(jr.location::geometry) AS latitude,
-             ST_X(jr.location::geometry) AS longitude
+             ST_X(jr.location::geometry) AS longitude,
+             (
+               SELECT p.url
+               FROM job_request_photos p
+               WHERE p.request_id = jr.id
+               ORDER BY p.created_at ASC
+               LIMIT 1
+             ) AS photo_url
       FROM job_requests jr
       JOIN users u ON u.id = jr.client_user_id
       WHERE jr.location IS NOT NULL
@@ -2479,6 +2631,8 @@ export class MobileService implements OnModuleInit {
         latitude: Number(row.latitude),
         longitude: Number(row.longitude),
         updatedAt: row.updated_at,
+        createdAt: row.created_at,
+        photoUrl: row.photo_url ?? null,
       })),
     };
   }
@@ -2799,7 +2953,8 @@ export class MobileService implements OnModuleInit {
              c.first_name AS client_first_name,
              c.last_name AS client_last_name,
              c.profile_photo_url AS client_photo,
-             ct.id AS thread_id
+             ct.id AS thread_id,
+             (SELECT p.url FROM job_request_photos p WHERE p.request_id = jr.id ORDER BY p.created_at ASC LIMIT 1) as photo_url
       FROM job_offers jo
       JOIN job_requests jr ON jr.id = jo.request_id
       JOIN users c ON c.id = jr.client_user_id
@@ -2830,12 +2985,74 @@ export class MobileService implements OnModuleInit {
         requestStatus: row.request_status,
         acceptedAt: row.accepted_at,
         threadId: row.thread_id ?? null,
+        photoUrl: row.photo_url ?? null,
         client: {
           id: row.client_id,
           firstName: row.client_first_name,
           lastName: row.client_last_name ?? '',
           profilePhotoUrl: row.client_photo ?? null,
         },
+      })),
+    };
+  }
+
+  async getClientHistory(clientUserId: string) {
+    await this.getUserById(clientUserId);
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT jr.id AS request_id,
+             jr.title,
+             jr.description,
+             jr.category,
+             jr.address,
+             jr.status AS request_status,
+             jr.created_at,
+             jo.id AS offer_id,
+             jo.amount,
+             jo.status AS offer_status,
+             w.id AS worker_id,
+             w.first_name AS worker_first_name,
+             w.last_name AS worker_last_name,
+             w.profile_photo_url AS worker_photo,
+             ct.id AS thread_id,
+             (SELECT p.url FROM job_request_photos p WHERE p.request_id = jr.id ORDER BY p.created_at ASC LIMIT 1) as photo_url
+      FROM job_requests jr
+      LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status IN ('accepted', 'rejected')
+      LEFT JOIN users w ON w.id = jo.worker_user_id
+      LEFT JOIN chat_threads ct
+        ON ct.request_id = jr.id
+       AND ct.worker_user_id = w.id
+       AND ct.client_user_id = jr.client_user_id
+      WHERE jr.client_user_id = $1
+        AND jr.status IN ('assigned', 'completed', 'cancelled')
+      ORDER BY jr.created_at DESC
+      LIMIT 80
+      `,
+      [clientUserId],
+    );
+
+    return {
+      clientUserId,
+      jobs: rows.map((row) => ({
+        requestId: row.request_id,
+        title: row.title,
+        description: row.description,
+        category: row.category,
+        address: row.address,
+        amount: row.amount ? Number(row.amount) : null,
+        offerId: row.offer_id ?? null,
+        offerStatus: row.offer_status ?? null,
+        requestStatus: row.request_status,
+        createdAt: row.created_at,
+        threadId: row.thread_id ?? null,
+        photoUrl: row.photo_url ?? null,
+        worker: row.worker_id ? {
+          id: row.worker_id,
+          firstName: row.worker_first_name,
+          lastName: row.worker_last_name ?? '',
+          profilePhotoUrl: row.worker_photo ?? null,
+        } : null,
       })),
     };
   }
@@ -2949,13 +3166,16 @@ export class MobileService implements OnModuleInit {
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS id_photo_verified BOOLEAN NULL;`,
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS face_photo_verified BOOLEAN NULL;`,
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_reviewed_at TIMESTAMPTZ NULL;`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT NULL;`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);`,
       `
       CREATE TABLE IF NOT EXISTS auth_credentials (
         user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-        password TEXT NOT NULL,
+        password TEXT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       `,
+      `ALTER TABLE auth_credentials ALTER COLUMN password DROP NOT NULL;`,
       `
       CREATE TABLE IF NOT EXISTS job_requests (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -3071,6 +3291,7 @@ export class MobileService implements OnModuleInit {
       );
       `,
       `CREATE INDEX IF NOT EXISTS idx_job_requests_location ON job_requests USING GIST(location);`,
+      `CREATE INDEX IF NOT EXISTS idx_users_current_location ON users USING GIST(current_location);`,
       `CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_created ON chat_messages(thread_id, created_at DESC);`,
       `CREATE INDEX IF NOT EXISTS idx_job_offers_request ON job_offers(request_id);`,
       `CREATE INDEX IF NOT EXISTS idx_job_request_photos_request ON job_request_photos(request_id);`,
@@ -3088,6 +3309,8 @@ export class MobileService implements OnModuleInit {
         resolution TEXT NULL,
         resolved_by TEXT NULL,
         resolved_at TIMESTAMPTZ NULL,
+        user_last_read_at TIMESTAMPTZ NULL,
+        admin_last_read_at TIMESTAMPTZ NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -3095,6 +3318,8 @@ export class MobileService implements OnModuleInit {
       `CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);`,
       `CREATE INDEX IF NOT EXISTS idx_disputes_request ON disputes(request_id);`,
       `ALTER TABLE disputes ALTER COLUMN request_id DROP NOT NULL;`,
+      `ALTER TABLE disputes ADD COLUMN IF NOT EXISTS user_last_read_at TIMESTAMPTZ NULL;`,
+      `ALTER TABLE disputes ADD COLUMN IF NOT EXISTS admin_last_read_at TIMESTAMPTZ NULL;`,
       `
       CREATE TABLE IF NOT EXISTS dispute_messages (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -3471,6 +3696,52 @@ export class MobileService implements OnModuleInit {
     return { radiusKm };
   }
 
+  async getRequestNotifiedWorkers(requestId: string) {
+    if (!requestId) {
+      throw new BadRequestException('requestId is required');
+    }
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT n.user_id,
+             n.created_at AS notified_at,
+             u.first_name,
+             u.last_name,
+             u.profile_photo_url,
+             u.phone,
+             u.average_rating,
+             u.completed_jobs,
+             jo.status AS offer_status,
+             jo.amount AS offer_amount
+      FROM notifications n
+      JOIN users u ON u.id = n.user_id
+      LEFT JOIN job_offers jo
+        ON jo.request_id = $1::uuid AND jo.worker_user_id = n.user_id
+      WHERE n.type = 'request_new'
+        AND n.data->>'jobId' = $1::text
+      ORDER BY n.created_at ASC
+      `,
+      [requestId],
+    );
+
+    return {
+      requestId,
+      total: rows.length,
+      workers: rows.map((row) => ({
+        id: row.user_id,
+        firstName: row.first_name,
+        lastName: row.last_name ?? '',
+        profilePhotoUrl: row.profile_photo_url ?? null,
+        phone: row.phone ?? null,
+        averageRating: Number(row.average_rating ?? 0),
+        completedJobs: Number(row.completed_jobs ?? 0),
+        notifiedAt: row.notified_at,
+        offerStatus: row.offer_status ?? null,
+        offerAmount: row.offer_amount != null ? Number(row.offer_amount) : null,
+      })),
+    };
+  }
+
   private extractTopCategories(
     workerRows: Array<{ skills?: string[] | null }>,
   ) {
@@ -3520,9 +3791,8 @@ export class MobileService implements OnModuleInit {
     return 'fixed';
   }
 
-  private async getOfferLifetimeSeconds(
-    priceType?: string | null,
-  ): Promise<number> {
+  // Lee la config de tiempos de oferta UNA sola vez (para resolver varias filas sin N+1).
+  private async getOfferLifetimeConfig(): Promise<Record<string, any> | null> {
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT value_json
@@ -3533,9 +3803,17 @@ export class MobileService implements OnModuleInit {
       [MobileService.OFFER_LIFETIME_CONFIG_KEY],
     );
 
-    const fallback = MobileService.OFFER_LIFETIME_SECONDS;
     const config = rows[0]?.value_json;
-    if (!config || typeof config !== 'object') {
+    return config && typeof config === 'object' ? config : null;
+  }
+
+  // Resuelve el lifetime a partir de una config ya cargada (sin tocar la BD).
+  private resolveOfferLifetimeSeconds(
+    config: Record<string, any> | null,
+    priceType?: string | null,
+  ): number {
+    const fallback = MobileService.OFFER_LIFETIME_SECONDS;
+    if (!config) {
       return fallback;
     }
 
@@ -3551,6 +3829,13 @@ export class MobileService implements OnModuleInit {
       return fallback;
     }
     return Math.floor(parsed);
+  }
+
+  private async getOfferLifetimeSeconds(
+    priceType?: string | null,
+  ): Promise<number> {
+    const config = await this.getOfferLifetimeConfig();
+    return this.resolveOfferLifetimeSeconds(config, priceType);
   }
 
   private async getWorkerNotificationRadiusKm(): Promise<number> {
@@ -4375,7 +4660,6 @@ Reglas obligatorias:
         AND u.is_available = true
         AND u.current_location IS NOT NULL
         AND ST_DWithin(u.current_location, $1::geography, $4::float8 * 1000)
-        AND ST_DWithin(u.current_location, $1::geography, u.work_radius_km * 1000)
         AND (
           $2::boolean = true
           OR cardinality($3::text[]) = 0
@@ -4938,9 +5222,17 @@ Reglas obligatorias:
     sets.push(`updated_at = NOW()`);
     values.push(params.id);
 
-    const rows = await this.dataSource.query<any[]>(
-      `UPDATE categories SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, name, description, icon, is_active, parent_id, created_at, updated_at`,
+    await this.dataSource.query(
+      `UPDATE categories SET ${sets.join(', ')} WHERE id = $${idx}`,
       values,
+    );
+
+    // SELECT explícito en vez de RETURNING: con UPDATE...RETURNING, query() devuelve
+    // [rows, affectedCount] en esta versión de TypeORM y rows[0] no sería la fila.
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT id, name, description, icon, is_active, parent_id, created_at, updated_at
+       FROM categories WHERE id = $1`,
+      [params.id],
     );
 
     if (!rows[0]) throw new NotFoundException('Category not found');
@@ -4959,7 +5251,19 @@ Reglas obligatorias:
     };
   }
 
-  async getDisputeMessages(disputeId: string) {
+  async getDisputeMessages(disputeId: string, readBy?: string) {
+    if (readBy === 'user') {
+      await this.dataSource.query(
+        `UPDATE disputes SET user_last_read_at = NOW() WHERE id = $1`,
+        [disputeId]
+      );
+    } else if (readBy === 'admin') {
+      await this.dataSource.query(
+        `UPDATE disputes SET admin_last_read_at = NOW() WHERE id = $1`,
+        [disputeId]
+      );
+    }
+
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT dm.id,
@@ -4988,6 +5292,50 @@ Reglas obligatorias:
         senderName: [r.sender_first_name, r.sender_last_name].filter(Boolean).join(' ') || 'Soporte',
         content: r.content,
         createdAt: r.created_at,
+      })),
+    };
+  }
+
+  async getUserActiveDisputes(userId: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT d.id, d.request_id, d.reported_by, d.reported_user, d.reason,
+             d.description, d.status, d.resolution, d.resolved_by,
+             d.resolved_at, d.created_at, d.updated_at,
+             jr.title AS request_title,
+             (
+               SELECT COUNT(*)::int 
+               FROM dispute_messages dm 
+               WHERE dm.dispute_id = d.id 
+                 AND dm.sender_type = 'admin' 
+                 AND (d.user_last_read_at IS NULL OR dm.created_at > d.user_last_read_at)
+             ) AS unread_count
+      FROM disputes d
+      LEFT JOIN job_requests jr ON jr.id = d.request_id
+      WHERE d.reported_by = $1
+        AND (d.status = 'open' OR (d.status = 'resolved' AND d.resolved_at >= NOW() - INTERVAL '3 days'))
+      ORDER BY d.created_at DESC
+      LIMIT 100
+      `,
+      [userId],
+    );
+
+    return {
+      disputes: rows.map((r) => ({
+        id: r.id,
+        requestId: r.request_id,
+        requestTitle: r.request_title,
+        reportedBy: r.reported_by,
+        reportedUser: r.reported_user,
+        reason: r.reason,
+        description: r.description,
+        status: r.status,
+        resolution: r.resolution,
+        resolvedBy: r.resolved_by,
+        resolvedAt: r.resolved_at,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        unreadCount: r.unread_count,
       })),
     };
   }

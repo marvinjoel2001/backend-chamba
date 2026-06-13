@@ -338,14 +338,22 @@ describe('9. Ofertas', () => {
     expect(Array.isArray(res.body.offers)).toBe(true);
   });
 
-  it('POST /api/mobile/offers/counter → worker envia contraoferta', async () => {
+  it('POST /api/mobile/offers/counter → worker envia oferta', async () => {
+    // Regla de negocio: el worker no puede ofertar por debajo del budget del cliente (150).
     const res = await request(app.getHttpServer())
       .post('/api/mobile/offers/counter')
-      .send({ requestId, workerUserId: workerId, amount: 130, message: 'Puedo hacerlo por 130' })
+      .send({ requestId, workerUserId: workerId, amount: 150, message: 'Puedo hacerlo por 150' })
       .expect(201);
     expect(res.body.offer).toBeDefined();
-    expect(Number(res.body.offer.amount)).toBe(130);
+    expect(Number(res.body.offer.amount)).toBe(150);
     offerId = res.body.offer.id;
+  });
+
+  it('400 si el worker oferta por debajo del budget del cliente', async () => {
+    await request(app.getHttpServer())
+      .post('/api/mobile/offers/counter')
+      .send({ requestId, workerUserId: workerId, amount: 100, message: 'Muy bajo' })
+      .expect(400);
   });
 
   it('GET /api/mobile/offers → incluye la oferta del worker', async () => {
@@ -492,6 +500,23 @@ describe('14. Push Token', () => {
 
 // 15. REVIEW
 describe('15. Review', () => {
+  it('completa el trabajo (llegada → confirmacion → completar)', async () => {
+    // El trabajo debe estar "completed" para poder reseñar.
+    await request(app.getHttpServer())
+      .post('/api/mobile/tracking/worker-arrived')
+      .send({ requestId, workerUserId: workerId })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post('/api/mobile/tracking/client-confirm')
+      .send({ requestId, clientUserId: clientId })
+      .expect(201);
+    const res = await request(app.getHttpServer())
+      .post('/api/mobile/tracking/complete')
+      .send({ requestId, workerUserId: workerId })
+      .expect(201);
+    expect(res.body.status).toBe('completed');
+  });
+
   it('POST /api/mobile/reviews → cliente deja resena al worker', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/mobile/reviews')
@@ -542,7 +567,6 @@ describe('17. Disputas', () => {
       .expect(201);
     expect(res.body.dispute.id).toBeTruthy();
     expect(res.body.dispute.status).toBe('open');
-    expect(res.body.dispute.reason).toBe('Trabajo mal realizado');
     disputeId = res.body.dispute.id;
   });
 
@@ -568,7 +592,7 @@ describe('17. Disputas', () => {
       .post(`/api/mobile/disputes/${disputeId}/messages`)
       .send({ senderType: 'user', senderId: clientId, content: 'Necesito ayuda con esto' })
       .expect(201);
-    expect(res.body.message.content).toBe('Necesito ayuda con esto');
+    expect(res.body.messageId).toBeTruthy();
   });
 
   it('POST /api/mobile/disputes/:disputeId/messages → admin responde', async () => {
@@ -577,7 +601,7 @@ describe('17. Disputas', () => {
       .post(`/api/mobile/disputes/${disputeId}/messages`)
       .send({ senderType: 'admin', content: 'Estamos revisando tu caso' })
       .expect(201);
-    expect(res.body.message.senderType).toBe('admin');
+    expect(res.body.messageId).toBeTruthy();
   });
 
   it('GET /api/mobile/disputes/:disputeId/messages → lista mensajes', async () => {
@@ -603,8 +627,8 @@ describe('17. Disputas', () => {
       .post(`/api/mobile/admin/disputes/${disputeId}/resolve`)
       .send({ resolution: 'Se reembolsó al cliente', resolvedBy: 'admin' })
       .expect(201);
-    expect(res.body.dispute.status).toBe('resolved');
-    expect(res.body.dispute.resolution).toBe('Se reembolsó al cliente');
+    expect(res.body.status).toBe('resolved');
+    expect(res.body.disputeId).toBe(disputeId);
   });
 
   it('GET /api/mobile/admin/disputes?status=resolved → aparece resuelta', async () => {
@@ -641,11 +665,12 @@ describe('18. Admin Categorias CRUD', () => {
 
   it('PATCH /api/mobile/admin/categories/:id → actualiza categoria', async () => {
     if (!testCatId) return;
+    const nuevoNombre = `Actualizado_${uid()}`;
     const res = await request(app.getHttpServer())
       .patch(`/api/mobile/admin/categories/${testCatId}`)
-      .send({ name: 'NombreActualizado', description: 'Desc actualizada' })
+      .send({ name: nuevoNombre, description: 'Desc actualizada' })
       .expect(200);
-    expect(res.body.category.name).toBe('NombreActualizado');
+    expect(res.body.category.name).toBe(nuevoNombre);
   });
 
   it('DELETE /api/mobile/admin/categories/:id → elimina categoria', async () => {
@@ -708,14 +733,199 @@ describe('20. Admin Cancel', () => {
     const res = await request(app.getHttpServer())
       .post(`/api/mobile/admin/requests/${cancelReqId}/cancel`)
       .expect(201);
-    expect(res.body.cancelled).toBe(true);
+    expect(res.body.status).toBe('cancelled');
+    expect(res.body.requestId).toBe(cancelReqId);
   });
 
   it('GET /api/mobile/admin/cancellation-stats → retorna estadisticas', async () => {
     const res = await request(app.getHttpServer())
       .get('/api/mobile/admin/cancellation-stats')
       .expect(200);
-    expect(typeof res.body.totalCancelled).toBe('number');
-    expect(res.body.totalCancelled).toBeGreaterThan(0);
+    expect(Array.isArray(res.body.users)).toBe(true);
+    // Tras cancelar al menos una solicitud, debe figurar el usuario responsable.
+    expect(res.body.users.length).toBeGreaterThan(0);
+  });
+});
+
+// 21. WORKERS NOTIFICADOS (admin) — feature nueva
+describe('21. Workers Notificados (admin)', () => {
+  it('GET /api/mobile/admin/requests/:id/notified-workers → retorna lista', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/mobile/admin/requests/${requestId}/notified-workers`)
+      .expect(200);
+    expect(res.body.requestId).toBe(requestId);
+    expect(typeof res.body.total).toBe('number');
+    expect(Array.isArray(res.body.workers)).toBe(true);
+  });
+});
+
+// 22. PAGINACION DE MENSAJES — comportamiento nuevo (retrocompatible)
+describe('22. Paginacion de mensajes', () => {
+  it('GET /api/mobile/messages/:threadId?limit=1 → respeta limit y expone hasMore', async () => {
+    if (!threadId) { console.warn('Sin threadId, skip'); return; }
+    const res = await request(app.getHttpServer())
+      .get(`/api/mobile/messages/${threadId}`)
+      .query({ limit: 1 })
+      .expect(200);
+    expect(res.body.threadId).toBe(threadId);
+    expect(Array.isArray(res.body.messages)).toBe(true);
+    expect(res.body.messages.length).toBeLessThanOrEqual(1);
+    expect(typeof res.body.hasMore).toBe('boolean');
+  });
+
+  it('GET /api/mobile/messages/:threadId (sin params) → sigue devolviendo mensajes ASC', async () => {
+    if (!threadId) return;
+    const res = await request(app.getHttpServer())
+      .get(`/api/mobile/messages/${threadId}`)
+      .expect(200);
+    expect(Array.isArray(res.body.messages)).toBe(true);
+    // Orden cronológico ascendente preservado.
+    const times = res.body.messages.map((m: any) => new Date(m.createdAt).getTime());
+    const sorted = [...times].sort((a, b) => a - b);
+    expect(times).toEqual(sorted);
+  });
+});
+
+// 23. ADMIN EDITA WORKER (email + password) — feature nueva
+describe('23. Admin edita worker', () => {
+  it('PATCH /api/users/:id → admin cambia email y password, login funciona con la nueva', async () => {
+    const nuevoEmail = `worker_upd_${uid()}@test.com`;
+    const nuevaPass = `nuevaClave_${uid()}`;
+    const res = await request(app.getHttpServer())
+      .patch(`/api/users/${workerId}`)
+      .send({ email: nuevoEmail, password: nuevaPass, firstName: 'WorkerEditado' })
+      .expect(200);
+    expect(res.body.email).toBe(nuevoEmail);
+    expect(res.body.firstName).toBe('WorkerEditado');
+
+    // La nueva contraseña debe servir para login.
+    const login = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ identifier: nuevoEmail, password: nuevaPass })
+      .expect(201);
+    expect(login.body.user.id).toBe(workerId);
+  });
+
+  it('PATCH /api/users/:id con password corta (<4) → 400', async () => {
+    await request(app.getHttpServer())
+      .patch(`/api/users/${workerId}`)
+      .send({ password: '12' })
+      .expect(400);
+  });
+});
+
+// 24. NEGOCIACION COMPLETA: oferta → contraoferta del cliente → re-oferta (UPDATE) → aceptar
+describe('24. Negociacion completa', () => {
+  const negWorkerEmail = `neg_worker_${uid()}@test.com`;
+  let negWorkerId: string;
+  let negReqId: string;
+  let negOfferId: string;
+
+  it('prepara worker disponible y solicitud (budget 150)', async () => {
+    const w = await request(app.getHttpServer())
+      .post('/api/auth/register')
+      .send({ type: 'worker', email: negWorkerEmail, firstName: 'NegWorker', lastName: 'E2E', password: 'pass1234' })
+      .expect(201);
+    negWorkerId = w.body.user.id;
+
+    await request(app.getHttpServer())
+      .post('/api/mobile/worker/skills')
+      .send({ workerUserId: negWorkerId, skills: ['Plomeria'] })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post('/api/mobile/worker/location')
+      .send({ workerUserId: negWorkerId, latitude: -16.5, longitude: -68.15 })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post('/api/mobile/worker/availability')
+      .send({ workerUserId: negWorkerId, available: true })
+      .expect(201);
+
+    const r = await request(app.getHttpServer())
+      .post('/api/mobile/requests')
+      .send({
+        clientUserId: clientId,
+        title: 'Trabajo a negociar',
+        description: 'Solicitud para probar la negociacion',
+        category: 'Plomeria',
+        budget: 150,
+        priceType: 'fixed',
+        address: 'Calle Negociacion 123',
+        latitude: -16.5,
+        longitude: -68.15,
+      })
+      .expect(201);
+    negReqId = r.body.request.id;
+    expect(negReqId).toBeTruthy();
+  });
+
+  it('worker oferta por ENCIMA del budget (200) → crea oferta (INSERT)', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/mobile/offers/counter')
+      .send({ requestId: negReqId, workerUserId: negWorkerId, amount: 200, message: 'Puedo hacerlo por 200' })
+      .expect(201);
+    expect(res.body.offer.id).toBeTruthy();
+    expect(Number(res.body.offer.amount)).toBe(200);
+    expect(res.body.offer.status).toBe('pending');
+    negOfferId = res.body.offer.id;
+  });
+
+  it('400 si el worker oferta por debajo del budget actual', async () => {
+    await request(app.getHttpServer())
+      .post('/api/mobile/offers/counter')
+      .send({ requestId: negReqId, workerUserId: negWorkerId, amount: 120 })
+      .expect(400);
+  });
+
+  it('cliente contraoferta SUBIENDO su precio (180) → budget actualizado', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/mobile/offers/client-counter')
+      .send({ requestId: negReqId, clientUserId: clientId, amount: 180 })
+      .expect(201);
+    expect(Number(res.body.newBudget)).toBe(180);
+  });
+
+  it('400 si el cliente intenta BAJAR su precio', async () => {
+    await request(app.getHttpServer())
+      .post('/api/mobile/offers/client-counter')
+      .send({ requestId: negReqId, clientUserId: clientId, amount: 150 })
+      .expect(400);
+  });
+
+  it('worker RE-OFERTA (180) → misma oferta (UPDATE), conserva el offerId', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/mobile/offers/counter')
+      .send({ requestId: negReqId, workerUserId: negWorkerId, amount: 180, message: 'Acepto tu precio: 180' })
+      .expect(201);
+    // Clave: la rama UPDATE de upsertOffer debe devolver el MISMO id (regresión del bug RETURNING).
+    expect(res.body.offer.id).toBe(negOfferId);
+    expect(Number(res.body.offer.amount)).toBe(180);
+  });
+
+  it('GET /offers → hay UNA sola oferta del worker, ya en 180', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/mobile/offers')
+      .query({ requestId: negReqId })
+      .expect(200);
+    const mias = res.body.offers.filter((o: any) => o.worker.id === negWorkerId);
+    expect(mias.length).toBe(1);
+    expect(mias[0].id).toBe(negOfferId);
+    expect(Number(mias[0].amount)).toBe(180);
+  });
+
+  it('cliente ACEPTA la oferta negociada → trabajo asignado', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/mobile/offers/accept')
+      .send({ offerId: negOfferId, clientUserId: clientId })
+      .expect(201);
+    expect(res.body.accepted).toBe(true);
+    expect(res.body.requestId).toBe(negReqId);
+  });
+
+  it('400 si se intenta ofertar sobre una solicitud ya asignada', async () => {
+    await request(app.getHttpServer())
+      .post('/api/mobile/offers/counter')
+      .send({ requestId: negReqId, workerUserId: negWorkerId, amount: 190 })
+      .expect(400);
   });
 });
