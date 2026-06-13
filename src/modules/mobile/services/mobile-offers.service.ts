@@ -319,15 +319,26 @@ export class MobileOffersService {
 
     const rejectedRows = await this.dataSource.query<any[]>(
       `
-      UPDATE job_offers
-      SET status = 'rejected'
+      SELECT id, worker_user_id
+      FROM job_offers
       WHERE request_id = $1
         AND id <> $2
         AND status <> 'expired'
-      RETURNING id, worker_user_id
       `,
       [offer.request_id, params.offerId],
     );
+    if (rejectedRows.length > 0) {
+      await this.dataSource.query(
+        `
+        UPDATE job_offers
+        SET status = 'rejected'
+        WHERE request_id = $1
+          AND id <> $2
+          AND status <> 'expired'
+        `,
+        [offer.request_id, params.offerId],
+      );
+    }
     await this.dataSource.query(
       `UPDATE job_offers SET status = 'accepted' WHERE id = $1`,
       [params.offerId],
@@ -472,19 +483,31 @@ export class MobileOffersService {
   public async declineOffer(params: { requestId: string; workerUserId: string }) {
     const request = await this.repo.getRequestById(params.requestId);
 
-    const result = await this.dataSource.query<any[]>(
+    const existingOffers = await this.dataSource.query<any[]>(
       `
-      UPDATE job_offers
-      SET status = 'declined', expires_at = NULL
+      SELECT id
+      FROM job_offers
       WHERE request_id = $1
         AND worker_user_id = $2
         AND status IN ('pending', 'active')
-      RETURNING id
       `,
       [params.requestId, params.workerUserId],
     );
 
-    if (!result[0]) {
+    if (existingOffers.length > 0) {
+      await this.dataSource.query(
+        `
+        UPDATE job_offers
+        SET status = 'declined', expires_at = NULL
+        WHERE request_id = $1
+          AND worker_user_id = $2
+          AND status IN ('pending', 'active')
+        `,
+        [params.requestId, params.workerUserId],
+      );
+    }
+
+    if (existingOffers.length === 0) {
       const budget = Number(request.budget ?? 0);
       await this.dataSource.query(
         `
