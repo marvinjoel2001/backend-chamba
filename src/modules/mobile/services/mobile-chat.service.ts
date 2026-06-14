@@ -170,7 +170,6 @@ export class MobileChatService {
         createdAt: rows[0].created_at,
       },
     };
-    this.realtimeGateway.emitToThread(params.threadId, 'message.new', payload);
     if (thread?.client_user_id) {
       this.realtimeGateway.emitToUser(
         thread.client_user_id,
