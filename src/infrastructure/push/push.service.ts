@@ -70,7 +70,7 @@ export class PushService {
 
     if (isCall) {
       // Data-only message for full screen intent in mobile app
-      notification = undefined;
+      // notification = undefined; // We send notification block so the OS shows it reliably
       data.title = params.title;
       data.body = params.body;
     }
@@ -111,7 +111,7 @@ export class PushService {
 
     if (isCall) {
       // Data-only message for full screen intent in mobile app
-      notification = undefined;
+      // notification = undefined; // We send notification block so the OS shows it reliably
       data.title = params.title;
       data.body = params.body;
     }

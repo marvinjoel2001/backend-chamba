@@ -57,7 +57,6 @@ let PushService = PushService_1 = class PushService {
         };
         let data = params.data ? { ...params.data } : {};
         if (isCall) {
-            notification = undefined;
             data.title = params.title;
             data.body = params.body;
         }
@@ -86,7 +85,6 @@ let PushService = PushService_1 = class PushService {
         };
         let data = params.data ? { ...params.data } : {};
         if (isCall) {
-            notification = undefined;
             data.title = params.title;
             data.body = params.body;
         }
