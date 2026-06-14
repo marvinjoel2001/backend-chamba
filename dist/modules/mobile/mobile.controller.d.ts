@@ -712,6 +712,7 @@ export declare class MobileController {
             updatedAt: any;
             createdAt: any;
             photoUrl: any;
+            cancelledBy: string | null;
         }[];
     }>;
     getAdminWallet(period?: string): Promise<{

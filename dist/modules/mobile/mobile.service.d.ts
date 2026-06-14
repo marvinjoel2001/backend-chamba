@@ -826,6 +826,7 @@ export declare class MobileService implements OnModuleInit {
             updatedAt: any;
             createdAt: any;
             photoUrl: any;
+            cancelledBy: string | null;
         }[];
     }>;
     getAdminWallet(params: {

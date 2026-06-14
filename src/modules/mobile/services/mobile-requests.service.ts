@@ -869,8 +869,8 @@ export class MobileRequestsService {
     if (!req) throw new NotFoundException('Request not found or not authorized');
 
     await this.dataSource.query(
-      `UPDATE job_requests SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
-      [params.requestId],
+      `UPDATE job_requests SET status = 'cancelled', updated_at = NOW(), cancelled_by = $2 WHERE id = $1`,
+      [params.requestId, params.userId],
     );
     this.realtimeGateway.server.emit('request.status.updated', {
       requestId: params.requestId,
@@ -888,10 +888,10 @@ export class MobileRequestsService {
     }
 
     if (req.client_user_id) {
-      this.realtimeGateway.emitToUser(req.client_user_id, 'job.cancelled', { requestId: params.requestId });
+      this.realtimeGateway.emitToUser(req.client_user_id, 'job.cancelled', { requestId: params.requestId, cancelerUserId: params.userId });
     }
     if (req.worker_user_id) {
-      this.realtimeGateway.emitToUser(req.worker_user_id, 'job.cancelled', { requestId: params.requestId });
+      this.realtimeGateway.emitToUser(req.worker_user_id, 'job.cancelled', { requestId: params.requestId, cancelerUserId: params.userId });
     }
 
     const canceler = await this.repo.getUserById(params.userId);

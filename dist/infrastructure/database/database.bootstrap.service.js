@@ -25,7 +25,13 @@ let DatabaseBootstrapService = DatabaseBootstrapService_1 = class DatabaseBootst
     async ensurePostgis() {
         await this.dataSource.query('CREATE EXTENSION IF NOT EXISTS postgis;');
         const [result] = await this.dataSource.query('SELECT postgis_version();');
-        this.logger.log(`PostGIS ready: ${result.postgis_version}`);
+        await this.dataSource.query('ALTER TABLE "job_requests" ADD COLUMN IF NOT EXISTS "cancelled_by" uuid;');
+        try {
+            await this.dataSource.query('ALTER TABLE "job_requests" ADD CONSTRAINT "FK_job_requests_cancelled_by" FOREIGN KEY ("cancelled_by") REFERENCES "users"("id") ON DELETE SET NULL;');
+        }
+        catch (e) {
+        }
+        this.logger.log(`PostGIS ready: ${result?.postgis_version}`);
     }
 };
 exports.DatabaseBootstrapService = DatabaseBootstrapService;

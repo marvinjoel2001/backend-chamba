@@ -154,6 +154,8 @@ export class MobileAdminService {
              jr.created_at,
              u.first_name AS client_first_name,
              u.last_name AS client_last_name,
+             cb.first_name AS canceler_first_name,
+             cb.last_name AS canceler_last_name,
              ST_Y(jr.location::geometry) AS latitude,
              ST_X(jr.location::geometry) AS longitude,
              (
@@ -165,6 +167,7 @@ export class MobileAdminService {
              ) AS photo_url
       FROM job_requests jr
       JOIN users u ON u.id = jr.client_user_id
+      LEFT JOIN users cb ON cb.id = jr.cancelled_by
       WHERE jr.location IS NOT NULL
         AND ($1::timestamptz IS NULL OR jr.updated_at >= $1::timestamptz)
       ORDER BY jr.updated_at DESC
@@ -214,6 +217,7 @@ export class MobileAdminService {
         updatedAt: row.updated_at,
         createdAt: row.created_at,
         photoUrl: row.photo_url ?? null,
+        cancelledBy: row.canceler_first_name ? `${row.canceler_first_name} ${row.canceler_last_name ?? ''}`.trim() : null,
       })),
     };
   }
