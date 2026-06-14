@@ -1387,6 +1387,9 @@ Reglas obligatorias:
 
       const text =
         payload.choices?.[0]?.message?.content?.trim() ?? '';
+      
+      this.logger.log(`[AI_CATEGORIZATION_RAW] (${activeProvider}) -> ${text}`);
+      
       if (!text) {
         this.logger.warn(`[${activeProvider}] Respuesta vacía → fallback`);
         return [

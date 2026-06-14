@@ -214,7 +214,15 @@ export class MobileGeoHelpers {
     if (!decoded || typeof decoded !== 'object') {
       return [];
     }
-    const rawCategories = (decoded as Record<string, unknown>).categorias;
+    
+    let rawCategories: unknown;
+    if (Array.isArray(decoded)) {
+      rawCategories = decoded;
+    } else {
+      const obj = decoded as Record<string, unknown>;
+      rawCategories = obj.categorias ?? obj.categories ?? obj.data;
+    }
+
     if (!Array.isArray(rawCategories)) {
       return [];
     }
@@ -229,14 +237,15 @@ export class MobileGeoHelpers {
       const rawId = String(row.id ?? '')
         .trim()
         .toLowerCase();
-      const rawName = String(row.nombre ?? row.name ?? '').trim();
+      const rawName = String(row.nombre ?? row.name ?? row.category ?? '').trim();
 
       const resolved =
         (rawId ? byId.get(rawId) : undefined) ??
         (rawName ? byName.get(rawName.toLowerCase()) : undefined) ??
         (rawName
           ? params.catalog.find((category) =>
-              category.name.toLowerCase().includes(rawName.toLowerCase()),
+              category.name.toLowerCase().includes(rawName.toLowerCase()) || 
+              rawName.toLowerCase().includes(category.name.toLowerCase()),
             )
           : undefined);
 
