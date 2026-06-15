@@ -12,6 +12,7 @@ const storage_module_1 = require("../../infrastructure/storage/storage.module");
 const notifications_module_1 = require("../notifications/notifications.module");
 const realtime_module_1 = require("../realtime/realtime.module");
 const queues_module_1 = require("../queues/queues.module");
+const api_logs_module_1 = require("../api-logs/api-logs.module");
 const mobile_controller_1 = require("./mobile.controller");
 const mobile_service_1 = require("./mobile.service");
 const mobile_request_repository_1 = require("./shared/mobile-request.repository");
@@ -29,7 +30,7 @@ let MobileModule = class MobileModule {
 exports.MobileModule = MobileModule;
 exports.MobileModule = MobileModule = __decorate([
     (0, common_1.Module)({
-        imports: [storage_module_1.StorageModule, notifications_module_1.NotificationsModule, realtime_module_1.RealtimeModule, queues_module_1.QueuesModule],
+        imports: [storage_module_1.StorageModule, notifications_module_1.NotificationsModule, realtime_module_1.RealtimeModule, queues_module_1.QueuesModule, api_logs_module_1.ApiLogsModule],
         controllers: [mobile_controller_1.MobileController],
         providers: [
             mobile_service_1.MobileService,
