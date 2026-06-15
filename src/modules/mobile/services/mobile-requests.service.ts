@@ -9,6 +9,7 @@ import { MobileRequestRepository } from '../shared/mobile-request.repository';
 import { MobileGeoHelpers } from '../shared/mobile-geo.helpers';
 import { MobileCatalogService } from './mobile-catalog.service';
 import { MobileOffersService } from './mobile-offers.service';
+import { ApiLogsService } from '../../api-logs/api-logs.service';
 
 type CreateRequestInput = {
   clientUserId: string;
@@ -53,6 +54,7 @@ export class MobileRequestsService {
     private readonly geoHelpers: MobileGeoHelpers,
     private readonly catalogService: MobileCatalogService,
     private readonly offersService: MobileOffersService,
+    private readonly apiLogsService: ApiLogsService,
   ) {}
 
   public async getExploreData(params: {
@@ -1344,6 +1346,17 @@ Reglas obligatorias:
       MobileRequestsService.GEMINI_TIMEOUT_MS,
     );
 
+    const startTime = Date.now();
+    const requestBodyJson = {
+      model: modelName,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0,
+      top_p: 0.95,
+      max_tokens: 480,
+      stream: false,
+      response_format: { type: 'json_object' },
+    };
+
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -1351,15 +1364,7 @@ Reglas obligatorias:
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model: modelName,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0,
-          top_p: 0.95,
-          max_tokens: 480,
-          stream: false,
-          response_format: { type: 'json_object' },
-        }),
+        body: JSON.stringify(requestBodyJson),
         signal: controller.signal,
       });
 
@@ -1368,6 +1373,15 @@ Reglas obligatorias:
         this.logger.error(
           `[${activeProvider}] HTTP ${response.status} → fallback "${fallbackCategory}" | detalle: ${errBody.slice(0, 300)}`,
         );
+        this.apiLogsService.capture({
+          method: 'POST',
+          path: `[AI] ${activeProvider} - ${modelName}`,
+          statusCode: response.status,
+          durationMs: Date.now() - startTime,
+          requestBodyJson,
+          errorMessage: errBody,
+          responsePreview: errBody.slice(0, 1000),
+        }).catch(e => this.logger.error('Failed to log AI API error', e));
         return [
           {
             id: this.repo.toCategoryId(fallbackCategory),
@@ -1377,18 +1391,22 @@ Reglas obligatorias:
         ];
       }
 
-      const payload = (await response.json()) as {
-        choices?: Array<{
-          message?: {
-            content?: string;
-          };
-        }>;
-      };
+      const payload = (await response.json()) as any;
 
       const text =
         payload.choices?.[0]?.message?.content?.trim() ?? '';
       
       this.logger.log(`[AI_CATEGORIZATION_RAW] (${activeProvider}) -> ${text}`);
+
+      this.apiLogsService.capture({
+        method: 'POST',
+        path: `[AI] ${activeProvider} - ${modelName}`,
+        statusCode: response.status,
+        durationMs: Date.now() - startTime,
+        requestBodyJson,
+        queryJson: payload,
+        responsePreview: text.slice(0, 1000),
+      }).catch(e => this.logger.error('Failed to log AI API success', e));
       
       if (!text) {
         this.logger.warn(`[${activeProvider}] Respuesta vacía → fallback`);
@@ -1424,6 +1442,14 @@ Reglas obligatorias:
     } catch (err) {
       const msg = (err as Error)?.message ?? String(err);
       this.logger.error(`[${activeProvider}] Error: ${msg} → fallback "${fallbackCategory}"`);
+      this.apiLogsService.capture({
+        method: 'POST',
+        path: `[AI] ${activeProvider} - ${modelName}`,
+        statusCode: 500,
+        durationMs: Date.now() - startTime,
+        requestBodyJson,
+        errorMessage: msg,
+      }).catch(e => this.logger.error('Failed to log AI API catch error', e));
       return [
         {
           id: this.repo.toCategoryId(fallbackCategory),
