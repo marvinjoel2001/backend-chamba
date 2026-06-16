@@ -33,6 +33,12 @@ type CreateRequestInput = {
     publicId: string;
   }>;
   paymentMethod?: string;
+  modality?: string;
+  estimatedHours?: number;
+  hourlyRate?: number;
+  days?: number;
+  dailyRate?: number;
+  startDate?: string;
 };
 
 @Injectable()
@@ -234,7 +240,13 @@ export class MobileRequestsService {
         location,
         address,
         status,
-        payment_method
+        payment_method,
+        modality,
+        estimated_hours,
+        hourly_rate,
+        days,
+        daily_rate,
+        start_date
       )
       VALUES (
         $1,
@@ -248,9 +260,15 @@ export class MobileRequestsService {
         ST_SetSRID(ST_MakePoint($10::float8, $9::float8), 4326)::geography,
         $11,
         'searching',
-        $12
+        $12,
+        $13,
+        $14,
+        $15,
+        $16,
+        $17,
+        $18
       )
-      RETURNING id, status, title, budget, address, ai_categories, created_at, payment_method
+      RETURNING id, status, title, budget, address, ai_categories, created_at, payment_method, modality, estimated_hours, hourly_rate, days, daily_rate, start_date
       `,
       [
         input.clientUserId,
@@ -265,6 +283,12 @@ export class MobileRequestsService {
         input.longitude,
         input.address,
         input.paymentMethod || 'Efectivo',
+        input.modality || null,
+        input.estimatedHours || null,
+        input.hourlyRate || null,
+        input.days || null,
+        input.dailyRate || null,
+        input.startDate || null,
       ],
     );
 
@@ -449,6 +473,12 @@ export class MobileRequestsService {
              jr.price_type,
              jr.address,
              jr.status,
+             jr.modality,
+             jr.estimated_hours,
+             jr.hourly_rate,
+             jr.days,
+             jr.daily_rate,
+             jr.start_date,
              CASE
                WHEN w.current_location IS NOT NULL
                  THEN ST_Distance(jr.location, w.current_location) / 1000.0
@@ -543,6 +573,12 @@ export class MobileRequestsService {
           category: row.category,
           budget: Number(row.budget),
           priceType: row.price_type,
+          modality: row.modality,
+          estimatedHours: row.estimated_hours == null ? null : Number(row.estimated_hours),
+          hourlyRate: row.hourly_rate == null ? null : Number(row.hourly_rate),
+          days: row.days == null ? null : Number(row.days),
+          dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
+          startDate: row.start_date,
           address: row.address,
           status: row.status,
           distanceKm: row.distance_km == null ? null : Number(row.distance_km),
@@ -623,6 +659,12 @@ export class MobileRequestsService {
              jr.completed_at,
              jr.work_started_at,
              jr.price_type,
+             jr.modality,
+             jr.estimated_hours,
+             jr.hourly_rate,
+             jr.days,
+             jr.daily_rate,
+             jr.start_date,
              ST_Y(jr.location::geometry) AS dest_lat,
              ST_X(jr.location::geometry) AS dest_lng,
              w.id AS worker_id,
@@ -664,6 +706,12 @@ export class MobileRequestsService {
       address: row.request_address,
       status: row.request_status,
       priceType: row.price_type,
+      modality: row.modality,
+      estimatedHours: row.estimated_hours == null ? null : Number(row.estimated_hours),
+      hourlyRate: row.hourly_rate == null ? null : Number(row.hourly_rate),
+      days: row.days == null ? null : Number(row.days),
+      dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
+      startDate: row.start_date,
       workerArrived: row.worker_arrived ?? false,
       clientConfirmedArrival: row.client_confirmed_arrival ?? false,
       completedAt: row.completed_at ?? null,

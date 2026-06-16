@@ -359,7 +359,10 @@ export class MobileUsersService {
              profile_photo_url,
              average_rating,
              completed_jobs,
-             work_radius_km
+             work_radius_km,
+             work_modalities,
+             hourly_rate,
+             daily_rate
       FROM users
       WHERE id = $1 AND type = 'worker'
       LIMIT 1
@@ -414,6 +417,11 @@ export class MobileUsersService {
         averageRating: Number(worker.average_rating ?? 0),
         completedJobs: Number(worker.completed_jobs ?? 0),
         workRadiusKm: Number(worker.work_radius_km ?? 0),
+        modalities: Array.isArray(worker.work_modalities)
+          ? worker.work_modalities
+          : [],
+        hourlyRate: worker.hourly_rate == null ? null : Number(worker.hourly_rate),
+        dailyRate: worker.daily_rate == null ? null : Number(worker.daily_rate),
         skills: skillRows.map((row) => row.skill),
         bio: 'Especialista verificado. Puntual, responsable y con experiencia en servicios de hogar.',
         gallery: galleryRows.map((row) => row.url),
@@ -464,6 +472,96 @@ export class MobileUsersService {
     return {
       workerUserId,
       skills: sanitized,
+    };
+  }
+
+  private static readonly ALLOWED_MODALITIES = ['fixed', 'hourly', 'daily'];
+
+  public async getWorkerModalities(workerUserId: string) {
+    await this.repo.getUserById(workerUserId);
+
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT work_modalities, hourly_rate, daily_rate FROM users WHERE id = $1 LIMIT 1`,
+      [workerUserId],
+    );
+
+    const row = rows[0] ?? {};
+    return {
+      workerUserId,
+      modalities: Array.isArray(row.work_modalities) ? row.work_modalities : [],
+      hourlyRate: row.hourly_rate == null ? null : Number(row.hourly_rate),
+      dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
+    };
+  }
+
+  public async updateWorkerModalities(
+    workerUserId: string,
+    input: {
+      modalities?: string[];
+      hourlyRate?: number | null;
+      dailyRate?: number | null;
+    },
+  ) {
+    await this.repo.getUserById(workerUserId);
+
+    const modalities = [
+      ...new Set(
+        (input.modalities ?? [])
+          .map((item) => String(item).trim().toLowerCase())
+          .filter((item) =>
+            MobileUsersService.ALLOWED_MODALITIES.includes(item),
+          ),
+      ),
+    ];
+
+    if (modalities.length === 0) {
+      throw new BadRequestException(
+        'Selecciona al menos una modalidad de trabajo',
+      );
+    }
+
+    const normalizeRate = (value: number | null | undefined) => {
+      if (value == null) {
+        return null;
+      }
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric <= 0) {
+        throw new BadRequestException('La tarifa debe ser mayor a 0');
+      }
+      return numeric;
+    };
+
+    // Solo guardamos la tarifa de la modalidad que el worker activó.
+    const hourlyRate = modalities.includes('hourly')
+      ? normalizeRate(input.hourlyRate)
+      : null;
+    const dailyRate = modalities.includes('daily')
+      ? normalizeRate(input.dailyRate)
+      : null;
+
+    if (modalities.includes('hourly') && hourlyRate == null) {
+      throw new BadRequestException('Ingresa tu tarifa por hora');
+    }
+    if (modalities.includes('daily') && dailyRate == null) {
+      throw new BadRequestException('Ingresa tu tarifa por día');
+    }
+
+    await this.dataSource.query(
+      `
+      UPDATE users
+      SET work_modalities = $2,
+          hourly_rate = $3,
+          daily_rate = $4
+      WHERE id = $1
+      `,
+      [workerUserId, modalities, hourlyRate, dailyRate],
+    );
+
+    return {
+      workerUserId,
+      modalities,
+      hourlyRate,
+      dailyRate,
     };
   }
 

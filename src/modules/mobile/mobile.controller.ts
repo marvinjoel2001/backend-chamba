@@ -139,6 +139,12 @@ export class MobileController {
       publicId?: string;
     }>,
     @Body('paymentMethod') paymentMethod?: string,
+    @Body('modality') modality?: string,
+    @Body('estimatedHours') estimatedHours?: number,
+    @Body('hourlyRate') hourlyRate?: number,
+    @Body('days') days?: number,
+    @Body('dailyRate') dailyRate?: number,
+    @Body('startDate') startDate?: string,
   ) {
     return this.mobileService.createRequest({
       clientUserId,
@@ -158,6 +164,12 @@ export class MobileController {
       scheduledAt,
       photosBase64,
       paymentMethod,
+      modality,
+      estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
+      hourlyRate: hourlyRate ? Number(hourlyRate) : undefined,
+      days: days ? Number(days) : undefined,
+      dailyRate: dailyRate ? Number(dailyRate) : undefined,
+      startDate,
       photos:
         photos?.map((item) => ({
           url: item.url ?? '',
@@ -504,6 +516,11 @@ export class MobileController {
     return this.mobileService.getWorkerSkills(workerUserId);
   }
 
+  @Get('mobile/worker/modalities')
+  getWorkerModalities(@Query('workerUserId') workerUserId: string) {
+    return this.mobileService.getWorkerModalities(workerUserId);
+  }
+
   @Get('mobile/worker/history')
   getWorkerHistory(@Query('workerUserId') workerUserId: string) {
     return this.mobileService.getWorkerHistory(workerUserId);
@@ -553,6 +570,20 @@ export class MobileController {
     @Body('skills') skills: string[],
   ) {
     return this.mobileService.updateWorkerSkills(workerUserId, skills ?? []);
+  }
+
+  @Post('mobile/worker/modalities')
+  updateWorkerModalities(
+    @Body('workerUserId') workerUserId: string,
+    @Body('modalities') modalities: string[],
+    @Body('hourlyRate') hourlyRate?: number,
+    @Body('dailyRate') dailyRate?: number,
+  ) {
+    return this.mobileService.updateWorkerModalities(workerUserId, {
+      modalities: modalities ?? [],
+      hourlyRate: hourlyRate == null ? null : Number(hourlyRate),
+      dailyRate: dailyRate == null ? null : Number(dailyRate),
+    });
   }
 
   @Post('mobile/reviews')

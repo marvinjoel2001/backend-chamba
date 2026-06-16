@@ -44,6 +44,12 @@ type CreateRequestInput = {
     publicId: string;
   }>;
   paymentMethod?: string;
+  modality?: string;
+  estimatedHours?: number;
+  hourlyRate?: number;
+  days?: number;
+  dailyRate?: number;
+  startDate?: string;
 };
 
 @Injectable()
@@ -628,6 +634,21 @@ export class MobileService implements OnModuleInit {
 
   async updateWorkerSkills(workerUserId: string, skills: string[]) {
     return this.usersService.updateWorkerSkills(workerUserId, skills);
+  }
+
+  async getWorkerModalities(workerUserId: string) {
+    return this.usersService.getWorkerModalities(workerUserId);
+  }
+
+  async updateWorkerModalities(
+    workerUserId: string,
+    input: {
+      modalities?: string[];
+      hourlyRate?: number | null;
+      dailyRate?: number | null;
+    },
+  ) {
+    return this.usersService.updateWorkerModalities(workerUserId, input);
   }
 
   async getWorkerHistory(workerUserId: string) {

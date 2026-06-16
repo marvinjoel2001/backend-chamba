@@ -70,7 +70,13 @@ export class MobileRequestRepository {
              address,
              status,
              location,
-             created_at
+             created_at,
+             modality,
+             estimated_hours,
+             hourly_rate,
+             days,
+             daily_rate,
+             start_date
       FROM job_requests
       WHERE id = $1
       LIMIT 1
@@ -96,6 +102,12 @@ export class MobileRequestRepository {
       status: row.status,
       location: row.location,
       created_at: row.created_at,
+      modality: row.modality,
+      estimatedHours: row.estimated_hours == null ? null : Number(row.estimated_hours),
+      hourlyRate: row.hourly_rate == null ? null : Number(row.hourly_rate),
+      days: row.days == null ? null : Number(row.days),
+      dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
+      startDate: row.start_date,
     };
   }
 
@@ -174,6 +186,12 @@ export class MobileRequestRepository {
              jr.address,
              jr.status,
              jr.created_at,
+             jr.modality,
+             jr.estimated_hours,
+             jr.hourly_rate,
+             jr.days,
+             jr.daily_rate,
+             jr.start_date,
              (SELECT COUNT(*) FROM job_offers jo WHERE jo.request_id = jr.id AND jo.status = 'pending') AS pending_offers_count
       FROM job_requests jr
       WHERE jr.client_user_id = $1
@@ -200,6 +218,12 @@ export class MobileRequestRepository {
       address: row.address,
       status: row.status,
       createdAt: row.created_at,
+      modality: row.modality,
+      estimatedHours: row.estimated_hours == null ? null : Number(row.estimated_hours),
+      hourlyRate: row.hourly_rate == null ? null : Number(row.hourly_rate),
+      days: row.days == null ? null : Number(row.days),
+      dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
+      startDate: row.start_date,
       pendingOffersCount: Number(row.pending_offers_count ?? 0),
     };
   }

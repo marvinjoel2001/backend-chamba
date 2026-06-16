@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DatabaseBootstrapService } from './database.bootstrap.service';
 import { InitialBaselineSchema1717000000000 } from './migrations/1717000000000-InitialBaselineSchema';
+import { AddModalityToJobRequests1781633301782 } from './migrations/1781633301782-AddModalityToJobRequests';
 
 @Module({
   imports: [
@@ -21,7 +22,10 @@ import { InitialBaselineSchema1717000000000 } from './migrations/1717000000000-I
           ? { rejectUnauthorized: false }
           : false,
         autoLoadEntities: true,
-        migrations: [InitialBaselineSchema1717000000000],
+        migrations: [
+          InitialBaselineSchema1717000000000,
+          AddModalityToJobRequests1781633301782,
+        ],
         migrationsRun: true,
         migrationsTableName: 'typeorm_migrations',
       }),
