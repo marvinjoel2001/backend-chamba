@@ -1,4 +1,10 @@
-import { IsString, IsOptional, IsBoolean, IsInt, IsJSON } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsInt,
+  IsJSON,
+} from 'class-validator';
 
 export class CreatePaymentMethodDto {
   @IsString()

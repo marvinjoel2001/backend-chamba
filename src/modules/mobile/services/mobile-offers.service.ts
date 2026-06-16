@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
@@ -15,7 +21,10 @@ export class MobileOffersService {
     public readonly repo: MobileRequestRepository,
   ) {}
 
-  public async getOffers(params: { requestId?: string; clientUserId?: string }) {
+  public async getOffers(params: {
+    requestId?: string;
+    clientUserId?: string;
+  }) {
     const request = await this.repo.resolveRequest(params);
     const offerLifetimeSeconds = await this.repo.getOfferLifetimeSeconds(
       (request as any).priceType ?? (request as any).price_type,
@@ -58,7 +67,10 @@ export class MobileOffersService {
         AND jo.worker_user_id <> $2
       ORDER BY jo.amount ASC, u.average_rating DESC
       `,
-      [request.id, (request as any).clientUserId ?? (request as any).client_user_id],
+      [
+        request.id,
+        (request as any).clientUserId ?? (request as any).client_user_id,
+      ],
     );
 
     return {
@@ -235,8 +247,16 @@ export class MobileOffersService {
       });
     }
 
-    this.notifyClientOfNewOffer(params.requestId, params.workerUserId, params.amount, request.title).catch((err) => {
-      this.logger.warn('Failed to send push notification for new offer:', err.message);
+    this.notifyClientOfNewOffer(
+      params.requestId,
+      params.workerUserId,
+      params.amount,
+      request.title,
+    ).catch((err) => {
+      this.logger.warn(
+        'Failed to send push notification for new offer:',
+        err.message,
+      );
     });
 
     return {
@@ -397,7 +417,10 @@ export class MobileOffersService {
       offer.worker_user_id,
       params.clientUserId,
     ).catch((err) => {
-      this.logger.warn('Failed to send push notification for accepted offer:', err.message);
+      this.logger.warn(
+        'Failed to send push notification for accepted offer:',
+        err.message,
+      );
     });
 
     if (rejectedRows.length > 0) {
@@ -411,12 +434,16 @@ export class MobileOffersService {
           `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
           [rejected.worker_user_id],
         );
-        this.notificationsService.notifyOfferRejected({
-          userId: rejected.worker_user_id,
-          token: tokenRows[0]?.push_token || null,
-          jobTitle,
-          requestId: offer.request_id,
-        }).catch(e => this.logger.error('Failed to notify offer rejected', e));
+        this.notificationsService
+          .notifyOfferRejected({
+            userId: rejected.worker_user_id,
+            token: tokenRows[0]?.push_token || null,
+            jobTitle,
+            requestId: offer.request_id,
+          })
+          .catch((e) =>
+            this.logger.error('Failed to notify offer rejected', e),
+          );
       }
     }
 
@@ -461,7 +488,10 @@ export class MobileOffersService {
     });
   }
 
-  public async discardOffer(params: { requestId: string; workerUserId: string }) {
+  public async discardOffer(params: {
+    requestId: string;
+    workerUserId: string;
+  }) {
     await this.dataSource.query(
       `
       UPDATE job_offers
@@ -480,7 +510,10 @@ export class MobileOffersService {
     return { discarded: true, requestId: params.requestId };
   }
 
-  public async declineOffer(params: { requestId: string; workerUserId: string }) {
+  public async declineOffer(params: {
+    requestId: string;
+    workerUserId: string;
+  }) {
     const request = await this.repo.getRequestById(params.requestId);
 
     const existingOffers = await this.dataSource.query<any[]>(
@@ -544,7 +577,10 @@ export class MobileOffersService {
     return { declined: true, requestId: params.requestId };
   }
 
-  public async reactivateOffer(params: { requestId: string; workerUserId: string }) {
+  public async reactivateOffer(params: {
+    requestId: string;
+    workerUserId: string;
+  }) {
     await this.dataSource.query(
       `
       UPDATE job_offers
@@ -609,7 +645,11 @@ export class MobileOffersService {
     };
 
     for (const row of workerRows) {
-      this.realtimeGateway.emitToUser(row.worker_user_id, 'offer.client_counter', payload);
+      this.realtimeGateway.emitToUser(
+        row.worker_user_id,
+        'offer.client_counter',
+        payload,
+      );
     }
 
     const client = await this.repo.getUserById(params.clientUserId);
@@ -618,14 +658,16 @@ export class MobileOffersService {
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
         [row.worker_user_id],
       );
-      this.notificationsService.notifyWorkerCounterOffer({
-        userId: row.worker_user_id,
-        token: tokenRows[0]?.push_token || null,
-        clientName: client.firstName,
-        newAmount: params.amount,
-        jobTitle: request.title,
-        requestId: params.requestId,
-      }).catch(e => this.logger.error('Failed to notify counter offer', e));
+      this.notificationsService
+        .notifyWorkerCounterOffer({
+          userId: row.worker_user_id,
+          token: tokenRows[0]?.push_token || null,
+          clientName: client.firstName,
+          newAmount: params.amount,
+          jobTitle: request.title,
+          requestId: params.requestId,
+        })
+        .catch((e) => this.logger.error('Failed to notify counter offer', e));
     }
 
     this.logger.log(

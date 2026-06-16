@@ -147,7 +147,9 @@ export class ApiLogsService implements OnModuleInit, OnModuleDestroy {
       values.push(Number(params.statusMax));
     }
     if (params.search?.trim()) {
-      filters.push(`(path ILIKE $${i} OR COALESCE(error_message, '') ILIKE $${i})`);
+      filters.push(
+        `(path ILIKE $${i} OR COALESCE(error_message, '') ILIKE $${i})`,
+      );
       values.push(`%${params.search.trim()}%`);
       i += 1;
     }
@@ -205,9 +207,14 @@ export class ApiLogsService implements OnModuleInit, OnModuleDestroy {
     to?: string;
     intervalMinutes?: number;
   }) {
-    const from = params.from ? new Date(params.from) : new Date(Date.now() - 6 * 60 * 60 * 1000);
+    const from = params.from
+      ? new Date(params.from)
+      : new Date(Date.now() - 6 * 60 * 60 * 1000);
     const to = params.to ? new Date(params.to) : new Date();
-    const intervalMinutes = Math.min(60, Math.max(1, Number(params.intervalMinutes ?? 5)));
+    const intervalMinutes = Math.min(
+      60,
+      Math.max(1, Number(params.intervalMinutes ?? 5)),
+    );
 
     const rows = await this.dataSource.query<any[]>(
       `
@@ -253,7 +260,9 @@ export class ApiLogsService implements OnModuleInit, OnModuleDestroy {
     to?: string;
     limit?: number;
   }) {
-    const from = params.from ? new Date(params.from) : new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const from = params.from
+      ? new Date(params.from)
+      : new Date(Date.now() - 24 * 60 * 60 * 1000);
     const to = params.to ? new Date(params.to) : new Date();
     const limit = Math.min(50, Math.max(1, Number(params.limit ?? 15)));
 

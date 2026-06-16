@@ -35,6 +35,12 @@ type CreateRequestInput = {
         publicId: string;
     }>;
     paymentMethod?: string;
+    modality?: string;
+    estimatedHours?: number;
+    hourlyRate?: number;
+    days?: number;
+    dailyRate?: number;
+    startDate?: string;
 };
 export declare class MobileService implements OnModuleInit {
     private readonly configService;
@@ -203,6 +209,12 @@ export declare class MobileService implements OnModuleInit {
             address: any;
             status: any;
             createdAt: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
             pendingOffersCount: number;
         } | null;
         nearbyWorkers: {
@@ -367,6 +379,12 @@ export declare class MobileService implements OnModuleInit {
             status: any;
             location: any;
             created_at: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
         } | {
             photos: {
                 id: any;
@@ -388,6 +406,12 @@ export declare class MobileService implements OnModuleInit {
             address: any;
             status: any;
             createdAt: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
             pendingOffersCount: number;
         };
         metrics: {
@@ -431,6 +455,12 @@ export declare class MobileService implements OnModuleInit {
             status: any;
             location: any;
             created_at: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
         } | {
             photos: {
                 id: any;
@@ -452,6 +482,12 @@ export declare class MobileService implements OnModuleInit {
             address: any;
             status: any;
             createdAt: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
             pendingOffersCount: number;
         };
         offers: {
@@ -483,6 +519,9 @@ export declare class MobileService implements OnModuleInit {
             averageRating: number;
             completedJobs: number;
             workRadiusKm: number;
+            modalities: any;
+            hourlyRate: number | null;
+            dailyRate: number | null;
             skills: any[];
             bio: string;
             gallery: any[];
@@ -579,6 +618,12 @@ export declare class MobileService implements OnModuleInit {
             category: any;
             budget: number;
             priceType: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
             address: any;
             status: any;
             distanceKm: number | null;
@@ -606,6 +651,12 @@ export declare class MobileService implements OnModuleInit {
             category: any;
             budget: number;
             priceType: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
             address: any;
             status: any;
             distanceKm: number | null;
@@ -694,6 +745,12 @@ export declare class MobileService implements OnModuleInit {
         address: any;
         status: any;
         priceType: any;
+        modality: any;
+        estimatedHours: number | null;
+        hourlyRate: number | null;
+        days: number | null;
+        dailyRate: number | null;
+        startDate: any;
         workerArrived: any;
         clientConfirmedArrival: any;
         completedAt: any;
@@ -903,6 +960,22 @@ export declare class MobileService implements OnModuleInit {
     updateWorkerSkills(workerUserId: string, skills: string[]): Promise<{
         workerUserId: string;
         skills: string[];
+    }>;
+    getWorkerModalities(workerUserId: string): Promise<{
+        workerUserId: string;
+        modalities: any;
+        hourlyRate: number | null;
+        dailyRate: number | null;
+    }>;
+    updateWorkerModalities(workerUserId: string, input: {
+        modalities?: string[];
+        hourlyRate?: number | null;
+        dailyRate?: number | null;
+    }): Promise<{
+        workerUserId: string;
+        modalities: string[];
+        hourlyRate: number | null;
+        dailyRate: number | null;
     }>;
     getWorkerHistory(workerUserId: string): Promise<{
         workerUserId: string;

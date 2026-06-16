@@ -127,6 +127,12 @@ export declare class MobileController {
             address: any;
             status: any;
             createdAt: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
             pendingOffersCount: number;
         } | null;
         nearbyWorkers: {
@@ -162,7 +168,7 @@ export declare class MobileController {
     }> | undefined, budget: number, priceType: string, address: string, latitude: number, longitude: number, scheduledAt?: string, photosBase64?: string[], photos?: Array<{
         url?: string;
         publicId?: string;
-    }>, paymentMethod?: string): Promise<{
+    }>, paymentMethod?: string, modality?: string, estimatedHours?: number, hourlyRate?: number, days?: number, dailyRate?: number, startDate?: string): Promise<{
         request: {
             id: any;
             status: any;
@@ -301,6 +307,12 @@ export declare class MobileController {
             status: any;
             location: any;
             created_at: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
         } | {
             photos: {
                 id: any;
@@ -322,6 +334,12 @@ export declare class MobileController {
             address: any;
             status: any;
             createdAt: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
             pendingOffersCount: number;
         };
         metrics: {
@@ -362,6 +380,12 @@ export declare class MobileController {
             status: any;
             location: any;
             created_at: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
         } | {
             photos: {
                 id: any;
@@ -383,6 +407,12 @@ export declare class MobileController {
             address: any;
             status: any;
             createdAt: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
             pendingOffersCount: number;
         };
         offers: {
@@ -414,6 +444,9 @@ export declare class MobileController {
             averageRating: number;
             completedJobs: number;
             workRadiusKm: number;
+            modalities: any;
+            hourlyRate: number | null;
+            dailyRate: number | null;
             skills: any[];
             bio: string;
             gallery: any[];
@@ -500,6 +533,12 @@ export declare class MobileController {
             category: any;
             budget: number;
             priceType: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
             address: any;
             status: any;
             distanceKm: number | null;
@@ -527,6 +566,12 @@ export declare class MobileController {
             category: any;
             budget: number;
             priceType: any;
+            modality: any;
+            estimatedHours: number | null;
+            hourlyRate: number | null;
+            days: number | null;
+            dailyRate: number | null;
+            startDate: any;
             address: any;
             status: any;
             distanceKm: number | null;
@@ -594,6 +639,12 @@ export declare class MobileController {
         address: any;
         status: any;
         priceType: any;
+        modality: any;
+        estimatedHours: number | null;
+        hourlyRate: number | null;
+        days: number | null;
+        dailyRate: number | null;
+        startDate: any;
         workerArrived: any;
         clientConfirmedArrival: any;
         completedAt: any;
@@ -761,6 +812,12 @@ export declare class MobileController {
         workerUserId: string;
         skills: any[];
     }>;
+    getWorkerModalities(workerUserId: string): Promise<{
+        workerUserId: string;
+        modalities: any;
+        hourlyRate: number | null;
+        dailyRate: number | null;
+    }>;
     getWorkerHistory(workerUserId: string): Promise<{
         workerUserId: string;
         jobs: {
@@ -820,6 +877,12 @@ export declare class MobileController {
     updateWorkerSkills(workerUserId: string, skills: string[]): Promise<{
         workerUserId: string;
         skills: string[];
+    }>;
+    updateWorkerModalities(workerUserId: string, modalities: string[], hourlyRate?: number, dailyRate?: number): Promise<{
+        workerUserId: string;
+        modalities: string[];
+        hourlyRate: number | null;
+        dailyRate: number | null;
     }>;
     createReview(requestId: string, workerUserId: string, clientUserId: string, stars: number, comment?: string): Promise<{
         saved: boolean;

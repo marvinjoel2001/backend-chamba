@@ -18,9 +18,13 @@ export class DatabaseBootstrapService implements OnModuleInit {
     );
 
     // Ensure cancelled_by column exists
-    await this.dataSource.query('ALTER TABLE "job_requests" ADD COLUMN IF NOT EXISTS "cancelled_by" uuid;');
+    await this.dataSource.query(
+      'ALTER TABLE "job_requests" ADD COLUMN IF NOT EXISTS "cancelled_by" uuid;',
+    );
     try {
-      await this.dataSource.query('ALTER TABLE "job_requests" ADD CONSTRAINT "FK_job_requests_cancelled_by" FOREIGN KEY ("cancelled_by") REFERENCES "users"("id") ON DELETE SET NULL;');
+      await this.dataSource.query(
+        'ALTER TABLE "job_requests" ADD CONSTRAINT "FK_job_requests_cancelled_by" FOREIGN KEY ("cancelled_by") REFERENCES "users"("id") ON DELETE SET NULL;',
+      );
     } catch (e) {
       // Constraint might already exist
     }

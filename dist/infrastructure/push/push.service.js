@@ -51,11 +51,11 @@ let PushService = PushService_1 = class PushService {
             return null;
         }
         const isCall = params.data?.type === 'request_new';
-        let notification = {
+        const notification = {
             title: params.title,
             body: params.body,
         };
-        let data = params.data ? { ...params.data } : {};
+        const data = params.data ? { ...params.data } : {};
         if (isCall) {
             data.title = params.title;
             data.body = params.body;
@@ -79,11 +79,11 @@ let PushService = PushService_1 = class PushService {
             return 0;
         }
         const isCall = params.data?.type === 'request_new';
-        let notification = {
+        const notification = {
             title: params.title,
             body: params.body,
         };
-        let data = params.data ? { ...params.data } : {};
+        const data = params.data ? { ...params.data } : {};
         if (isCall) {
             data.title = params.title;
             data.body = params.body;
@@ -94,11 +94,13 @@ let PushService = PushService_1 = class PushService {
             data: Object.keys(data).length > 0 ? data : undefined,
             android: {
                 priority: 'high',
-                notification: notification ? {
-                    priority: 'max',
-                    defaultSound: true,
-                    defaultVibrateTimings: true,
-                } : undefined,
+                notification: notification
+                    ? {
+                        priority: 'max',
+                        defaultSound: true,
+                        defaultVibrateTimings: true,
+                    }
+                    : undefined,
             },
             apns: {
                 headers: {

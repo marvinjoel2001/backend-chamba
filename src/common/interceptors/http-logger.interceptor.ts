@@ -25,7 +25,7 @@ export class HttpLoggerInterceptor implements NestInterceptor {
     const url = req.originalUrl ?? req.url;
     const userAgent = Array.isArray(req.headers['user-agent'])
       ? req.headers['user-agent'].join('; ')
-      : req.headers['user-agent'] ?? null;
+      : (req.headers['user-agent'] ?? null);
 
     const body = this.sanitizeBody(req.body);
     const query = Object.keys(req.query ?? {}).length ? req.query : undefined;
@@ -66,7 +66,9 @@ export class HttpLoggerInterceptor implements NestInterceptor {
             500;
           const message =
             (err as { message?: string })?.message ?? 'Unknown error';
-          this.logger.error(`x ${status} ${method} ${url}  ${ms}ms  ${message}`);
+          this.logger.error(
+            `x ${status} ${method} ${url}  ${ms}ms  ${message}`,
+          );
           void this.apiLogsService
             .capture({
               method,

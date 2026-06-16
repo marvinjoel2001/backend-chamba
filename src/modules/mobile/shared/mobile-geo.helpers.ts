@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, UnsupportedMediaTypeException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnsupportedMediaTypeException,
+} from '@nestjs/common';
 import { MobileRequestRepository } from './mobile-request.repository';
 
 @Injectable()
@@ -40,9 +44,7 @@ export class MobileGeoHelpers {
     return `Solicitud de ${params.fallbackCategory.toLowerCase()}`;
   }
 
-  public extractTopCategories(
-    workerRows: Array<{ skills?: string[] | null }>,
-  ) {
+  public extractTopCategories(workerRows: Array<{ skills?: string[] | null }>) {
     const counter = new Map<string, number>();
 
     for (const row of workerRows) {
@@ -214,7 +216,7 @@ export class MobileGeoHelpers {
     if (!decoded || typeof decoded !== 'object') {
       return [];
     }
-    
+
     let rawCategories: unknown;
     if (Array.isArray(decoded)) {
       rawCategories = decoded;
@@ -237,15 +239,18 @@ export class MobileGeoHelpers {
       const rawId = String(row.id ?? '')
         .trim()
         .toLowerCase();
-      const rawName = String(row.nombre ?? row.name ?? row.category ?? '').trim();
+      const rawName = String(
+        row.nombre ?? row.name ?? row.category ?? '',
+      ).trim();
 
       const resolved =
         (rawId ? byId.get(rawId) : undefined) ??
         (rawName ? byName.get(rawName.toLowerCase()) : undefined) ??
         (rawName
-          ? params.catalog.find((category) =>
-              category.name.toLowerCase().includes(rawName.toLowerCase()) || 
-              rawName.toLowerCase().includes(category.name.toLowerCase()),
+          ? params.catalog.find(
+              (category) =>
+                category.name.toLowerCase().includes(rawName.toLowerCase()) ||
+                rawName.toLowerCase().includes(category.name.toLowerCase()),
             )
           : undefined);
 

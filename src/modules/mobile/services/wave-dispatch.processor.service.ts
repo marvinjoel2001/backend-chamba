@@ -1,13 +1,23 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { Worker, Job } from 'bullmq';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
-import { WAVE_QUEUE_NAME, WaveJobData } from '../../queues/wave-dispatch.queue.service';
+import {
+  WAVE_QUEUE_NAME,
+  WaveJobData,
+} from '../../queues/wave-dispatch.queue.service';
 
 @Injectable()
-export class WaveDispatchProcessorService implements OnModuleInit, OnModuleDestroy {
+export class WaveDispatchProcessorService
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(WaveDispatchProcessorService.name);
   private worker: Worker<WaveJobData> | null = null;
 
@@ -87,7 +97,9 @@ export class WaveDispatchProcessorService implements OnModuleInit, OnModuleDestr
       return;
     }
 
-    const nearestDistance = Math.min(...params.waveWorkers.map((w) => w.distanceKm));
+    const nearestDistance = Math.min(
+      ...params.waveWorkers.map((w) => w.distanceKm),
+    );
     await this.notificationsService.notifyWorkersForJobWave({
       users,
       jobId: params.requestId,

@@ -74,14 +74,18 @@ export class UsersController {
     });
   }
 
-  @ApiOperation({ summary: 'Listar buzon de verificaciones de workers pendientes' })
+  @ApiOperation({
+    summary: 'Listar buzon de verificaciones de workers pendientes',
+  })
   @ApiOkResponse({ type: User, isArray: true })
   @Get('verification/workers/inbox')
   getWorkerVerificationInbox() {
     return this.usersService.getWorkerVerificationInbox();
   }
 
-  @ApiOperation({ summary: 'Revisar verificacion de worker (carnet/selfie por separado)' })
+  @ApiOperation({
+    summary: 'Revisar verificacion de worker (carnet/selfie por separado)',
+  })
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiBody({ type: ReviewWorkerVerificationDto })
   @ApiOkResponse({ type: User })
@@ -127,7 +131,11 @@ export class UsersController {
     @UploadedFile() idPhoto: any, // any en lugar de Express.Multer.File
     @Body() body: { facePhotoUrl?: string },
   ) {
-    return this.usersService.uploadVerificationPhotos(id, idPhoto, body.facePhotoUrl);
+    return this.usersService.uploadVerificationPhotos(
+      id,
+      idPhoto,
+      body.facePhotoUrl,
+    );
   }
 
   @ApiOperation({ summary: 'Desactivar (soft-delete) usuario por id' })

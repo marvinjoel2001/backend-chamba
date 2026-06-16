@@ -30,7 +30,13 @@ let MobileModule = class MobileModule {
 exports.MobileModule = MobileModule;
 exports.MobileModule = MobileModule = __decorate([
     (0, common_1.Module)({
-        imports: [storage_module_1.StorageModule, notifications_module_1.NotificationsModule, realtime_module_1.RealtimeModule, queues_module_1.QueuesModule, api_logs_module_1.ApiLogsModule],
+        imports: [
+            storage_module_1.StorageModule,
+            notifications_module_1.NotificationsModule,
+            realtime_module_1.RealtimeModule,
+            queues_module_1.QueuesModule,
+            api_logs_module_1.ApiLogsModule,
+        ],
         controllers: [mobile_controller_1.MobileController],
         providers: [
             mobile_service_1.MobileService,

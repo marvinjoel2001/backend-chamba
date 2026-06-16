@@ -312,7 +312,8 @@ export class MobileController {
 
   @Post('mobile/admin/notifications/broadcast')
   broadcastNotification(
-    @Body() payload: {
+    @Body()
+    payload: {
       target: 'all' | 'workers' | 'clients' | 'custom';
       type: 'push' | 'toast';
       title: string;
@@ -469,7 +470,10 @@ export class MobileController {
   @Get('mobile/admin/wallet')
   getAdminWallet(@Query('period') period?: string) {
     return this.mobileService.getAdminWallet({
-      period: period === 'day' || period === 'week' || period === 'month' ? period : undefined,
+      period:
+        period === 'day' || period === 'week' || period === 'month'
+          ? period
+          : undefined,
     });
   }
 
@@ -543,7 +547,11 @@ export class MobileController {
     }
     const pageNum = Math.max(1, parseInt(page || '1', 10));
     const limitNum = Math.min(50, Math.max(1, parseInt(limit || '20', 10)));
-    return this.notificationsService.getUserNotifications(userId, pageNum, limitNum);
+    return this.notificationsService.getUserNotifications(
+      userId,
+      pageNum,
+      limitNum,
+    );
   }
 
   @Get('mobile/notifications/unread-count')

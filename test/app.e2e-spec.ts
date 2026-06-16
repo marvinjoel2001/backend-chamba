@@ -65,7 +65,9 @@ afterAll(async () => {
 // 1. HEALTH
 describe('1. Health', () => {
   it('GET /api/health → 200 con postgres + redis ok', async () => {
-    const res = await request(app.getHttpServer()).get('/api/health').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/api/health')
+      .expect(200);
     expect(res.body.status).toBe('ok');
     expect(res.body.dependencies.postgres.connected).toBe(true);
     expect(res.body.dependencies.redis.connected).toBe(true);
@@ -78,7 +80,13 @@ describe('2. Auth - Registro', () => {
   it('registra cliente correctamente', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/auth/register')
-      .send({ type: 'client', email: clientEmail, firstName: 'TestCliente', lastName: 'E2E', password: 'pass1234' })
+      .send({
+        type: 'client',
+        email: clientEmail,
+        firstName: 'TestCliente',
+        lastName: 'E2E',
+        password: 'pass1234',
+      })
       .expect(201);
     expect(res.body.user.id).toBeTruthy();
     expect(res.body.user.type).toBe('client');
@@ -88,7 +96,13 @@ describe('2. Auth - Registro', () => {
   it('registra trabajador correctamente', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/auth/register')
-      .send({ type: 'worker', email: workerEmail, firstName: 'TestWorker', lastName: 'E2E', password: 'pass1234' })
+      .send({
+        type: 'worker',
+        email: workerEmail,
+        firstName: 'TestWorker',
+        lastName: 'E2E',
+        password: 'pass1234',
+      })
       .expect(201);
     expect(res.body.user.type).toBe('worker');
     workerId = res.body.user.id;
@@ -97,14 +111,24 @@ describe('2. Auth - Registro', () => {
   it('409 si email duplicado', async () => {
     await request(app.getHttpServer())
       .post('/api/auth/register')
-      .send({ type: 'client', email: clientEmail, firstName: 'Otro', password: 'pass1234' })
+      .send({
+        type: 'client',
+        email: clientEmail,
+        firstName: 'Otro',
+        password: 'pass1234',
+      })
       .expect(409);
   });
 
   it('400 si password muy corta (< 4 chars)', async () => {
     await request(app.getHttpServer())
       .post('/api/auth/register')
-      .send({ type: 'client', email: `new_${uid()}@test.com`, firstName: 'Test', password: '123' })
+      .send({
+        type: 'client',
+        email: `new_${uid()}@test.com`,
+        firstName: 'Test',
+        password: '123',
+      })
       .expect(400);
   });
 
@@ -118,7 +142,12 @@ describe('2. Auth - Registro', () => {
   it('400 si type invalido', async () => {
     await request(app.getHttpServer())
       .post('/api/auth/register')
-      .send({ type: 'admin', email: `admin_${uid()}@test.com`, firstName: 'Admin', password: 'pass1234' })
+      .send({
+        type: 'admin',
+        email: `admin_${uid()}@test.com`,
+        firstName: 'Admin',
+        password: 'pass1234',
+      })
       .expect(400);
   });
 });
@@ -177,7 +206,9 @@ describe('4. Auth - Login', () => {
 // 5. CATEGORIAS
 describe('5. Categorias', () => {
   it('GET /api/mobile/categories → retorna lista', async () => {
-    const res = await request(app.getHttpServer()).get('/api/mobile/categories').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/api/mobile/categories')
+      .expect(200);
     expect(Array.isArray(res.body.categories ?? res.body)).toBe(true);
   });
 
@@ -212,7 +243,10 @@ describe('6. Worker - Habilidades y Ubicacion', () => {
   });
 
   it('POST /api/mobile/worker/location → actualiza ubicacion', async () => {
-    if (!workerId) { console.warn('workerId no disponible, skip'); return; }
+    if (!workerId) {
+      console.warn('workerId no disponible, skip');
+      return;
+    }
     const res = await request(app.getHttpServer())
       .post('/api/mobile/worker/location')
       .send({ workerUserId: workerId, latitude: -16.5, longitude: -68.15 })
@@ -222,13 +256,19 @@ describe('6. Worker - Habilidades y Ubicacion', () => {
   });
 
   it('POST /api/mobile/worker/availability → activa disponibilidad', async () => {
-    if (!workerId) { console.warn('workerId no disponible, skip'); return; }
+    if (!workerId) {
+      console.warn('workerId no disponible, skip');
+      return;
+    }
     const res = await request(app.getHttpServer())
       .post('/api/mobile/worker/availability')
       .send({ workerUserId: workerId, available: true })
       .expect(201);
     // isAvailable may be in body or nested
-    const isAvail = res.body.isAvailable ?? res.body.is_available ?? res.body.workerId !== undefined;
+    const isAvail =
+      res.body.isAvailable ??
+      res.body.is_available ??
+      res.body.workerId !== undefined;
     expect(res.status).toBe(201);
   });
 
@@ -298,14 +338,30 @@ describe('8. Solicitudes', () => {
   it('400 si budget <= 0', async () => {
     await request(app.getHttpServer())
       .post('/api/mobile/requests')
-      .send({ clientUserId: clientId, title: 'Test', description: 'Test', budget: 0, priceType: 'fixed', address: 'Test', latitude: -16.5, longitude: -68.15 })
+      .send({
+        clientUserId: clientId,
+        title: 'Test',
+        description: 'Test',
+        budget: 0,
+        priceType: 'fixed',
+        address: 'Test',
+        latitude: -16.5,
+        longitude: -68.15,
+      })
       .expect(400);
   });
 
   it('400 si faltan coordenadas', async () => {
     await request(app.getHttpServer())
       .post('/api/mobile/requests')
-      .send({ clientUserId: clientId, title: 'Test', description: 'Test', budget: 100, priceType: 'fixed', address: 'Test' })
+      .send({
+        clientUserId: clientId,
+        title: 'Test',
+        description: 'Test',
+        budget: 100,
+        priceType: 'fixed',
+        address: 'Test',
+      })
       .expect(400);
   });
 
@@ -342,7 +398,12 @@ describe('9. Ofertas', () => {
     // Regla de negocio: el worker no puede ofertar por debajo del budget del cliente (150).
     const res = await request(app.getHttpServer())
       .post('/api/mobile/offers/counter')
-      .send({ requestId, workerUserId: workerId, amount: 150, message: 'Puedo hacerlo por 150' })
+      .send({
+        requestId,
+        workerUserId: workerId,
+        amount: 150,
+        message: 'Puedo hacerlo por 150',
+      })
       .expect(201);
     expect(res.body.offer).toBeDefined();
     expect(Number(res.body.offer.amount)).toBe(150);
@@ -352,7 +413,12 @@ describe('9. Ofertas', () => {
   it('400 si el worker oferta por debajo del budget del cliente', async () => {
     await request(app.getHttpServer())
       .post('/api/mobile/offers/counter')
-      .send({ requestId, workerUserId: workerId, amount: 100, message: 'Muy bajo' })
+      .send({
+        requestId,
+        workerUserId: workerId,
+        amount: 100,
+        message: 'Muy bajo',
+      })
       .expect(400);
   });
 
@@ -432,7 +498,10 @@ describe('12. Mensajes', () => {
   });
 
   it('GET /api/mobile/messages/:threadId → obtiene mensajes', async () => {
-    if (!threadId) { console.warn('Sin threadId, skip'); return; }
+    if (!threadId) {
+      console.warn('Sin threadId, skip');
+      return;
+    }
     const res = await request(app.getHttpServer())
       .get(`/api/mobile/messages/${threadId}`)
       .expect(200);
@@ -441,7 +510,10 @@ describe('12. Mensajes', () => {
   });
 
   it('POST /api/mobile/messages/:threadId → cliente envia mensaje', async () => {
-    if (!threadId) { console.warn('Sin threadId, skip'); return; }
+    if (!threadId) {
+      console.warn('Sin threadId, skip');
+      return;
+    }
     const res = await request(app.getHttpServer())
       .post(`/api/mobile/messages/${threadId}`)
       .send({ senderUserId: clientId, content: 'Hola, cuando puedes venir?' })
@@ -451,7 +523,10 @@ describe('12. Mensajes', () => {
   });
 
   it('POST /api/mobile/messages/:threadId → worker responde', async () => {
-    if (!threadId) { console.warn('Sin threadId, skip'); return; }
+    if (!threadId) {
+      console.warn('Sin threadId, skip');
+      return;
+    }
     const res = await request(app.getHttpServer())
       .post(`/api/mobile/messages/${threadId}`)
       .send({ senderUserId: workerId, content: 'Puedo ir manana a las 9am' })
@@ -484,10 +559,16 @@ describe('14. Push Token', () => {
   it('POST /api/mobile/push/token → registra token FCM', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/mobile/push/token')
-      .send({ userId: clientId, token: `fcm_test_${uid()}`, platform: 'android' })
+      .send({
+        userId: clientId,
+        token: `fcm_test_${uid()}`,
+        platform: 'android',
+      })
       .expect(201);
     expect(res.body.pushToken).toBeDefined();
-    expect(res.body.pushToken.user_id ?? res.body.pushToken.userId).toBe(clientId);
+    expect(res.body.pushToken.user_id ?? res.body.pushToken.userId).toBe(
+      clientId,
+    );
   });
 
   it('400 si falta token', async () => {
@@ -520,7 +601,13 @@ describe('15. Review', () => {
   it('POST /api/mobile/reviews → cliente deja resena al worker', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/mobile/reviews')
-      .send({ requestId, workerUserId: workerId, clientUserId: clientId, stars: 5, comment: 'Excelente trabajo' })
+      .send({
+        requestId,
+        workerUserId: workerId,
+        clientUserId: clientId,
+        stars: 5,
+        comment: 'Excelente trabajo',
+      })
       .expect(201);
     expect(res.body.saved).toBe(true);
     expect(res.body.workerUserId).toBe(workerId);
@@ -538,7 +625,9 @@ describe('15. Review', () => {
 // 16. USERS CONTROLLER
 describe('16. Users Controller', () => {
   it('GET /api/users → lista usuarios', async () => {
-    const res = await request(app.getHttpServer()).get('/api/users').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/api/users')
+      .expect(200);
     expect(Array.isArray(res.body.categories ?? res.body)).toBe(true);
   });
 
@@ -563,7 +652,13 @@ describe('17. Disputas', () => {
   it('POST /api/mobile/disputes → crea disputa', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/mobile/disputes')
-      .send({ requestId, reportedBy: clientId, reportedUser: workerId, reason: 'Trabajo mal realizado', description: 'No terminó el trabajo' })
+      .send({
+        requestId,
+        reportedBy: clientId,
+        reportedUser: workerId,
+        reason: 'Trabajo mal realizado',
+        description: 'No terminó el trabajo',
+      })
       .expect(201);
     expect(res.body.dispute.id).toBeTruthy();
     expect(res.body.dispute.status).toBe('open');
@@ -590,7 +685,11 @@ describe('17. Disputas', () => {
     if (!disputeId) return;
     const res = await request(app.getHttpServer())
       .post(`/api/mobile/disputes/${disputeId}/messages`)
-      .send({ senderType: 'user', senderId: clientId, content: 'Necesito ayuda con esto' })
+      .send({
+        senderType: 'user',
+        senderId: clientId,
+        content: 'Necesito ayuda con esto',
+      })
       .expect(201);
     expect(res.body.messageId).toBeTruthy();
   });
@@ -762,7 +861,10 @@ describe('21. Workers Notificados (admin)', () => {
 // 22. PAGINACION DE MENSAJES — comportamiento nuevo (retrocompatible)
 describe('22. Paginacion de mensajes', () => {
   it('GET /api/mobile/messages/:threadId?limit=1 → respeta limit y expone hasMore', async () => {
-    if (!threadId) { console.warn('Sin threadId, skip'); return; }
+    if (!threadId) {
+      console.warn('Sin threadId, skip');
+      return;
+    }
     const res = await request(app.getHttpServer())
       .get(`/api/mobile/messages/${threadId}`)
       .query({ limit: 1 })
@@ -780,7 +882,9 @@ describe('22. Paginacion de mensajes', () => {
       .expect(200);
     expect(Array.isArray(res.body.messages)).toBe(true);
     // Orden cronológico ascendente preservado.
-    const times = res.body.messages.map((m: any) => new Date(m.createdAt).getTime());
+    const times = res.body.messages.map((m: any) =>
+      new Date(m.createdAt).getTime(),
+    );
     const sorted = [...times].sort((a, b) => a - b);
     expect(times).toEqual(sorted);
   });
@@ -793,7 +897,11 @@ describe('23. Admin edita worker', () => {
     const nuevaPass = `nuevaClave_${uid()}`;
     const res = await request(app.getHttpServer())
       .patch(`/api/users/${workerId}`)
-      .send({ email: nuevoEmail, password: nuevaPass, firstName: 'WorkerEditado' })
+      .send({
+        email: nuevoEmail,
+        password: nuevaPass,
+        firstName: 'WorkerEditado',
+      })
       .expect(200);
     expect(res.body.email).toBe(nuevoEmail);
     expect(res.body.firstName).toBe('WorkerEditado');
@@ -824,7 +932,13 @@ describe('24. Negociacion completa', () => {
   it('prepara worker disponible y solicitud (budget 150)', async () => {
     const w = await request(app.getHttpServer())
       .post('/api/auth/register')
-      .send({ type: 'worker', email: negWorkerEmail, firstName: 'NegWorker', lastName: 'E2E', password: 'pass1234' })
+      .send({
+        type: 'worker',
+        email: negWorkerEmail,
+        firstName: 'NegWorker',
+        lastName: 'E2E',
+        password: 'pass1234',
+      })
       .expect(201);
     negWorkerId = w.body.user.id;
 
@@ -862,7 +976,12 @@ describe('24. Negociacion completa', () => {
   it('worker oferta por ENCIMA del budget (200) → crea oferta (INSERT)', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/mobile/offers/counter')
-      .send({ requestId: negReqId, workerUserId: negWorkerId, amount: 200, message: 'Puedo hacerlo por 200' })
+      .send({
+        requestId: negReqId,
+        workerUserId: negWorkerId,
+        amount: 200,
+        message: 'Puedo hacerlo por 200',
+      })
       .expect(201);
     expect(res.body.offer.id).toBeTruthy();
     expect(Number(res.body.offer.amount)).toBe(200);
@@ -895,7 +1014,12 @@ describe('24. Negociacion completa', () => {
   it('worker RE-OFERTA (180) → misma oferta (UPDATE), conserva el offerId', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/mobile/offers/counter')
-      .send({ requestId: negReqId, workerUserId: negWorkerId, amount: 180, message: 'Acepto tu precio: 180' })
+      .send({
+        requestId: negReqId,
+        workerUserId: negWorkerId,
+        amount: 180,
+        message: 'Acepto tu precio: 180',
+      })
       .expect(201);
     // Clave: la rama UPDATE de upsertOffer debe devolver el MISMO id (regresión del bug RETURNING).
     expect(res.body.offer.id).toBe(negOfferId);
@@ -907,7 +1031,9 @@ describe('24. Negociacion completa', () => {
       .get('/api/mobile/offers')
       .query({ requestId: negReqId })
       .expect(200);
-    const mias = res.body.offers.filter((o: any) => o.worker.id === negWorkerId);
+    const mias = res.body.offers.filter(
+      (o: any) => o.worker.id === negWorkerId,
+    );
     expect(mias.length).toBe(1);
     expect(mias[0].id).toBe(negOfferId);
     expect(Number(mias[0].amount)).toBe(180);

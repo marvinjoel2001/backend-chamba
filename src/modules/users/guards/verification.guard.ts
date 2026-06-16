@@ -25,10 +25,13 @@ export class VerificationGuard implements CanActivate {
 
     // Obtener el usuario completo con estado de verificación
     const fullUser = await this.usersService.findOne(user.id);
-    
+
     // Permitir acceso si está verificado o si el endpoint no requiere verificación
-    const isPublicRoute = this.reflector.get<boolean>('isPublic', context.getHandler());
-    
+    const isPublicRoute = this.reflector.get<boolean>(
+      'isPublic',
+      context.getHandler(),
+    );
+
     if (isPublicRoute) {
       return true;
     }

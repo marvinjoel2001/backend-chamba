@@ -34,6 +34,9 @@ export declare class User {
     completedJobs: number;
     isAvailable: boolean;
     isBlocked: boolean;
+    workModalities?: string[];
+    hourlyRate?: number;
+    dailyRate?: number;
     createdAt: Date;
     updatedAt: Date;
 }

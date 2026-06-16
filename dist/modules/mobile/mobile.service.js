@@ -267,7 +267,13 @@ let MobileService = class MobileService {
         RETURNING id, type, first_name, last_name, email, phone, profile_photo_url,
                   verification_status, id_photo_url, face_photo_url,
                   id_photo_verified, face_photo_verified, is_blocked
-        `, [params.type, params.email, params.firstName, params.lastName ?? null, params.googleId]);
+        `, [
+                params.type,
+                params.email,
+                params.firstName,
+                params.lastName ?? null,
+                params.googleId,
+            ]);
             const row = createdRows[0];
             await manager.query(`INSERT INTO auth_credentials (user_id, password) VALUES ($1, NULL)`, [row.id]);
             return {
@@ -436,6 +442,12 @@ let MobileService = class MobileService {
     }
     async updateWorkerSkills(workerUserId, skills) {
         return this.usersService.updateWorkerSkills(workerUserId, skills);
+    }
+    async getWorkerModalities(workerUserId) {
+        return this.usersService.getWorkerModalities(workerUserId);
+    }
+    async updateWorkerModalities(workerUserId, input) {
+        return this.usersService.updateWorkerModalities(workerUserId, input);
     }
     async getWorkerHistory(workerUserId) {
         return this.usersService.getWorkerHistory(workerUserId);

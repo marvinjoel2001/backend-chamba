@@ -56,16 +56,18 @@ export class MobileChatService {
       threads: rows.map((row) => ({
         id: row.thread_id,
         requestId: row.request_id ?? null,
-        request: row.request_id ? {
-          id: row.request_id,
-          title: row.request_title,
-          description: row.request_description,
-          status: row.request_status,
-          budget: row.request_budget,
-          category: row.request_category,
-          workerId: row.request_worker_id,
-          clientId: row.request_client_id,
-        } : null,
+        request: row.request_id
+          ? {
+              id: row.request_id,
+              title: row.request_title,
+              description: row.request_description,
+              status: row.request_status,
+              budget: row.request_budget,
+              category: row.request_category,
+              workerId: row.request_worker_id,
+              clientId: row.request_client_id,
+            }
+          : null,
         counterpart: {
           id: row.counterpart_id,
           firstName: row.counterpart_first_name,
@@ -196,7 +198,10 @@ export class MobileChatService {
         params.content,
         params.threadId,
       ).catch((err) => {
-        this.logger.warn('Failed to send push notification for new message:', err.message);
+        this.logger.warn(
+          'Failed to send push notification for new message:',
+          err.message,
+        );
       });
     }
 

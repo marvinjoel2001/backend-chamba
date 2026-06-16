@@ -8,4 +8,3 @@ import { ApiLogsService } from './api-logs.service';
   exports: [ApiLogsService],
 })
 export class ApiLogsModule {}
-

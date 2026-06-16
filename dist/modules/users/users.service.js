@@ -144,10 +144,10 @@ let UsersService = UsersService_1 = class UsersService {
         }
         const idPhotoVerified = review.idPhotoApproved !== undefined
             ? review.idPhotoApproved
-            : user.idPhotoVerified ?? null;
+            : (user.idPhotoVerified ?? null);
         const facePhotoVerified = review.facePhotoApproved !== undefined
             ? review.facePhotoApproved
-            : user.facePhotoVerified ?? null;
+            : (user.facePhotoVerified ?? null);
         const verificationStatus = this.resolveVerificationStatus(idPhotoVerified, facePhotoVerified);
         const merged = this.usersRepository.merge(user, {
             idPhotoVerified,
@@ -161,14 +161,17 @@ let UsersService = UsersService_1 = class UsersService {
         this.emitVerificationUpdate(updated);
         const message = this.buildVerificationMessage(updated);
         const newVerificationStatus = updated.verificationStatus;
-        if (newVerificationStatus === 'verified' || newVerificationStatus === 'not_verified') {
+        if (newVerificationStatus === 'verified' ||
+            newVerificationStatus === 'not_verified') {
             const tokenRows = await this.dataSource.query(`SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`, [userId]);
-            this.notificationsService.notifyVerificationUpdated({
+            this.notificationsService
+                .notifyVerificationUpdated({
                 userId,
                 token: tokenRows[0]?.push_token || null,
                 status: newVerificationStatus === 'verified' ? 'verified' : 'rejected',
                 message,
-            }).catch(e => this.logger.error('Failed to notify verification update', e));
+            })
+                .catch((e) => this.logger.error('Failed to notify verification update', e));
         }
         return updated;
     }
@@ -242,12 +245,10 @@ let UsersService = UsersService_1 = class UsersService {
         if (user.verificationStatus === user_entity_1.VerificationStatus.PENDING) {
             return 'Recibimos tus fotos. Nuestro equipo las esta revisando.';
         }
-        if (user.idPhotoVerified === false &&
-            user.facePhotoVerified !== false) {
+        if (user.idPhotoVerified === false && user.facePhotoVerified !== false) {
             return 'Revisamos tus fotos: tu carnet necesita una nueva imagen para continuar.';
         }
-        if (user.facePhotoVerified === false &&
-            user.idPhotoVerified !== false) {
+        if (user.facePhotoVerified === false && user.idPhotoVerified !== false) {
             return 'Revisamos tus fotos: tu selfie necesita una nueva imagen para continuar.';
         }
         return 'Necesitamos que vuelvas a subir tus fotos para completar tu verificacion.';

@@ -18,7 +18,13 @@ import { MobileAdminService } from './services/mobile-admin.service';
 import { WaveDispatchProcessorService } from './services/wave-dispatch.processor.service';
 
 @Module({
-  imports: [StorageModule, NotificationsModule, RealtimeModule, QueuesModule, ApiLogsModule],
+  imports: [
+    StorageModule,
+    NotificationsModule,
+    RealtimeModule,
+    QueuesModule,
+    ApiLogsModule,
+  ],
   controllers: [MobileController],
   providers: [
     MobileService,

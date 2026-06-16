@@ -46,6 +46,9 @@ let User = class User {
     completedJobs;
     isAvailable;
     isBlocked;
+    workModalities;
+    hourlyRate;
+    dailyRate;
     createdAt;
     updatedAt;
 };
@@ -81,8 +84,16 @@ __decorate([
     __metadata("design:type", String)
 ], User.prototype, "ciNumber", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ enum: VerificationStatus, example: VerificationStatus.NOT_VERIFIED }),
-    (0, typeorm_1.Column)({ name: 'verification_status', type: 'enum', enum: VerificationStatus, default: VerificationStatus.NOT_VERIFIED }),
+    (0, swagger_1.ApiPropertyOptional)({
+        enum: VerificationStatus,
+        example: VerificationStatus.NOT_VERIFIED,
+    }),
+    (0, typeorm_1.Column)({
+        name: 'verification_status',
+        type: 'enum',
+        enum: VerificationStatus,
+        default: VerificationStatus.NOT_VERIFIED,
+    }),
     __metadata("design:type", String)
 ], User.prototype, "verificationStatus", void 0);
 __decorate([
@@ -111,7 +122,11 @@ __decorate([
         nullable: true,
         example: '2026-05-23T18:12:00.000Z',
     }),
-    (0, typeorm_1.Column)({ name: 'verification_reviewed_at', type: 'timestamptz', nullable: true }),
+    (0, typeorm_1.Column)({
+        name: 'verification_reviewed_at',
+        type: 'timestamptz',
+        nullable: true,
+    }),
     __metadata("design:type", Object)
 ], User.prototype, "verificationReviewedAt", void 0);
 __decorate([
@@ -174,6 +189,33 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'is_blocked', type: 'boolean', default: false }),
     __metadata("design:type", Boolean)
 ], User.prototype, "isBlocked", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ type: [String] }),
+    (0, typeorm_1.Column)({ name: 'work_modalities', type: 'jsonb', nullable: true }),
+    __metadata("design:type", Array)
+], User.prototype, "workModalities", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, typeorm_1.Column)({
+        name: 'hourly_rate',
+        type: 'decimal',
+        precision: 10,
+        scale: 2,
+        nullable: true,
+    }),
+    __metadata("design:type", Number)
+], User.prototype, "hourlyRate", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, typeorm_1.Column)({
+        name: 'daily_rate',
+        type: 'decimal',
+        precision: 10,
+        scale: 2,
+        nullable: true,
+    }),
+    __metadata("design:type", Number)
+], User.prototype, "dailyRate", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({ type: String, example: '2026-03-08T22:42:26.170Z' }),
     (0, typeorm_1.CreateDateColumn)({ name: 'created_at' }),

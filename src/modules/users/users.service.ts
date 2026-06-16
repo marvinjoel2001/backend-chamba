@@ -154,7 +154,9 @@ export class UsersService {
       .andWhere('user.verificationStatus = :status', {
         status: VerificationStatus.PENDING,
       })
-      .andWhere('(user.idPhotoUrl IS NOT NULL OR user.facePhotoUrl IS NOT NULL)')
+      .andWhere(
+        '(user.idPhotoUrl IS NOT NULL OR user.facePhotoUrl IS NOT NULL)',
+      )
       .orderBy('user.updatedAt', 'DESC')
       .getMany();
   }
@@ -178,17 +180,19 @@ export class UsersService {
     }
 
     if (!user.idPhotoUrl && !user.facePhotoUrl) {
-      throw new BadRequestException('Worker has no verification photos uploaded');
+      throw new BadRequestException(
+        'Worker has no verification photos uploaded',
+      );
     }
 
     const idPhotoVerified =
       review.idPhotoApproved !== undefined
         ? review.idPhotoApproved
-        : user.idPhotoVerified ?? null;
+        : (user.idPhotoVerified ?? null);
     const facePhotoVerified =
       review.facePhotoApproved !== undefined
         ? review.facePhotoApproved
-        : user.facePhotoVerified ?? null;
+        : (user.facePhotoVerified ?? null);
     const verificationStatus = this.resolveVerificationStatus(
       idPhotoVerified,
       facePhotoVerified,
@@ -210,17 +214,25 @@ export class UsersService {
     // Push notification al worker
     const message = this.buildVerificationMessage(updated);
     const newVerificationStatus = updated.verificationStatus as string;
-    if (newVerificationStatus === 'verified' || newVerificationStatus === 'not_verified') {
+    if (
+      newVerificationStatus === 'verified' ||
+      newVerificationStatus === 'not_verified'
+    ) {
       const tokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
         [userId],
       );
-      this.notificationsService.notifyVerificationUpdated({
-        userId,
-        token: tokenRows[0]?.push_token || null,
-        status: newVerificationStatus === 'verified' ? 'verified' : 'rejected',
-        message,
-      }).catch(e => this.logger.error('Failed to notify verification update', e));
+      this.notificationsService
+        .notifyVerificationUpdated({
+          userId,
+          token: tokenRows[0]?.push_token || null,
+          status:
+            newVerificationStatus === 'verified' ? 'verified' : 'rejected',
+          message,
+        })
+        .catch((e) =>
+          this.logger.error('Failed to notify verification update', e),
+        );
     }
 
     return updated;
@@ -275,7 +287,7 @@ export class UsersService {
     // TODO: Implementar subida a Cloudinary aquí
     // Por ahora, simulamos URLs
     const idPhotoUrl = `https://res.cloudinary.com/demo/image/upload/${idPhoto.originalname}`;
-    
+
     const updateData: Partial<User> = {
       idPhotoUrl,
       facePhotoUrl: facePhotoUrl || idPhotoUrl, // Temporalmente usamos la misma si no se proporciona
@@ -331,17 +343,11 @@ export class UsersService {
       return 'Recibimos tus fotos. Nuestro equipo las esta revisando.';
     }
 
-    if (
-      user.idPhotoVerified === false &&
-      user.facePhotoVerified !== false
-    ) {
+    if (user.idPhotoVerified === false && user.facePhotoVerified !== false) {
       return 'Revisamos tus fotos: tu carnet necesita una nueva imagen para continuar.';
     }
 
-    if (
-      user.facePhotoVerified === false &&
-      user.idPhotoVerified !== false
-    ) {
+    if (user.facePhotoVerified === false && user.idPhotoVerified !== false) {
       return 'Revisamos tus fotos: tu selfie necesita una nueva imagen para continuar.';
     }
 

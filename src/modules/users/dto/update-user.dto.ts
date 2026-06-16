@@ -1,10 +1,21 @@
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEnum, IsBoolean, MinLength } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsEnum,
+  IsBoolean,
+  MinLength,
+  IsArray,
+  IsNumber,
+} from 'class-validator';
 import { CreateUserDto } from './create-user.dto';
 import { VerificationStatus } from '../entities/user.entity';
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {
-  @ApiPropertyOptional({ example: 'nuevaClave123', description: 'Nueva contraseña (mín. 4 caracteres). Solo admin.' })
+  @ApiPropertyOptional({
+    example: 'nuevaClave123',
+    description: 'Nueva contraseña (mín. 4 caracteres). Solo admin.',
+  })
   @IsOptional()
   @IsString()
   @MinLength(4)
@@ -24,7 +35,10 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsString()
   profilePhotoUrl?: string;
 
-  @ApiPropertyOptional({ enum: VerificationStatus, example: VerificationStatus.PENDING })
+  @ApiPropertyOptional({
+    enum: VerificationStatus,
+    example: VerificationStatus.PENDING,
+  })
   @IsOptional()
   @IsEnum(VerificationStatus)
   verificationStatus?: VerificationStatus;
@@ -48,4 +62,20 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   @IsBoolean()
   facePhotoVerified?: boolean | null;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  workModalities?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  hourlyRate?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  dailyRate?: number;
 }

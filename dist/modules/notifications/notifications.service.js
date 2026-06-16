@@ -83,7 +83,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
                 type,
                 jobId: params.jobId,
                 click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                deep_link: `/request/${params.jobId}`
+                deep_link: `/request/${params.jobId}`,
             },
         });
     }
@@ -96,7 +96,10 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+            data: {
+                requestId: params.requestId,
+                deep_link: `/request/${params.requestId}`,
+            },
         }));
         return this.pushService.sendToToken({
             token: params.token,
@@ -106,7 +109,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
                 type,
                 requestId: params.requestId,
                 click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                deep_link: `/request/${params.requestId}`
+                deep_link: `/request/${params.requestId}`,
             },
         });
     }
@@ -119,7 +122,10 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+            data: {
+                requestId: params.requestId,
+                deep_link: `/request/${params.requestId}`,
+            },
         }));
         return this.pushService.sendToToken({
             token: params.token,
@@ -129,7 +135,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
                 type,
                 requestId: params.requestId,
                 click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                deep_link: `/request/${params.requestId}`
+                deep_link: `/request/${params.requestId}`,
             },
         });
     }
@@ -137,12 +143,14 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
         return this.pushService.sendToToken({
             token: params.token,
             title: `💬 ${params.senderName}`,
-            body: params.message.length > 60 ? params.message.substring(0, 60) + '...' : params.message,
+            body: params.message.length > 60
+                ? params.message.substring(0, 60) + '...'
+                : params.message,
             data: {
                 type: 'message_new',
                 threadId: params.threadId,
                 click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                deep_link: `/chat/${params.threadId}`
+                deep_link: `/chat/${params.threadId}`,
             },
         });
     }
@@ -155,7 +163,10 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+            data: {
+                requestId: params.requestId,
+                deep_link: `/request/${params.requestId}`,
+            },
         }));
         return this.pushService.sendToToken({
             token: params.token,
@@ -165,7 +176,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
                 type,
                 requestId: params.requestId,
                 click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                deep_link: `/request/${params.requestId}`
+                deep_link: `/request/${params.requestId}`,
             },
         });
     }
@@ -178,7 +189,10 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+            data: {
+                requestId: params.requestId,
+                deep_link: `/request/${params.requestId}`,
+            },
         }));
         return this.pushService.sendToToken({
             token: params.token,
@@ -188,7 +202,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
                 type,
                 requestId: params.requestId,
                 click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                deep_link: `/request/${params.requestId}`
+                deep_link: `/request/${params.requestId}`,
             },
         });
     }
@@ -201,7 +215,10 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+            data: {
+                requestId: params.requestId,
+                deep_link: `/request/${params.requestId}`,
+            },
         }));
         if (!params.token)
             return null;
@@ -213,13 +230,15 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
                 type,
                 requestId: params.requestId,
                 click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                deep_link: `/request/${params.requestId}`
+                deep_link: `/request/${params.requestId}`,
             },
         });
     }
     async notifySupportMessage(params) {
         const title = `🎧 Soporte Chamba`;
-        const body = params.message.length > 60 ? params.message.substring(0, 60) + '...' : params.message;
+        const body = params.message.length > 60
+            ? params.message.substring(0, 60) + '...'
+            : params.message;
         const type = 'support_message';
         await this.notificationRepository.save(this.notificationRepository.create({
             userId: params.userId,
@@ -237,12 +256,14 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             data: {
                 type,
                 click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                deep_link: `/support`
+                deep_link: `/support`,
             },
         });
     }
     async notifyVerificationUpdated(params) {
-        const title = params.status === 'verified' ? `✅ Cuenta Verificada` : `⚠️ Problema con tu verificación`;
+        const title = params.status === 'verified'
+            ? `✅ Cuenta Verificada`
+            : `⚠️ Problema con tu verificación`;
         const body = params.message;
         const type = 'verification_update';
         await this.notificationRepository.save(this.notificationRepository.create({
@@ -261,7 +282,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             data: {
                 type,
                 click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                deep_link: `/profile`
+                deep_link: `/profile`,
             },
         });
     }
@@ -274,7 +295,10 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+            data: {
+                requestId: params.requestId,
+                deep_link: `/request/${params.requestId}`,
+            },
         }));
         if (!params.token)
             return null;
@@ -299,7 +323,10 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+            data: {
+                requestId: params.requestId,
+                deep_link: `/request/${params.requestId}`,
+            },
         }));
         if (!params.token)
             return null;
@@ -325,7 +352,11 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId, stars: params.stars, deep_link: `/profile` },
+            data: {
+                requestId: params.requestId,
+                stars: params.stars,
+                deep_link: `/profile`,
+            },
         }));
         if (!params.token)
             return null;
@@ -350,7 +381,10 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             title,
             body,
             type,
-            data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+            data: {
+                requestId: params.requestId,
+                deep_link: `/request/${params.requestId}`,
+            },
         }));
         if (!params.token)
             return null;
@@ -368,7 +402,9 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
     }
     async notifyDisputeResolved(params) {
         const title = `📋 Tu queja fue resuelta`;
-        const body = params.resolution.length > 80 ? params.resolution.substring(0, 80) + '...' : params.resolution;
+        const body = params.resolution.length > 80
+            ? params.resolution.substring(0, 80) + '...'
+            : params.resolution;
         const type = 'dispute_resolved';
         await this.notificationRepository.save(this.notificationRepository.create({
             userId: params.userId,

@@ -12,6 +12,7 @@ const config_1 = require("@nestjs/config");
 const typeorm_1 = require("@nestjs/typeorm");
 const database_bootstrap_service_1 = require("./database.bootstrap.service");
 const _1717000000000_InitialBaselineSchema_1 = require("./migrations/1717000000000-InitialBaselineSchema");
+const _1781633301782_AddModalityToJobRequests_1 = require("./migrations/1781633301782-AddModalityToJobRequests");
 let DatabaseModule = class DatabaseModule {
 };
 exports.DatabaseModule = DatabaseModule;
@@ -33,7 +34,10 @@ exports.DatabaseModule = DatabaseModule = __decorate([
                         ? { rejectUnauthorized: false }
                         : false,
                     autoLoadEntities: true,
-                    migrations: [_1717000000000_InitialBaselineSchema_1.InitialBaselineSchema1717000000000],
+                    migrations: [
+                        _1717000000000_InitialBaselineSchema_1.InitialBaselineSchema1717000000000,
+                        _1781633301782_AddModalityToJobRequests_1.AddModalityToJobRequests1781633301782,
+                    ],
                     migrationsRun: true,
                     migrationsTableName: 'typeorm_migrations',
                 }),

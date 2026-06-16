@@ -96,7 +96,9 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "findNearbyWorkers", null);
 __decorate([
-    (0, swagger_1.ApiOperation)({ summary: 'Listar buzon de verificaciones de workers pendientes' }),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Listar buzon de verificaciones de workers pendientes',
+    }),
     (0, swagger_1.ApiOkResponse)({ type: user_entity_1.User, isArray: true }),
     (0, common_1.Get)('verification/workers/inbox'),
     __metadata("design:type", Function),
@@ -104,7 +106,9 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "getWorkerVerificationInbox", null);
 __decorate([
-    (0, swagger_1.ApiOperation)({ summary: 'Revisar verificacion de worker (carnet/selfie por separado)' }),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Revisar verificacion de worker (carnet/selfie por separado)',
+    }),
     (0, swagger_1.ApiParam)({ name: 'id', format: 'uuid' }),
     (0, swagger_1.ApiBody)({ type: review_worker_verification_dto_1.ReviewWorkerVerificationDto }),
     (0, swagger_1.ApiOkResponse)({ type: user_entity_1.User }),

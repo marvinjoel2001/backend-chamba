@@ -54,10 +54,14 @@ export class MobileDisputesService {
         requestTitle: r.request_title,
         requestStatus: r.request_status,
         reportedBy: r.reported_by,
-        reporterName: [r.reporter_first_name, r.reporter_last_name].filter(Boolean).join(' '),
+        reporterName: [r.reporter_first_name, r.reporter_last_name]
+          .filter(Boolean)
+          .join(' '),
         reporterType: r.reporter_type,
         reportedUser: r.reported_user,
-        reportedName: [r.reported_first_name, r.reported_last_name].filter(Boolean).join(' '),
+        reportedName: [r.reported_first_name, r.reported_last_name]
+          .filter(Boolean)
+          .join(' '),
         reportedType: r.reported_type,
         reason: r.reason,
         description: r.description ?? '',
@@ -79,7 +83,9 @@ export class MobileDisputesService {
     description?: string;
   }) {
     if (!params.reportedBy || !params.reason?.trim()) {
-      throw new BadRequestException('El usuario reportante y la razón del reporte son obligatorios.');
+      throw new BadRequestException(
+        'El usuario reportante y la razón del reporte son obligatorios.',
+      );
     }
 
     const rows = await this.dataSource.query<any[]>(
@@ -102,15 +108,23 @@ export class MobileDisputesService {
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
         [params.reportedUser],
       );
-      this.notificationsService.notifyDisputeCreated({
-        userId: params.reportedUser,
-        token: tokenRows[0]?.push_token || null,
-        reason: params.reason,
-        disputeId: rows[0].id,
-      }).catch(e => this.logger.error('Failed to notify dispute created', e));
+      this.notificationsService
+        .notifyDisputeCreated({
+          userId: params.reportedUser,
+          token: tokenRows[0]?.push_token || null,
+          reason: params.reason,
+          disputeId: rows[0].id,
+        })
+        .catch((e) => this.logger.error('Failed to notify dispute created', e));
     }
 
-    return { dispute: { id: rows[0].id, status: rows[0].status, createdAt: rows[0].created_at } };
+    return {
+      dispute: {
+        id: rows[0].id,
+        status: rows[0].status,
+        createdAt: rows[0].created_at,
+      },
+    };
   }
 
   public async resolveDispute(params: {
@@ -132,7 +146,11 @@ export class MobileDisputesService {
           updated_at = NOW()
       WHERE id = $1
       `,
-      [params.disputeId, params.resolution.trim(), params.resolvedBy || 'admin'],
+      [
+        params.disputeId,
+        params.resolution.trim(),
+        params.resolvedBy || 'admin',
+      ],
     );
 
     const disputeRows = await this.dataSource.query<any[]>(
@@ -145,12 +163,16 @@ export class MobileDisputesService {
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
         [userId],
       );
-      this.notificationsService.notifyDisputeResolved({
-        userId,
-        token: tokenRows[0]?.push_token || null,
-        resolution: params.resolution,
-        disputeId: params.disputeId,
-      }).catch(e => this.logger.error('Failed to notify dispute resolved', e));
+      this.notificationsService
+        .notifyDisputeResolved({
+          userId,
+          token: tokenRows[0]?.push_token || null,
+          resolution: params.resolution,
+          disputeId: params.disputeId,
+        })
+        .catch((e) =>
+          this.logger.error('Failed to notify dispute resolved', e),
+        );
     }
 
     return { disputeId: params.disputeId, status: 'resolved' };
@@ -160,12 +182,12 @@ export class MobileDisputesService {
     if (readBy === 'user') {
       await this.dataSource.query(
         `UPDATE disputes SET user_last_read_at = NOW() WHERE id = $1`,
-        [disputeId]
+        [disputeId],
       );
     } else if (readBy === 'admin') {
       await this.dataSource.query(
         `UPDATE disputes SET admin_last_read_at = NOW() WHERE id = $1`,
-        [disputeId]
+        [disputeId],
       );
     }
 
@@ -194,7 +216,9 @@ export class MobileDisputesService {
         disputeId: r.dispute_id,
         senderType: r.sender_type,
         senderId: r.sender_id,
-        senderName: [r.sender_first_name, r.sender_last_name].filter(Boolean).join(' ') || 'Soporte',
+        senderName:
+          [r.sender_first_name, r.sender_last_name].filter(Boolean).join(' ') ||
+          'Soporte',
         content: r.content,
         createdAt: r.created_at,
       })),
@@ -279,19 +303,23 @@ export class MobileDisputesService {
     if (params.senderType === 'admin') {
       const disputeRows = await this.dataSource.query<any[]>(
         `SELECT reported_by FROM disputes WHERE id = $1 LIMIT 1`,
-        [params.disputeId]
+        [params.disputeId],
       );
       const userId = disputeRows[0]?.reported_by;
       if (userId) {
         const tokenRows = await this.dataSource.query<any[]>(
           `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
-          [userId]
+          [userId],
         );
-        await this.notificationsService.notifySupportMessage({
-          userId,
-          token: tokenRows[0]?.push_token || null,
-          message: params.content,
-        }).catch(e => this.logger.error('Failed to notify support message', e));
+        await this.notificationsService
+          .notifySupportMessage({
+            userId,
+            token: tokenRows[0]?.push_token || null,
+            message: params.content,
+          })
+          .catch((e) =>
+            this.logger.error('Failed to notify support message', e),
+          );
       }
     }
 
@@ -356,9 +384,13 @@ export class MobileDisputesService {
       resolvedBy: r.resolved_by,
       resolvedAt: r.resolved_at,
       createdAt: r.created_at,
-      reporterName: [r.reporter_first_name, r.reporter_last_name].filter(Boolean).join(' '),
+      reporterName: [r.reporter_first_name, r.reporter_last_name]
+        .filter(Boolean)
+        .join(' '),
       reporterType: r.reporter_type,
-      reportedName: [r.reported_first_name, r.reported_last_name].filter(Boolean).join(' '),
+      reportedName: [r.reported_first_name, r.reported_last_name]
+        .filter(Boolean)
+        .join(' '),
       reportedType: r.reported_type,
     });
 

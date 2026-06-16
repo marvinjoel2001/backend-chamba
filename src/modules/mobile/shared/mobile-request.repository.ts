@@ -1,12 +1,18 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
 
 @Injectable()
 export class MobileRequestRepository {
   private static readonly OFFER_LIFETIME_SECONDS = 120;
-  private static readonly OFFER_LIFETIME_CONFIG_KEY = 'offer_lifetime_by_price_type';
-  private static readonly WORKER_NOTIFICATION_RADIUS_CONFIG_KEY = 'worker_notification_radius_km';
+  private static readonly OFFER_LIFETIME_CONFIG_KEY =
+    'offer_lifetime_by_price_type';
+  private static readonly WORKER_NOTIFICATION_RADIUS_CONFIG_KEY =
+    'worker_notification_radius_km';
 
   constructor(
     private readonly dataSource: DataSource,
@@ -103,7 +109,8 @@ export class MobileRequestRepository {
       location: row.location,
       created_at: row.created_at,
       modality: row.modality,
-      estimatedHours: row.estimated_hours == null ? null : Number(row.estimated_hours),
+      estimatedHours:
+        row.estimated_hours == null ? null : Number(row.estimated_hours),
       hourlyRate: row.hourly_rate == null ? null : Number(row.hourly_rate),
       days: row.days == null ? null : Number(row.days),
       dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
@@ -219,7 +226,8 @@ export class MobileRequestRepository {
       status: row.status,
       createdAt: row.created_at,
       modality: row.modality,
-      estimatedHours: row.estimated_hours == null ? null : Number(row.estimated_hours),
+      estimatedHours:
+        row.estimated_hours == null ? null : Number(row.estimated_hours),
       hourlyRate: row.hourly_rate == null ? null : Number(row.hourly_rate),
       days: row.days == null ? null : Number(row.days),
       dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
@@ -366,11 +374,7 @@ export class MobileRequestRepository {
 
     const key = this.normalizePriceTypeKey(priceType);
     const candidate =
-      key === 'hour'
-        ? config.hour
-        : key === 'day'
-          ? config.day
-          : config.fixed;
+      key === 'hour' ? config.hour : key === 'day' ? config.day : config.fixed;
     const parsed = Number(candidate);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       return fallback;

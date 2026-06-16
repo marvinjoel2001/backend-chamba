@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, UnsupportedMediaTypeException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnsupportedMediaTypeException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
@@ -420,7 +426,8 @@ export class MobileUsersService {
         modalities: Array.isArray(worker.work_modalities)
           ? worker.work_modalities
           : [],
-        hourlyRate: worker.hourly_rate == null ? null : Number(worker.hourly_rate),
+        hourlyRate:
+          worker.hourly_rate == null ? null : Number(worker.hourly_rate),
         dailyRate: worker.daily_rate == null ? null : Number(worker.daily_rate),
         skills: skillRows.map((row) => row.skill),
         bio: 'Especialista verificado. Puntual, responsable y con experiencia en servicios de hogar.',
@@ -678,12 +685,14 @@ export class MobileUsersService {
         createdAt: row.created_at,
         threadId: row.thread_id ?? null,
         photoUrl: row.photo_url ?? null,
-        worker: row.worker_id ? {
-          id: row.worker_id,
-          firstName: row.worker_first_name,
-          lastName: row.worker_last_name ?? '',
-          profilePhotoUrl: row.worker_photo ?? null,
-        } : null,
+        worker: row.worker_id
+          ? {
+              id: row.worker_id,
+              firstName: row.worker_first_name,
+              lastName: row.worker_last_name ?? '',
+              profilePhotoUrl: row.worker_photo ?? null,
+            }
+          : null,
       })),
     };
   }

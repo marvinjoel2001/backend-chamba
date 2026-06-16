@@ -73,12 +73,8 @@ describe('MobileRequestsService.createRequest (modalidades)', () => {
 
     // Evitamos las ramas con efectos secundarios (subida de fotos y
     // generación de ofertas) para aislar la lógica del INSERT.
-    jest
-      .spyOn(service as any, 'uploadRequestPhotos')
-      .mockResolvedValue([]);
-    jest
-      .spyOn(service as any, 'seedOffersForRequest')
-      .mockResolvedValue([]);
+    jest.spyOn(service as any, 'uploadRequestPhotos').mockResolvedValue([]);
+    jest.spyOn(service as any, 'seedOffersForRequest').mockResolvedValue([]);
   });
 
   /** Base de un input válido; las pruebas sobreescriben lo de cada modalidad. */

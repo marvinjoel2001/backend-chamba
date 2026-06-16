@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
@@ -200,7 +206,10 @@ export class MobileRequestsService {
       throw new BadRequestException('latitude and longitude are required');
     }
     const photos = this.geoHelpers.validateBase64Images(input.photosBase64, 5);
-    const uploadedPhotosInput = this.geoHelpers.validateUploadedImages(input.photos, 5);
+    const uploadedPhotosInput = this.geoHelpers.validateUploadedImages(
+      input.photos,
+      5,
+    );
     const fallbackCategory =
       input.category?.trim() || MobileRequestsService.DEFAULT_CATEGORY;
     const aiCategoriesInput =
@@ -562,52 +571,54 @@ export class MobileRequestsService {
 
     const offerLifetimeConfig = await this.repo.getOfferLifetimeConfig();
     const requests = rows.map((row) => {
-        const offerLifetimeSeconds = this.repo.resolveOfferLifetimeSeconds(
-          offerLifetimeConfig,
-          row.price_type,
-        );
-        return {
-          id: row.request_id,
-          title: row.title,
-          description: row.description,
-          category: row.category,
-          budget: Number(row.budget),
-          priceType: row.price_type,
-          modality: row.modality,
-          estimatedHours: row.estimated_hours == null ? null : Number(row.estimated_hours),
-          hourlyRate: row.hourly_rate == null ? null : Number(row.hourly_rate),
-          days: row.days == null ? null : Number(row.days),
-          dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
-          startDate: row.start_date,
-          address: row.address,
-          status: row.status,
-          distanceKm: row.distance_km == null ? null : Number(row.distance_km),
-          client: {
-            id: row.client_id,
-            name: `${row.client_first_name} ${row.client_last_name ?? ''}`.trim(),
-            profilePhotoUrl: row.client_photo_url ?? null,
-            rating: Number(row.client_rating ?? 0),
-            reviews: Number(row.client_reviews ?? 0),
-            isVerified: row.client_verification === 'verified',
-          },
-          workerOffer: row.offer_id
-            ? {
-                id: row.offer_id,
-                amount: Number(row.offer_amount ?? 0),
-                status: row.offer_status ?? 'pending',
-                expiresAt: row.offer_expires_at ?? null,
-                secondsRemaining:
-                  row.offer_seconds_left == null
-                    ? null
-                    : Math.max(0, Math.floor(Number(row.offer_seconds_left))),
-              }
-            : null,
-          offerLifetimeSeconds,
-        };
-      });
+      const offerLifetimeSeconds = this.repo.resolveOfferLifetimeSeconds(
+        offerLifetimeConfig,
+        row.price_type,
+      );
+      return {
+        id: row.request_id,
+        title: row.title,
+        description: row.description,
+        category: row.category,
+        budget: Number(row.budget),
+        priceType: row.price_type,
+        modality: row.modality,
+        estimatedHours:
+          row.estimated_hours == null ? null : Number(row.estimated_hours),
+        hourlyRate: row.hourly_rate == null ? null : Number(row.hourly_rate),
+        days: row.days == null ? null : Number(row.days),
+        dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
+        startDate: row.start_date,
+        address: row.address,
+        status: row.status,
+        distanceKm: row.distance_km == null ? null : Number(row.distance_km),
+        client: {
+          id: row.client_id,
+          name: `${row.client_first_name} ${row.client_last_name ?? ''}`.trim(),
+          profilePhotoUrl: row.client_photo_url ?? null,
+          rating: Number(row.client_rating ?? 0),
+          reviews: Number(row.client_reviews ?? 0),
+          isVerified: row.client_verification === 'verified',
+        },
+        workerOffer: row.offer_id
+          ? {
+              id: row.offer_id,
+              amount: Number(row.offer_amount ?? 0),
+              status: row.offer_status ?? 'pending',
+              expiresAt: row.offer_expires_at ?? null,
+              secondsRemaining:
+                row.offer_seconds_left == null
+                  ? null
+                  : Math.max(0, Math.floor(Number(row.offer_seconds_left))),
+            }
+          : null,
+        offerLifetimeSeconds,
+      };
+    });
 
     return {
-      offerLifetimeSeconds: requests.length > 0 ? requests[0].offerLifetimeSeconds : 120,
+      offerLifetimeSeconds:
+        requests.length > 0 ? requests[0].offerLifetimeSeconds : 120,
       request: requests.length > 0 ? requests[0] : null,
       requests,
     };
@@ -616,24 +627,37 @@ export class MobileRequestsService {
   public async blockUser(blockerUserId: string, blockedUserId: string) {
     await this.dataSource.query(
       `INSERT INTO user_blocks (blocker_user_id, blocked_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [blockerUserId, blockedUserId]
+      [blockerUserId, blockedUserId],
     );
     return { success: true };
   }
 
-  public async reportRequest(requestId: string, reporterUserId: string, reason: string) {
+  public async reportRequest(
+    requestId: string,
+    reporterUserId: string,
+    reason: string,
+  ) {
     await this.dataSource.query(
       `INSERT INTO request_reports (request_id, reporter_user_id, reason) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-      [requestId, reporterUserId, reason]
+      [requestId, reporterUserId, reason],
     );
 
-    const reqRes = await this.dataSource.query('SELECT client_user_id FROM job_requests WHERE id = $1', [requestId]);
+    const reqRes = await this.dataSource.query(
+      'SELECT client_user_id FROM job_requests WHERE id = $1',
+      [requestId],
+    );
     const reportedUserId = reqRes.length > 0 ? reqRes[0].client_user_id : null;
 
     await this.dataSource.query(
       `INSERT INTO disputes (request_id, reported_by, reported_user, reason, description)
        VALUES ($1, $2, $3, $4, $5)`,
-      [requestId, reporterUserId, reportedUserId, 'Reporte de Publicación Inapropiada', reason]
+      [
+        requestId,
+        reporterUserId,
+        reportedUserId,
+        'Reporte de Publicación Inapropiada',
+        reason,
+      ],
     );
 
     return { success: true };
@@ -642,7 +666,7 @@ export class MobileRequestsService {
   public async dismissRequest(requestId: string, workerUserId: string) {
     await this.dataSource.query(
       `INSERT INTO dismissed_requests (request_id, worker_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [requestId, workerUserId]
+      [requestId, workerUserId],
     );
     return { success: true };
   }
@@ -707,7 +731,8 @@ export class MobileRequestsService {
       status: row.request_status,
       priceType: row.price_type,
       modality: row.modality,
-      estimatedHours: row.estimated_hours == null ? null : Number(row.estimated_hours),
+      estimatedHours:
+        row.estimated_hours == null ? null : Number(row.estimated_hours),
       hourlyRate: row.hourly_rate == null ? null : Number(row.hourly_rate),
       days: row.days == null ? null : Number(row.days),
       dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
@@ -746,7 +771,10 @@ export class MobileRequestsService {
     };
   }
 
-  public async workerMarkArrived(params: { requestId: string; workerUserId: string }) {
+  public async workerMarkArrived(params: {
+    requestId: string;
+    workerUserId: string;
+  }) {
     const rows = await this.dataSource.query<any[]>(
       `
       UPDATE job_requests
@@ -762,7 +790,8 @@ export class MobileRequestsService {
       `,
       [params.requestId, params.workerUserId],
     );
-    if (!rows[0]) throw new NotFoundException('Request not found or not authorized');
+    if (!rows[0])
+      throw new NotFoundException('Request not found or not authorized');
 
     this.realtimeGateway.emitToUser(params.workerUserId, 'job.worker_arrived', {
       requestId: params.requestId,
@@ -783,20 +812,27 @@ export class MobileRequestsService {
         requestId: params.requestId,
       });
       if (clientRows[0].token) {
-        await this.notificationsService.notifyWorkerArrived({
-          userId: clientUserId,
-          token: clientRows[0].token,
-          workerName: clientRows[0].worker_name,
-          jobTitle: clientRows[0].title,
-          requestId: params.requestId,
-        }).catch((e) => this.logger.error('Failed to send worker arrived notification', e));
+        await this.notificationsService
+          .notifyWorkerArrived({
+            userId: clientUserId,
+            token: clientRows[0].token,
+            workerName: clientRows[0].worker_name,
+            jobTitle: clientRows[0].title,
+            requestId: params.requestId,
+          })
+          .catch((e) =>
+            this.logger.error('Failed to send worker arrived notification', e),
+          );
       }
     }
 
     return { requestId: params.requestId, workerArrived: true };
   }
 
-  public async clientConfirmArrival(params: { requestId: string; clientUserId: string }) {
+  public async clientConfirmArrival(params: {
+    requestId: string;
+    clientUserId: string;
+  }) {
     const rows = await this.dataSource.query<any[]>(
       `
       UPDATE job_requests
@@ -808,16 +844,21 @@ export class MobileRequestsService {
       `,
       [params.requestId, params.clientUserId],
     );
-    if (!rows[0]) throw new NotFoundException('Request not found or not authorized');
+    if (!rows[0])
+      throw new NotFoundException('Request not found or not authorized');
 
     const offerRows = await this.dataSource.query<any[]>(
       `SELECT worker_user_id FROM job_offers WHERE request_id = $1 AND status = 'accepted' LIMIT 1`,
       [params.requestId],
     );
     if (offerRows[0]) {
-      this.realtimeGateway.emitToUser(offerRows[0].worker_user_id, 'job.client_confirmed', {
-        requestId: params.requestId,
-      });
+      this.realtimeGateway.emitToUser(
+        offerRows[0].worker_user_id,
+        'job.client_confirmed',
+        {
+          requestId: params.requestId,
+        },
+      );
 
       const workerTokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
@@ -825,19 +866,26 @@ export class MobileRequestsService {
       );
       const clientUser = await this.repo.getUserById(params.clientUserId);
       const reqInfo = await this.repo.getRequestById(params.requestId);
-      this.notificationsService.notifyClientConfirmedArrival({
-        userId: offerRows[0].worker_user_id,
-        token: workerTokenRows[0]?.push_token || null,
-        clientName: clientUser.firstName,
-        jobTitle: reqInfo.title,
-        requestId: params.requestId,
-      }).catch(e => this.logger.error('Failed to notify arrival confirmed', e));
+      this.notificationsService
+        .notifyClientConfirmedArrival({
+          userId: offerRows[0].worker_user_id,
+          token: workerTokenRows[0]?.push_token || null,
+          clientName: clientUser.firstName,
+          jobTitle: reqInfo.title,
+          requestId: params.requestId,
+        })
+        .catch((e) =>
+          this.logger.error('Failed to notify arrival confirmed', e),
+        );
     }
 
     return { requestId: params.requestId, clientConfirmedArrival: true };
   }
 
-  public async completeJob(params: { requestId: string; workerUserId: string }) {
+  public async completeJob(params: {
+    requestId: string;
+    workerUserId: string;
+  }) {
     const checkRows = await this.dataSource.query<any[]>(
       `
       SELECT jr.id, jr.client_confirmed_arrival, jr.client_user_id
@@ -849,9 +897,12 @@ export class MobileRequestsService {
       [params.requestId, params.workerUserId],
     );
     const req = checkRows[0];
-    if (!req) throw new NotFoundException('Request not found or not authorized');
+    if (!req)
+      throw new NotFoundException('Request not found or not authorized');
     if (!req.client_confirmed_arrival) {
-      throw new BadRequestException('El cliente aún no ha confirmado tu llegada');
+      throw new BadRequestException(
+        'El cliente aún no ha confirmado tu llegada',
+      );
     }
 
     await this.dataSource.query(
@@ -875,8 +926,12 @@ export class MobileRequestsService {
       `[completeJob] Worker ${params.workerUserId} restaurado como disponible`,
     );
 
-    this.realtimeGateway.emitToUser(params.workerUserId, 'job.completed', { requestId: params.requestId });
-    this.realtimeGateway.emitToUser(req.client_user_id, 'job.completed', { requestId: params.requestId });
+    this.realtimeGateway.emitToUser(params.workerUserId, 'job.completed', {
+      requestId: params.requestId,
+    });
+    this.realtimeGateway.emitToUser(req.client_user_id, 'job.completed', {
+      requestId: params.requestId,
+    });
 
     const infoRows = await this.dataSource.query<any[]>(
       `
@@ -889,16 +944,22 @@ export class MobileRequestsService {
       [params.requestId, params.workerUserId],
     );
     if (infoRows[0]?.token) {
-      await this.notificationsService.notifyJobFinished({
-        userId: req.client_user_id,
-        token: infoRows[0].token,
-        workerName: infoRows[0].worker_name,
-        jobTitle: infoRows[0].title,
-        requestId: params.requestId,
-      }).catch((e) => this.logger.error('Failed to send job finished notification', e));
+      await this.notificationsService
+        .notifyJobFinished({
+          userId: req.client_user_id,
+          token: infoRows[0].token,
+          workerName: infoRows[0].worker_name,
+          jobTitle: infoRows[0].title,
+          requestId: params.requestId,
+        })
+        .catch((e) =>
+          this.logger.error('Failed to send job finished notification', e),
+        );
     }
 
-    this.logger.log(`[completeJob] Trabajo ${params.requestId} completado por worker ${params.workerUserId}`);
+    this.logger.log(
+      `[completeJob] Trabajo ${params.requestId} completado por worker ${params.workerUserId}`,
+    );
 
     return { requestId: params.requestId, status: 'completed' };
   }
@@ -916,7 +977,8 @@ export class MobileRequestsService {
       [params.requestId, params.userId],
     );
     const req = rows[0];
-    if (!req) throw new NotFoundException('Request not found or not authorized');
+    if (!req)
+      throw new NotFoundException('Request not found or not authorized');
 
     await this.dataSource.query(
       `UPDATE job_requests SET status = 'cancelled', updated_at = NOW(), cancelled_by = $2 WHERE id = $1`,
@@ -938,26 +1000,37 @@ export class MobileRequestsService {
     }
 
     if (req.client_user_id) {
-      this.realtimeGateway.emitToUser(req.client_user_id, 'job.cancelled', { requestId: params.requestId, cancelerUserId: params.userId });
+      this.realtimeGateway.emitToUser(req.client_user_id, 'job.cancelled', {
+        requestId: params.requestId,
+        cancelerUserId: params.userId,
+      });
     }
     if (req.worker_user_id) {
-      this.realtimeGateway.emitToUser(req.worker_user_id, 'job.cancelled', { requestId: params.requestId, cancelerUserId: params.userId });
+      this.realtimeGateway.emitToUser(req.worker_user_id, 'job.cancelled', {
+        requestId: params.requestId,
+        cancelerUserId: params.userId,
+      });
     }
 
     const canceler = await this.repo.getUserById(params.userId);
-    const targetUserId = req.client_user_id === params.userId ? req.worker_user_id : req.client_user_id;
+    const targetUserId =
+      req.client_user_id === params.userId
+        ? req.worker_user_id
+        : req.client_user_id;
     if (targetUserId) {
       const tokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
         [targetUserId],
       );
-      await this.notificationsService.notifyJobCancelled({
-        userId: targetUserId,
-        token: tokenRows[0]?.push_token || null,
-        cancelerName: canceler.firstName,
-        jobTitle: req.title,
-        requestId: params.requestId,
-      }).catch(e => this.logger.error('Failed to notify cancel', e));
+      await this.notificationsService
+        .notifyJobCancelled({
+          userId: targetUserId,
+          token: tokenRows[0]?.push_token || null,
+          cancelerName: canceler.firstName,
+          jobTitle: req.title,
+          requestId: params.requestId,
+        })
+        .catch((e) => this.logger.error('Failed to notify cancel', e));
     }
 
     return { requestId: params.requestId, status: 'cancelled' };
@@ -1043,7 +1116,9 @@ export class MobileRequestsService {
     }
 
     if (req.client_user_id !== params.clientUserId) {
-      throw new BadRequestException('Client user ID does not match the request');
+      throw new BadRequestException(
+        'Client user ID does not match the request',
+      );
     }
 
     const insertResult = await this.dataSource.query(
@@ -1100,14 +1175,16 @@ export class MobileRequestsService {
       `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
       [params.workerUserId],
     );
-    this.notificationsService.notifyNewReview({
-      userId: params.workerUserId,
-      token: workerTokenRows[0]?.push_token || null,
-      clientName: clientUser.firstName,
-      stars: params.stars,
-      jobTitle: req.title,
-      requestId: params.requestId,
-    }).catch(e => this.logger.error('Failed to notify new review', e));
+    this.notificationsService
+      .notifyNewReview({
+        userId: params.workerUserId,
+        token: workerTokenRows[0]?.push_token || null,
+        clientName: clientUser.firstName,
+        stars: params.stars,
+        jobTitle: req.title,
+        requestId: params.requestId,
+      })
+      .catch((e) => this.logger.error('Failed to notify new review', e));
 
     return {
       saved: true,
@@ -1119,7 +1196,8 @@ export class MobileRequestsService {
 
   private async seedOffersForRequest(requestId: string, baseBudget: number) {
     const request = await this.repo.getRequestById(requestId);
-    const notificationRadiusKm = await this.repo.getWorkerNotificationRadiusKm();
+    const notificationRadiusKm =
+      await this.repo.getWorkerNotificationRadiusKm();
     const normalizedSkills = [
       ...new Set([
         request.category,
@@ -1171,7 +1249,8 @@ export class MobileRequestsService {
     }));
     const waveSize = MobileRequestsService.WORKER_NOTIFICATION_WAVE_SIZE;
     const totalWaves = Math.ceil(targetWorkers.length / waveSize);
-    const useQueueDispatch = this.configService.get('USE_QUEUE_DISPATCH') === 'true';
+    const useQueueDispatch =
+      this.configService.get('USE_QUEUE_DISPATCH') === 'true';
 
     for (let waveIndex = 0; waveIndex < totalWaves; waveIndex += 1) {
       const from = waveIndex * waveSize;
@@ -1198,23 +1277,30 @@ export class MobileRequestsService {
         continue;
       }
 
-      const delayMs = waveIndex * MobileRequestsService.WORKER_NOTIFICATION_WAVE_DELAY_MS;
+      const delayMs =
+        waveIndex * MobileRequestsService.WORKER_NOTIFICATION_WAVE_DELAY_MS;
 
       if (useQueueDispatch) {
-        await this.waveQueueService.enqueueWave(wavePayload, delayMs).catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error);
-          this.logger.error(
-            `[request.new] Error encolando ola ${waveIndex} para ${requestId}: ${message}`,
-          );
-        });
-      } else {
-        setTimeout(() => {
-          void this.dispatchWorkerNotificationWave(wavePayload).catch((error: unknown) => {
-            const message = error instanceof Error ? error.message : String(error);
+        await this.waveQueueService
+          .enqueueWave(wavePayload, delayMs)
+          .catch((error: unknown) => {
+            const message =
+              error instanceof Error ? error.message : String(error);
             this.logger.error(
-              `[request.new] Error enviando ola ${waveIndex} para ${requestId}: ${message}`,
+              `[request.new] Error encolando ola ${waveIndex} para ${requestId}: ${message}`,
             );
           });
+      } else {
+        setTimeout(() => {
+          void this.dispatchWorkerNotificationWave(wavePayload).catch(
+            (error: unknown) => {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              this.logger.error(
+                `[request.new] Error enviando ola ${waveIndex} para ${requestId}: ${message}`,
+              );
+            },
+          );
         }, delayMs);
       }
     }
@@ -1285,7 +1371,10 @@ export class MobileRequestsService {
       [workerIds],
     );
 
-    const users = tokenRows.map((row) => ({ userId: row.user_id, token: row.token }));
+    const users = tokenRows.map((row) => ({
+      userId: row.user_id,
+      token: row.token,
+    }));
     if (users.length === 0) {
       return;
     }
@@ -1331,9 +1420,12 @@ export class MobileRequestsService {
     if (activeProvider === 'nvidia' && aiConfig.nvidiaKey) {
       endpointUrl = 'https://integrate.api.nvidia.com/v1/chat/completions';
       apiKey = aiConfig.nvidiaKey;
-      modelName = this.configService.get<string>('NVIDIA_MODEL')?.trim() || 'minimaxai/minimax-m2.7';
+      modelName =
+        this.configService.get<string>('NVIDIA_MODEL')?.trim() ||
+        'minimaxai/minimax-m2.7';
     } else if (activeProvider === 'gemini' && aiConfig.geminiKey) {
-      endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+      endpointUrl =
+        'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
       apiKey = aiConfig.geminiKey;
       modelName = 'gemini-2.0-flash';
     } else if (activeProvider === 'deepseek' && aiConfig.deepseekKey) {
@@ -1342,7 +1434,7 @@ export class MobileRequestsService {
       modelName = 'deepseek-chat';
     } else {
       this.logger.warn(
-        `[AI] API Key no configurada para ${activeProvider} → usando fallback "${fallbackCategory}".`
+        `[AI] API Key no configurada para ${activeProvider} → usando fallback "${fallbackCategory}".`,
       );
       return [
         {
@@ -1421,15 +1513,17 @@ Reglas obligatorias:
         this.logger.error(
           `[${activeProvider}] HTTP ${response.status} → fallback "${fallbackCategory}" | detalle: ${errBody.slice(0, 300)}`,
         );
-        this.apiLogsService.capture({
-          method: 'POST',
-          path: `[AI] ${activeProvider} - ${modelName}`,
-          statusCode: response.status,
-          durationMs: Date.now() - startTime,
-          requestBodyJson,
-          errorMessage: errBody,
-          responsePreview: errBody.slice(0, 1000),
-        }).catch(e => this.logger.error('Failed to log AI API error', e));
+        this.apiLogsService
+          .capture({
+            method: 'POST',
+            path: `[AI] ${activeProvider} - ${modelName}`,
+            statusCode: response.status,
+            durationMs: Date.now() - startTime,
+            requestBodyJson,
+            errorMessage: errBody,
+            responsePreview: errBody.slice(0, 1000),
+          })
+          .catch((e) => this.logger.error('Failed to log AI API error', e));
         return [
           {
             id: this.repo.toCategoryId(fallbackCategory),
@@ -1439,23 +1533,24 @@ Reglas obligatorias:
         ];
       }
 
-      const payload = (await response.json()) as any;
+      const payload = await response.json();
 
-      const text =
-        payload.choices?.[0]?.message?.content?.trim() ?? '';
-      
+      const text = payload.choices?.[0]?.message?.content?.trim() ?? '';
+
       this.logger.log(`[AI_CATEGORIZATION_RAW] (${activeProvider}) -> ${text}`);
 
-      this.apiLogsService.capture({
-        method: 'POST',
-        path: `[AI] ${activeProvider} - ${modelName}`,
-        statusCode: response.status,
-        durationMs: Date.now() - startTime,
-        requestBodyJson,
-        queryJson: payload,
-        responsePreview: text.slice(0, 1000),
-      }).catch(e => this.logger.error('Failed to log AI API success', e));
-      
+      this.apiLogsService
+        .capture({
+          method: 'POST',
+          path: `[AI] ${activeProvider} - ${modelName}`,
+          statusCode: response.status,
+          durationMs: Date.now() - startTime,
+          requestBodyJson,
+          queryJson: payload,
+          responsePreview: text.slice(0, 1000),
+        })
+        .catch((e) => this.logger.error('Failed to log AI API success', e));
+
       if (!text) {
         this.logger.warn(`[${activeProvider}] Respuesta vacía → fallback`);
         return [
@@ -1479,7 +1574,9 @@ Reglas obligatorias:
         return parsed;
       }
 
-      this.logger.warn(`[${activeProvider}] No se pudo parsear respuesta → fallback`);
+      this.logger.warn(
+        `[${activeProvider}] No se pudo parsear respuesta → fallback`,
+      );
       return [
         {
           id: this.repo.toCategoryId(fallbackCategory),
@@ -1489,15 +1586,19 @@ Reglas obligatorias:
       ];
     } catch (err) {
       const msg = (err as Error)?.message ?? String(err);
-      this.logger.error(`[${activeProvider}] Error: ${msg} → fallback "${fallbackCategory}"`);
-      this.apiLogsService.capture({
-        method: 'POST',
-        path: `[AI] ${activeProvider} - ${modelName}`,
-        statusCode: 500,
-        durationMs: Date.now() - startTime,
-        requestBodyJson,
-        errorMessage: msg,
-      }).catch(e => this.logger.error('Failed to log AI API catch error', e));
+      this.logger.error(
+        `[${activeProvider}] Error: ${msg} → fallback "${fallbackCategory}"`,
+      );
+      this.apiLogsService
+        .capture({
+          method: 'POST',
+          path: `[AI] ${activeProvider} - ${modelName}`,
+          statusCode: 500,
+          durationMs: Date.now() - startTime,
+          requestBodyJson,
+          errorMessage: msg,
+        })
+        .catch((e) => this.logger.error('Failed to log AI API catch error', e));
       return [
         {
           id: this.repo.toCategoryId(fallbackCategory),
@@ -1556,7 +1657,10 @@ Reglas obligatorias:
       deepseekKey: '',
     };
     if (rows[0]) {
-      const val = typeof rows[0].value_json === 'string' ? JSON.parse(rows[0].value_json) : rows[0].value_json;
+      const val =
+        typeof rows[0].value_json === 'string'
+          ? JSON.parse(rows[0].value_json)
+          : rows[0].value_json;
       return { ...defaultVal, ...val };
     }
     return defaultVal;

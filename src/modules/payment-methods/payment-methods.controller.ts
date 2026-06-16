@@ -16,9 +16,7 @@ import { PaymentMethod } from './entities/payment-method.entity';
 
 @Controller('payment-methods')
 export class PaymentMethodsController {
-  constructor(
-    private readonly paymentMethodsService: PaymentMethodsService,
-  ) {}
+  constructor(private readonly paymentMethodsService: PaymentMethodsService) {}
 
   @Post()
   async create(
@@ -42,9 +40,7 @@ export class PaymentMethodsController {
   }
 
   @Get('code/:code')
-  async findByCode(
-    @Param('code') code: string,
-  ): Promise<PaymentMethod | null> {
+  async findByCode(@Param('code') code: string): Promise<PaymentMethod | null> {
     return this.paymentMethodsService.findByCode(code);
   }
 

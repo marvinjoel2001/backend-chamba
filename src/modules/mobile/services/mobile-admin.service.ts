@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
@@ -46,7 +51,11 @@ export class MobileAdminService {
       } else if (payload.target === 'clients') {
         query += ` AND u.type = $1`;
         args.push('client');
-      } else if (payload.target === 'custom' && payload.userIds && payload.userIds.length > 0) {
+      } else if (
+        payload.target === 'custom' &&
+        payload.userIds &&
+        payload.userIds.length > 0
+      ) {
         query += ` AND u.id = ANY($1::uuid[])`;
         args.push(payload.userIds);
       } else if (payload.target === 'custom') {
@@ -188,14 +197,21 @@ export class MobileAdminService {
         latitude: Number(row.latitude),
         longitude: Number(row.longitude),
         updatedAt: row.updated_at,
-        activeRequest: row.active_request_id ? {
-          id: row.active_request_id,
-          title: row.active_request_title,
-          status: row.active_request_status,
-          address: row.active_request_address,
-          workerArrived: row.active_worker_arrived ?? false,
-          clientName: [row.active_client_first_name, row.active_client_last_name].filter(Boolean).join(' '),
-        } : null,
+        activeRequest: row.active_request_id
+          ? {
+              id: row.active_request_id,
+              title: row.active_request_title,
+              status: row.active_request_status,
+              address: row.active_request_address,
+              workerArrived: row.active_worker_arrived ?? false,
+              clientName: [
+                row.active_client_first_name,
+                row.active_client_last_name,
+              ]
+                .filter(Boolean)
+                .join(' '),
+            }
+          : null,
       })),
       clients: clients.map((row) => ({
         id: row.id,
@@ -211,13 +227,16 @@ export class MobileAdminService {
         status: row.status,
         budget: Number(row.budget ?? 0),
         address: row.address,
-        clientName: `${row.client_first_name ?? ''} ${row.client_last_name ?? ''}`.trim(),
+        clientName:
+          `${row.client_first_name ?? ''} ${row.client_last_name ?? ''}`.trim(),
         latitude: Number(row.latitude),
         longitude: Number(row.longitude),
         updatedAt: row.updated_at,
         createdAt: row.created_at,
         photoUrl: row.photo_url ?? null,
-        cancelledBy: row.canceler_first_name ? `${row.canceler_first_name} ${row.canceler_last_name ?? ''}`.trim() : null,
+        cancelledBy: row.canceler_first_name
+          ? `${row.canceler_first_name} ${row.canceler_last_name ?? ''}`.trim()
+          : null,
       })),
     };
   }
@@ -277,7 +296,9 @@ export class MobileAdminService {
     };
   }
 
-  public async updateAdminWorkerNotificationSettings(params: { radiusKm: number }) {
+  public async updateAdminWorkerNotificationSettings(params: {
+    radiusKm: number;
+  }) {
     const parsed = Number(params.radiusKm);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       throw new BadRequestException('radiusKm must be greater than 0');
@@ -291,10 +312,7 @@ export class MobileAdminService {
       ON CONFLICT (key)
       DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
       `,
-      [
-        'worker_notification_radius_km',
-        JSON.stringify({ radiusKm }),
-      ],
+      ['worker_notification_radius_km', JSON.stringify({ radiusKm })],
     );
 
     return { radiusKm };
@@ -379,7 +397,10 @@ export class MobileAdminService {
       `SELECT value_json FROM app_config WHERE key = 'platform_commission' LIMIT 1`,
     );
     if (rows[0]) {
-      const val = typeof rows[0].value_json === 'string' ? JSON.parse(rows[0].value_json) : rows[0].value_json;
+      const val =
+        typeof rows[0].value_json === 'string'
+          ? JSON.parse(rows[0].value_json)
+          : rows[0].value_json;
       return { commissionPercent: Number(val.percent ?? 10) };
     }
     return { commissionPercent: 10 };
@@ -415,7 +436,10 @@ export class MobileAdminService {
       deepseekKey: '',
     };
     if (rows[0]) {
-      const val = typeof rows[0].value_json === 'string' ? JSON.parse(rows[0].value_json) : rows[0].value_json;
+      const val =
+        typeof rows[0].value_json === 'string'
+          ? JSON.parse(rows[0].value_json)
+          : rows[0].value_json;
       return { ...defaultVal, ...val };
     }
     return defaultVal;
@@ -456,7 +480,9 @@ export class MobileAdminService {
 
     const req = rows[0];
     if (req.status === 'completed' || req.status === 'cancelled') {
-      throw new BadRequestException('Cannot cancel a request that is already ' + req.status);
+      throw new BadRequestException(
+        'Cannot cancel a request that is already ' + req.status,
+      );
     }
 
     await this.dataSource.query(
@@ -484,29 +510,33 @@ export class MobileAdminService {
     if (req.client_user_id) {
       const clientTokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
-        [req.client_user_id]
+        [req.client_user_id],
       );
-      await this.notificationsService.notifyJobCancelled({
-        userId: req.client_user_id,
-        token: clientTokenRows[0]?.push_token || null,
-        cancelerName: 'Soporte',
-        jobTitle: req.title,
-        requestId: params.requestId,
-      }).catch(e => this.logger.error('Failed to notify client cancel', e));
+      await this.notificationsService
+        .notifyJobCancelled({
+          userId: req.client_user_id,
+          token: clientTokenRows[0]?.push_token || null,
+          cancelerName: 'Soporte',
+          jobTitle: req.title,
+          requestId: params.requestId,
+        })
+        .catch((e) => this.logger.error('Failed to notify client cancel', e));
     }
 
     if (offerRows[0]?.worker_user_id) {
       const workerTokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
-        [offerRows[0].worker_user_id]
+        [offerRows[0].worker_user_id],
       );
-      await this.notificationsService.notifyJobCancelled({
-        userId: offerRows[0].worker_user_id,
-        token: workerTokenRows[0]?.push_token || null,
-        cancelerName: 'Soporte',
-        jobTitle: req.title,
-        requestId: params.requestId,
-      }).catch(e => this.logger.error('Failed to notify worker cancel', e));
+      await this.notificationsService
+        .notifyJobCancelled({
+          userId: offerRows[0].worker_user_id,
+          token: workerTokenRows[0]?.push_token || null,
+          cancelerName: 'Soporte',
+          jobTitle: req.title,
+          requestId: params.requestId,
+        })
+        .catch((e) => this.logger.error('Failed to notify worker cancel', e));
     }
 
     return { requestId: params.requestId, status: 'cancelled' };

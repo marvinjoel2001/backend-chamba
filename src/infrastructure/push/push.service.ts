@@ -60,13 +60,13 @@ export class PushService {
     }
 
     const isCall = params.data?.type === 'request_new';
-    
-    let notification: any = {
+
+    const notification: any = {
       title: params.title,
       body: params.body,
     };
-    
-    let data = params.data ? { ...params.data } : {};
+
+    const data = params.data ? { ...params.data } : {};
 
     if (isCall) {
       // Data-only message for full screen intent in mobile app
@@ -102,12 +102,12 @@ export class PushService {
 
     const isCall = params.data?.type === 'request_new';
 
-    let notification: any = {
+    const notification: any = {
       title: params.title,
       body: params.body,
     };
-    
-    let data = params.data ? { ...params.data } : {};
+
+    const data = params.data ? { ...params.data } : {};
 
     if (isCall) {
       // Data-only message for full screen intent in mobile app
@@ -122,11 +122,13 @@ export class PushService {
       data: Object.keys(data).length > 0 ? data : undefined,
       android: {
         priority: 'high',
-        notification: notification ? {
-          priority: 'max',
-          defaultSound: true,
-          defaultVibrateTimings: true,
-        } : undefined,
+        notification: notification
+          ? {
+              priority: 'max',
+              defaultSound: true,
+              defaultVibrateTimings: true,
+            }
+          : undefined,
       },
       apns: {
         headers: {

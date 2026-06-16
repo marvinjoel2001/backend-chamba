@@ -11,5 +11,8 @@ export declare class UpdateUserDto extends UpdateUserDto_base {
     facePhotoUrl?: string;
     idPhotoVerified?: boolean | null;
     facePhotoVerified?: boolean | null;
+    workModalities?: string[];
+    hourlyRate?: number;
+    dailyRate?: number;
 }
 export {};

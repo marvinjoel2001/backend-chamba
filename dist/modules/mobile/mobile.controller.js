@@ -73,7 +73,7 @@ let MobileController = class MobileController {
             category,
         });
     }
-    createRequest(clientUserId, title, description, category, aiCategories, budget, priceType, address, latitude, longitude, scheduledAt, photosBase64, photos, paymentMethod) {
+    createRequest(clientUserId, title, description, category, aiCategories, budget, priceType, address, latitude, longitude, scheduledAt, photosBase64, photos, paymentMethod, modality, estimatedHours, hourlyRate, days, dailyRate, startDate) {
         return this.mobileService.createRequest({
             clientUserId,
             title,
@@ -92,6 +92,12 @@ let MobileController = class MobileController {
             scheduledAt,
             photosBase64,
             paymentMethod,
+            modality,
+            estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
+            hourlyRate: hourlyRate ? Number(hourlyRate) : undefined,
+            days: days ? Number(days) : undefined,
+            dailyRate: dailyRate ? Number(dailyRate) : undefined,
+            startDate,
             photos: photos?.map((item) => ({
                 url: item.url ?? '',
                 publicId: item.publicId ?? '',
@@ -230,7 +236,9 @@ let MobileController = class MobileController {
     }
     getAdminWallet(period) {
         return this.mobileService.getAdminWallet({
-            period: period === 'day' || period === 'week' || period === 'month' ? period : undefined,
+            period: period === 'day' || period === 'week' || period === 'month'
+                ? period
+                : undefined,
         });
     }
     getAdminWorkerNotificationSettings() {
@@ -256,6 +264,9 @@ let MobileController = class MobileController {
     }
     getWorkerSkills(workerUserId) {
         return this.mobileService.getWorkerSkills(workerUserId);
+    }
+    getWorkerModalities(workerUserId) {
+        return this.mobileService.getWorkerModalities(workerUserId);
     }
     getWorkerHistory(workerUserId) {
         return this.mobileService.getWorkerHistory(workerUserId);
@@ -287,6 +298,13 @@ let MobileController = class MobileController {
     }
     updateWorkerSkills(workerUserId, skills) {
         return this.mobileService.updateWorkerSkills(workerUserId, skills ?? []);
+    }
+    updateWorkerModalities(workerUserId, modalities, hourlyRate, dailyRate) {
+        return this.mobileService.updateWorkerModalities(workerUserId, {
+            modalities: modalities ?? [],
+            hourlyRate: hourlyRate == null ? null : Number(hourlyRate),
+            dailyRate: dailyRate == null ? null : Number(dailyRate),
+        });
     }
     createReview(requestId, workerUserId, clientUserId, stars, comment) {
         return this.mobileService.createReview({
@@ -455,8 +473,14 @@ __decorate([
     __param(11, (0, common_1.Body)('photosBase64')),
     __param(12, (0, common_1.Body)('photos')),
     __param(13, (0, common_1.Body)('paymentMethod')),
+    __param(14, (0, common_1.Body)('modality')),
+    __param(15, (0, common_1.Body)('estimatedHours')),
+    __param(16, (0, common_1.Body)('hourlyRate')),
+    __param(17, (0, common_1.Body)('days')),
+    __param(18, (0, common_1.Body)('dailyRate')),
+    __param(19, (0, common_1.Body)('startDate')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, Object, Object, Number, String, String, Number, Number, String, Array, Array, String]),
+    __metadata("design:paramtypes", [String, String, String, Object, Object, Number, String, String, Number, Number, String, Array, Array, String, String, Number, Number, Number, Number, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "createRequest", null);
 __decorate([
@@ -777,6 +801,13 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getWorkerSkills", null);
 __decorate([
+    (0, common_1.Get)('mobile/worker/modalities'),
+    __param(0, (0, common_1.Query)('workerUserId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getWorkerModalities", null);
+__decorate([
     (0, common_1.Get)('mobile/worker/history'),
     __param(0, (0, common_1.Query)('workerUserId')),
     __metadata("design:type", Function),
@@ -821,6 +852,16 @@ __decorate([
     __metadata("design:paramtypes", [String, Array]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "updateWorkerSkills", null);
+__decorate([
+    (0, common_1.Post)('mobile/worker/modalities'),
+    __param(0, (0, common_1.Body)('workerUserId')),
+    __param(1, (0, common_1.Body)('modalities')),
+    __param(2, (0, common_1.Body)('hourlyRate')),
+    __param(3, (0, common_1.Body)('dailyRate')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Array, Number, Number]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "updateWorkerModalities", null);
 __decorate([
     (0, common_1.Post)('mobile/reviews'),
     __param(0, (0, common_1.Body)('requestId')),

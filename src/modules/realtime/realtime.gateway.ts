@@ -111,7 +111,12 @@ export class RealtimeGateway
   /**
    * Emitir actualización de ubicación de cliente a todos los listeners
    */
-  broadcastClientLocationUpdated(clientId: string, latitude: number, longitude: number, timestamp: string): void {
+  broadcastClientLocationUpdated(
+    clientId: string,
+    latitude: number,
+    longitude: number,
+    timestamp: string,
+  ): void {
     this.server.emit('client.location.updated', {
       clientId,
       latitude,
@@ -123,7 +128,11 @@ export class RealtimeGateway
   /**
    * Emitir cambio de estado de cliente (activo/inactivo)
    */
-  broadcastClientStatusChanged(clientId: string, isActive: boolean, timestamp: string): void {
+  broadcastClientStatusChanged(
+    clientId: string,
+    isActive: boolean,
+    timestamp: string,
+  ): void {
     this.server.emit('client.status.changed', {
       clientId,
       isActive,

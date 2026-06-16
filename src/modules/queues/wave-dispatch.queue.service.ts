@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 
@@ -47,7 +52,9 @@ export class WaveDispatchQueueService implements OnModuleInit, OnModuleDestroy {
 
   async enqueueWave(data: WaveJobData, delayMs: number): Promise<void> {
     if (!this.queue) {
-      throw new Error('WaveDispatchQueue not initialized: USE_QUEUE_DISPATCH must be "true"');
+      throw new Error(
+        'WaveDispatchQueue not initialized: USE_QUEUE_DISPATCH must be "true"',
+      );
     }
     const jobId = `wave-${data.requestId}-${data.waveIndex}`;
     await this.queue.add('dispatch-wave', data, { jobId, delay: delayMs });

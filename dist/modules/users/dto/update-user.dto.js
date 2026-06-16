@@ -24,10 +24,16 @@ class UpdateUserDto extends (0, swagger_1.PartialType)(create_user_dto_1.CreateU
     facePhotoUrl;
     idPhotoVerified;
     facePhotoVerified;
+    workModalities;
+    hourlyRate;
+    dailyRate;
 }
 exports.UpdateUserDto = UpdateUserDto;
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ example: 'nuevaClave123', description: 'Nueva contraseña (mín. 4 caracteres). Solo admin.' }),
+    (0, swagger_1.ApiPropertyOptional)({
+        example: 'nuevaClave123',
+        description: 'Nueva contraseña (mín. 4 caracteres). Solo admin.',
+    }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MinLength)(4),
@@ -52,7 +58,10 @@ __decorate([
     __metadata("design:type", String)
 ], UpdateUserDto.prototype, "profilePhotoUrl", void 0);
 __decorate([
-    (0, swagger_1.ApiPropertyOptional)({ enum: user_entity_1.VerificationStatus, example: user_entity_1.VerificationStatus.PENDING }),
+    (0, swagger_1.ApiPropertyOptional)({
+        enum: user_entity_1.VerificationStatus,
+        example: user_entity_1.VerificationStatus.PENDING,
+    }),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsEnum)(user_entity_1.VerificationStatus),
     __metadata("design:type", String)
@@ -81,4 +90,23 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Object)
 ], UpdateUserDto.prototype, "facePhotoVerified", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ type: [String] }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    __metadata("design:type", Array)
+], UpdateUserDto.prototype, "workModalities", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], UpdateUserDto.prototype, "hourlyRate", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], UpdateUserDto.prototype, "dailyRate", void 0);
 //# sourceMappingURL=update-user.dto.js.map

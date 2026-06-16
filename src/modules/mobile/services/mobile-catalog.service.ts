@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { MobileRequestRepository } from '../shared/mobile-request.repository';
 
@@ -137,10 +141,22 @@ export class MobileCatalogService {
     const values: any[] = [];
     let idx = 1;
 
-    if (params.name !== undefined) { sets.push(`name = $${idx++}`); values.push(params.name.trim()); }
-    if (params.description !== undefined) { sets.push(`description = $${idx++}`); values.push(params.description.trim()); }
-    if (params.icon !== undefined) { sets.push(`icon = $${idx++}`); values.push(params.icon.trim() || null); }
-    if (params.active !== undefined) { sets.push(`is_active = $${idx++}`); values.push(params.active); }
+    if (params.name !== undefined) {
+      sets.push(`name = $${idx++}`);
+      values.push(params.name.trim());
+    }
+    if (params.description !== undefined) {
+      sets.push(`description = $${idx++}`);
+      values.push(params.description.trim());
+    }
+    if (params.icon !== undefined) {
+      sets.push(`icon = $${idx++}`);
+      values.push(params.icon.trim() || null);
+    }
+    if (params.active !== undefined) {
+      sets.push(`is_active = $${idx++}`);
+      values.push(params.active);
+    }
 
     if (sets.length === 0) throw new BadRequestException('No fields to update');
 

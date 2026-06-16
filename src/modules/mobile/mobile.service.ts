@@ -248,7 +248,9 @@ export class MobileService implements OnModuleInit {
 
   private async verifyGoogleToken(idToken: string) {
     try {
-      const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+      const response = await fetch(
+        `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`,
+      );
       if (!response.ok) {
         throw new UnauthorizedException('Token de Google invalido');
       }
@@ -277,7 +279,7 @@ export class MobileService implements OnModuleInit {
       WHERE LOWER(u.email) = LOWER($1) OR u.google_id = $2
       LIMIT 1
       `,
-      [googleData.email, googleData.googleId]
+      [googleData.email, googleData.googleId],
     );
 
     const row = rows[0];
@@ -292,7 +294,7 @@ export class MobileService implements OnModuleInit {
     if (!row.google_id) {
       await this.dataSource.query(
         `UPDATE users SET google_id = $1 WHERE id = $2`,
-        [googleData.googleId, row.id]
+        [googleData.googleId, row.id],
       );
     }
 
@@ -325,7 +327,7 @@ export class MobileService implements OnModuleInit {
   }) {
     const existingRows = await this.dataSource.query<any[]>(
       `SELECT id FROM users WHERE LOWER(email) = LOWER($1) OR google_id = $2 LIMIT 1`,
-      [params.email, params.googleId]
+      [params.email, params.googleId],
     );
 
     if (existingRows[0]) {
@@ -343,14 +345,20 @@ export class MobileService implements OnModuleInit {
                   verification_status, id_photo_url, face_photo_url,
                   id_photo_verified, face_photo_verified, is_blocked
         `,
-        [params.type, params.email, params.firstName, params.lastName ?? null, params.googleId]
+        [
+          params.type,
+          params.email,
+          params.firstName,
+          params.lastName ?? null,
+          params.googleId,
+        ],
       );
 
       const row = createdRows[0];
 
       await manager.query(
         `INSERT INTO auth_credentials (user_id, password) VALUES ($1, NULL)`,
-        [row.id]
+        [row.id],
       );
 
       return {
@@ -520,8 +528,16 @@ export class MobileService implements OnModuleInit {
     return this.requestsService.blockUser(blockerUserId, blockedUserId);
   }
 
-  async reportRequest(requestId: string, reporterUserId: string, reason: string) {
-    return this.requestsService.reportRequest(requestId, reporterUserId, reason);
+  async reportRequest(
+    requestId: string,
+    reporterUserId: string,
+    reason: string,
+  ) {
+    return this.requestsService.reportRequest(
+      requestId,
+      reporterUserId,
+      reason,
+    );
   }
 
   async dismissRequest(requestId: string, workerUserId: string) {
@@ -569,7 +585,10 @@ export class MobileService implements OnModuleInit {
     return this.requestsService.workerMarkArrived(params);
   }
 
-  async clientConfirmArrival(params: { requestId: string; clientUserId: string }) {
+  async clientConfirmArrival(params: {
+    requestId: string;
+    clientUserId: string;
+  }) {
     return this.requestsService.clientConfirmArrival(params);
   }
 

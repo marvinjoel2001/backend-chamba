@@ -49,8 +49,16 @@ export class User {
   @Column({ name: 'ci_number', nullable: true })
   ciNumber?: string;
 
-  @ApiPropertyOptional({ enum: VerificationStatus, example: VerificationStatus.NOT_VERIFIED })
-  @Column({ name: 'verification_status', type: 'enum', enum: VerificationStatus, default: VerificationStatus.NOT_VERIFIED })
+  @ApiPropertyOptional({
+    enum: VerificationStatus,
+    example: VerificationStatus.NOT_VERIFIED,
+  })
+  @Column({
+    name: 'verification_status',
+    type: 'enum',
+    enum: VerificationStatus,
+    default: VerificationStatus.NOT_VERIFIED,
+  })
   verificationStatus: VerificationStatus;
 
   @ApiPropertyOptional({ example: 'https://cdn.chamba.com/id-photo.jpg' })
@@ -74,7 +82,11 @@ export class User {
     nullable: true,
     example: '2026-05-23T18:12:00.000Z',
   })
-  @Column({ name: 'verification_reviewed_at', type: 'timestamptz', nullable: true })
+  @Column({
+    name: 'verification_reviewed_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
   verificationReviewedAt?: Date | null;
 
   @ApiProperty({ example: 'Juan' })
@@ -126,6 +138,30 @@ export class User {
   @ApiProperty({ example: false })
   @Column({ name: 'is_blocked', type: 'boolean', default: false })
   isBlocked: boolean;
+
+  @ApiPropertyOptional({ type: [String] })
+  @Column({ name: 'work_modalities', type: 'jsonb', nullable: true })
+  workModalities?: string[];
+
+  @ApiPropertyOptional()
+  @Column({
+    name: 'hourly_rate',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
+  hourlyRate?: number;
+
+  @ApiPropertyOptional()
+  @Column({
+    name: 'daily_rate',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
+  dailyRate?: number;
 
   @ApiProperty({ type: String, example: '2026-03-08T22:42:26.170Z' })
   @CreateDateColumn({ name: 'created_at' })

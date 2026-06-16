@@ -93,7 +93,7 @@ export class NotificationsService {
         type,
         jobId: params.jobId,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        deep_link: `/request/${params.jobId}`
+        deep_link: `/request/${params.jobId}`,
       },
     });
   }
@@ -116,7 +116,10 @@ export class NotificationsService {
         title,
         body,
         type,
-        data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
       }),
     );
 
@@ -128,7 +131,7 @@ export class NotificationsService {
         type,
         requestId: params.requestId,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        deep_link: `/request/${params.requestId}`
+        deep_link: `/request/${params.requestId}`,
       },
     });
   }
@@ -150,7 +153,10 @@ export class NotificationsService {
         title,
         body,
         type,
-        data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
       }),
     );
 
@@ -162,7 +168,7 @@ export class NotificationsService {
         type,
         requestId: params.requestId,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        deep_link: `/request/${params.requestId}`
+        deep_link: `/request/${params.requestId}`,
       },
     });
   }
@@ -179,12 +185,15 @@ export class NotificationsService {
     return this.pushService.sendToToken({
       token: params.token,
       title: `💬 ${params.senderName}`,
-      body: params.message.length > 60 ? params.message.substring(0, 60) + '...' : params.message,
+      body:
+        params.message.length > 60
+          ? params.message.substring(0, 60) + '...'
+          : params.message,
       data: {
         type: 'message_new',
         threadId: params.threadId,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        deep_link: `/chat/${params.threadId}`
+        deep_link: `/chat/${params.threadId}`,
       },
     });
   }
@@ -206,7 +215,10 @@ export class NotificationsService {
         title,
         body,
         type,
-        data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
       }),
     );
 
@@ -214,11 +226,11 @@ export class NotificationsService {
       token: params.token,
       title,
       body,
-      data: { 
-        type, 
+      data: {
+        type,
         requestId: params.requestId,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        deep_link: `/request/${params.requestId}` 
+        deep_link: `/request/${params.requestId}`,
       },
     });
   }
@@ -240,7 +252,10 @@ export class NotificationsService {
         title,
         body,
         type,
-        data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
       }),
     );
 
@@ -248,11 +263,11 @@ export class NotificationsService {
       token: params.token,
       title,
       body,
-      data: { 
-        type, 
+      data: {
+        type,
         requestId: params.requestId,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        deep_link: `/request/${params.requestId}` 
+        deep_link: `/request/${params.requestId}`,
       },
     });
   }
@@ -274,7 +289,10 @@ export class NotificationsService {
         title,
         body,
         type,
-        data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
       }),
     );
 
@@ -283,11 +301,11 @@ export class NotificationsService {
       token: params.token,
       title,
       body,
-      data: { 
-        type, 
+      data: {
+        type,
         requestId: params.requestId,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        deep_link: `/request/${params.requestId}` 
+        deep_link: `/request/${params.requestId}`,
       },
     });
   }
@@ -298,7 +316,10 @@ export class NotificationsService {
     message: string;
   }): Promise<string | null> {
     const title = `🎧 Soporte Chamba`;
-    const body = params.message.length > 60 ? params.message.substring(0, 60) + '...' : params.message;
+    const body =
+      params.message.length > 60
+        ? params.message.substring(0, 60) + '...'
+        : params.message;
     const type = 'support_message';
 
     await this.notificationRepository.save(
@@ -316,10 +337,10 @@ export class NotificationsService {
       token: params.token,
       title,
       body,
-      data: { 
+      data: {
         type,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        deep_link: `/support`
+        deep_link: `/support`,
       },
     });
   }
@@ -330,7 +351,10 @@ export class NotificationsService {
     status: 'verified' | 'rejected';
     message: string;
   }): Promise<string | null> {
-    const title = params.status === 'verified' ? `✅ Cuenta Verificada` : `⚠️ Problema con tu verificación`;
+    const title =
+      params.status === 'verified'
+        ? `✅ Cuenta Verificada`
+        : `⚠️ Problema con tu verificación`;
     const body = params.message;
     const type = 'verification_update';
 
@@ -349,10 +373,10 @@ export class NotificationsService {
       token: params.token,
       title,
       body,
-      data: { 
+      data: {
         type,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        deep_link: `/profile`
+        deep_link: `/profile`,
       },
     });
   }
@@ -375,7 +399,10 @@ export class NotificationsService {
         title,
         body,
         type,
-        data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
       }),
     );
 
@@ -409,7 +436,10 @@ export class NotificationsService {
         title,
         body,
         type,
-        data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
       }),
     );
 
@@ -446,7 +476,11 @@ export class NotificationsService {
         title,
         body,
         type,
-        data: { requestId: params.requestId, stars: params.stars, deep_link: `/profile` },
+        data: {
+          requestId: params.requestId,
+          stars: params.stars,
+          deep_link: `/profile`,
+        },
       }),
     );
 
@@ -481,7 +515,10 @@ export class NotificationsService {
         title,
         body,
         type,
-        data: { requestId: params.requestId, deep_link: `/request/${params.requestId}` },
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
       }),
     );
 
@@ -506,7 +543,10 @@ export class NotificationsService {
     disputeId: string;
   }): Promise<string | null> {
     const title = `📋 Tu queja fue resuelta`;
-    const body = params.resolution.length > 80 ? params.resolution.substring(0, 80) + '...' : params.resolution;
+    const body =
+      params.resolution.length > 80
+        ? params.resolution.substring(0, 80) + '...'
+        : params.resolution;
     const type = 'dispute_resolved';
 
     await this.notificationRepository.save(
