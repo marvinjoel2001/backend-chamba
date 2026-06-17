@@ -1442,7 +1442,7 @@ export class MobileRequestsService {
       apiKey = aiConfig.nvidiaKey;
       modelName =
         this.configService.get<string>('NVIDIA_MODEL')?.trim() ||
-        'minimaxai/minimax-m2.7';
+        'meta/llama-3.1-8b-instruct';
     } else if (activeProvider === 'gemini' && aiConfig.geminiKey) {
       endpointUrl =
         'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
@@ -1518,19 +1518,18 @@ Reglas obligatorias:
     );
 
     const startTime = Date.now();
+    const isReasoningModel = modelName.includes('minimax');
     const requestBodyJson: any = {
       model: modelName,
       messages: [{ role: 'user', content: prompt }],
-      // MiniMax M2.x on NVIDIA NIM is a reasoning model: spends tokens on reasoning_content before
-      // writing the actual content. 480 tokens aren't enough — reasoning alone uses 700-900 tokens,
-      // leaving nothing for the JSON output. 1500 gives the model room to reason AND respond.
-      temperature: activeProvider === 'nvidia' ? 1.0 : 0,
-      top_p: activeProvider === 'nvidia' ? 0.95 : undefined,
-      max_tokens: activeProvider === 'nvidia' ? 1500 : 480,
+      temperature: isReasoningModel ? 1.0 : 0.1,
+      max_tokens: isReasoningModel ? 1500 : 300,
       stream: false,
     };
 
-    if (activeProvider !== 'nvidia') {
+    if (isReasoningModel) {
+      requestBodyJson.top_p = 0.95;
+    } else {
       requestBodyJson.response_format = { type: 'json_object' };
     }
 
