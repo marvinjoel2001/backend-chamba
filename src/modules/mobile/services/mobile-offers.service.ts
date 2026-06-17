@@ -474,7 +474,7 @@ export class MobileOffersService {
     const jobTitle = requestRows[0]?.title ?? 'tu trabajo';
 
     const tokenRows = await this.dataSource.query<any[]>(
-      `SELECT push_token FROM users WHERE id = $1 AND push_token IS NOT NULL`,
+      `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
       [workerUserId],
     );
     if (!tokenRows[0]?.push_token) return;

@@ -545,6 +545,17 @@ export class MobileRequestsService {
                   )
               )
             )
+            AND (
+              w.work_modalities IS NULL 
+              OR cardinality(w.work_modalities) = 0 
+              OR (
+                CASE 
+                  WHEN LOWER(jr.price_type) LIKE '%hora%' OR LOWER(jr.price_type) LIKE '%hour%' THEN 'hourly'
+                  WHEN LOWER(jr.price_type) LIKE '%dia%' OR LOWER(jr.price_type) LIKE '%day%' THEN 'daily'
+                  ELSE 'fixed'
+                END
+              ) = ANY(w.work_modalities)
+            )
           )
           OR (
             jr.status = 'assigned'
@@ -1215,6 +1226,10 @@ export class MobileRequestsService {
       normalizedSkills.length === 0 ||
       normalizedSkills.every((s) => s === 'general');
 
+    const requiredModality =
+      String(request.price_type ?? '').toLowerCase().includes('hora') ? 'hourly' :
+      String(request.price_type ?? '').toLowerCase().includes('dia') ? 'daily' : 'fixed';
+
     const workers = await this.dataSource.query<any[]>(
       `
       SELECT u.id,
@@ -1237,9 +1252,14 @@ export class MobileRequestsService {
             SELECT 1 FROM worker_skills ws2 WHERE ws2.user_id = u.id
           )
         )
+        AND (
+          u.work_modalities IS NULL 
+          OR cardinality(u.work_modalities) = 0 
+          OR $5::text = ANY(u.work_modalities)
+        )
       ORDER BY ST_Distance(u.current_location, $1::geography) ASC
       `,
-      [request.location, isGeneral, normalizedSkills, notificationRadiusKm],
+      [request.location, isGeneral, normalizedSkills, notificationRadiusKm, requiredModality],
     );
 
     const targetWorkers = workers.map((worker, index) => ({
