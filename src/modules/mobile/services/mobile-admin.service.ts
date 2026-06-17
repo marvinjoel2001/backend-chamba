@@ -501,7 +501,13 @@ export class MobileAdminService {
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
-        return { ok: false, error: `HTTP ${res.status}: ${errText.slice(0, 200)}` };
+        let friendlyError = `Error ${res.status} del proveedor de IA`;
+        if (res.status === 401) friendlyError = 'API key inválida o expirada';
+        else if (res.status === 404) friendlyError = 'Modelo no encontrado. Verifica el nombre del modelo.';
+        else if (res.status === 429) friendlyError = 'Límite de requests alcanzado. Intenta más tarde.';
+        else if (res.status >= 500) friendlyError = `Error interno del proveedor (${res.status}). Intenta más tarde.`;
+        else if (errText) friendlyError = errText.slice(0, 120);
+        return { ok: false, error: friendlyError };
       }
 
       const payload = await res.json();
@@ -543,8 +549,12 @@ export class MobileAdminService {
         });
         clearTimeout(t);
         if (!res.ok) {
-          const e = await res.text().catch(() => '');
-          return { ok: false, error: `HTTP ${res.status}: ${e.slice(0, 150)}` };
+          let msg = `Error ${res.status}`;
+          if (res.status === 401) msg = 'API key inválida';
+          else if (res.status === 404) msg = 'Modelo no encontrado';
+          else if (res.status === 429) msg = 'Límite de requests';
+          else if (res.status >= 500) msg = 'Error del proveedor';
+          return { ok: false, error: msg };
         }
         const p = await res.json();
         const text = p.choices?.[0]?.message?.content?.trim() ?? '';
