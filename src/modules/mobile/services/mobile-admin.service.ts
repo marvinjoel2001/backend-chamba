@@ -446,6 +446,135 @@ export class MobileAdminService {
     return defaultVal;
   }
 
+  public async testAiMessage(message: string): Promise<{
+    ok: boolean;
+    response?: string;
+    model?: string;
+    provider?: string;
+    durationMs?: number;
+    error?: string;
+  }> {
+    const config = await this.getAiConfig();
+    const { activeProvider } = config;
+
+    let endpointUrl = '';
+    let apiKey = '';
+    let modelName = '';
+
+    if (activeProvider === 'nvidia' && config.nvidiaKey) {
+      endpointUrl = 'https://integrate.api.nvidia.com/v1/chat/completions';
+      apiKey = config.nvidiaKey;
+      modelName = config.nvidiaModel || 'meta/llama-3.1-8b-instruct';
+    } else if (activeProvider === 'gemini' && config.geminiKey) {
+      endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+      apiKey = config.geminiKey;
+      modelName = 'gemini-2.0-flash';
+    } else if (activeProvider === 'deepseek' && config.deepseekKey) {
+      endpointUrl = 'https://api.deepseek.com/v1/chat/completions';
+      apiKey = config.deepseekKey;
+      modelName = 'deepseek-chat';
+    } else {
+      return { ok: false, error: `API key no configurada para ${activeProvider}` };
+    }
+
+    const isReasoningModel = modelName.includes('minimax');
+    const body: any = {
+      model: modelName,
+      messages: [{ role: 'user', content: message }],
+      temperature: isReasoningModel ? 1.0 : 0.7,
+      max_tokens: isReasoningModel ? 800 : 300,
+      stream: false,
+    };
+    if (isReasoningModel) body.top_p = 0.95;
+
+    const start = Date.now();
+    try {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 40000);
+      const res = await fetch(endpointUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(t);
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        return { ok: false, error: `HTTP ${res.status}: ${errText.slice(0, 200)}` };
+      }
+
+      const payload = await res.json();
+      const response = payload.choices?.[0]?.message?.content?.trim() ?? '';
+      return { ok: true, response, model: modelName, provider: activeProvider, durationMs: Date.now() - start };
+    } catch (err) {
+      return { ok: false, error: (err as Error)?.message ?? String(err) };
+    }
+  }
+
+  public async checkAiStatus(): Promise<{
+    nvidia: { ok: boolean; model?: string; durationMs?: number; error?: string };
+    gemini: { ok: boolean; durationMs?: number; error?: string };
+    deepseek: { ok: boolean; durationMs?: number; error?: string };
+  }> {
+    const config = await this.getAiConfig();
+    const probe = 'Responde exactamente con: OK';
+
+    const testProvider = async (endpointUrl: string, apiKey: string, modelName: string) => {
+      if (!apiKey) return { ok: false, error: 'Sin API key' };
+      const isReasoning = modelName.includes('minimax');
+      const body: any = {
+        model: modelName,
+        messages: [{ role: 'user', content: probe }],
+        temperature: isReasoning ? 1.0 : 0.1,
+        max_tokens: isReasoning ? 600 : 30,
+        stream: false,
+      };
+      if (isReasoning) body.top_p = 0.95;
+      const start = Date.now();
+      try {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 40000);
+        const res = await fetch(endpointUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        clearTimeout(t);
+        if (!res.ok) {
+          const e = await res.text().catch(() => '');
+          return { ok: false, error: `HTTP ${res.status}: ${e.slice(0, 150)}` };
+        }
+        const p = await res.json();
+        const text = p.choices?.[0]?.message?.content?.trim() ?? '';
+        return { ok: !!text, model: modelName, durationMs: Date.now() - start };
+      } catch (err) {
+        return { ok: false, error: (err as Error)?.message ?? String(err) };
+      }
+    };
+
+    const [nvidia, gemini, deepseek] = await Promise.all([
+      testProvider(
+        'https://integrate.api.nvidia.com/v1/chat/completions',
+        config.nvidiaKey,
+        config.nvidiaModel || 'meta/llama-3.1-8b-instruct',
+      ),
+      testProvider(
+        'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+        config.geminiKey,
+        'gemini-2.0-flash',
+      ),
+      testProvider(
+        'https://api.deepseek.com/v1/chat/completions',
+        config.deepseekKey,
+        'deepseek-chat',
+      ),
+    ]);
+
+    return { nvidia, gemini, deepseek };
+  }
+
   public async updateAiConfig(params: {
     activeProvider: string;
     geminiKey: string;

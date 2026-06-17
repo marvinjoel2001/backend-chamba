@@ -1067,6 +1067,14 @@ export class MobileService implements OnModuleInit {
     return this.adminService.getAiConfig();
   }
 
+  async testAiMessage(message: string) {
+    return this.adminService.testAiMessage(message);
+  }
+
+  async checkAiStatus() {
+    return this.adminService.checkAiStatus();
+  }
+
   async updateAiConfig(params: {
     activeProvider: string;
     geminiKey: string;

@@ -715,6 +715,19 @@ export class MobileController {
     return this.mobileService.getAiConfig();
   }
 
+  @Post('mobile/admin/ai-config/test')
+  testAiMessage(@Body('message') message: string) {
+    if (!message?.trim()) {
+      return { ok: false, error: 'message is required' };
+    }
+    return this.mobileService.testAiMessage(message.trim());
+  }
+
+  @Get('mobile/admin/ai-config/status')
+  checkAiStatus() {
+    return this.mobileService.checkAiStatus();
+  }
+
   @Post('mobile/admin/ai-config')
   updateAiConfig(
     @Body('activeProvider') activeProvider: string,
