@@ -720,12 +720,14 @@ export class MobileController {
     @Body('activeProvider') activeProvider: string,
     @Body('geminiKey') geminiKey: string,
     @Body('nvidiaKey') nvidiaKey: string,
+    @Body('nvidiaModel') nvidiaModel: string,
     @Body('deepseekKey') deepseekKey: string,
   ) {
     return this.mobileService.updateAiConfig({
       activeProvider,
       geminiKey,
       nvidiaKey,
+      nvidiaModel,
       deepseekKey,
     });
   }

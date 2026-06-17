@@ -1440,9 +1440,7 @@ export class MobileRequestsService {
     if (activeProvider === 'nvidia' && aiConfig.nvidiaKey) {
       endpointUrl = 'https://integrate.api.nvidia.com/v1/chat/completions';
       apiKey = aiConfig.nvidiaKey;
-      modelName =
-        this.configService.get<string>('NVIDIA_MODEL')?.trim() ||
-        'meta/llama-3.1-8b-instruct';
+      modelName = aiConfig.nvidiaModel || 'meta/llama-3.1-8b-instruct';
     } else if (activeProvider === 'gemini' && aiConfig.geminiKey) {
       endpointUrl =
         'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
@@ -1690,6 +1688,7 @@ Reglas obligatorias:
       activeProvider: this.configService.get<string>('AI_ACTIVE_PROVIDER') || 'nvidia',
       geminiKey: this.configService.get<string>('GEMINI_API_KEY') || '',
       nvidiaKey: this.configService.get<string>('NVIDIA_API_KEY') || '',
+      nvidiaModel: this.configService.get<string>('NVIDIA_MODEL') || 'meta/llama-3.1-8b-instruct',
       deepseekKey: this.configService.get<string>('DEEPSEEK_API_KEY') || '',
     };
     if (rows[0]) {
@@ -1701,6 +1700,7 @@ Reglas obligatorias:
         activeProvider: val.activeProvider || defaultVal.activeProvider,
         geminiKey: val.geminiKey || defaultVal.geminiKey,
         nvidiaKey: val.nvidiaKey || defaultVal.nvidiaKey,
+        nvidiaModel: val.nvidiaModel || defaultVal.nvidiaModel,
         deepseekKey: val.deepseekKey || defaultVal.deepseekKey,
       };
     }

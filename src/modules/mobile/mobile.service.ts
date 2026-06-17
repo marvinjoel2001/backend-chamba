@@ -1071,6 +1071,7 @@ export class MobileService implements OnModuleInit {
     activeProvider: string;
     geminiKey: string;
     nvidiaKey: string;
+    nvidiaModel: string;
     deepseekKey: string;
   }) {
     return this.adminService.updateAiConfig(params);

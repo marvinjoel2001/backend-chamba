@@ -433,6 +433,7 @@ export class MobileAdminService {
       activeProvider: 'nvidia',
       geminiKey: '',
       nvidiaKey: '',
+      nvidiaModel: 'meta/llama-3.1-8b-instruct',
       deepseekKey: '',
     };
     if (rows[0]) {
@@ -449,12 +450,14 @@ export class MobileAdminService {
     activeProvider: string;
     geminiKey: string;
     nvidiaKey: string;
+    nvidiaModel: string;
     deepseekKey: string;
   }) {
     const value = {
       activeProvider: params.activeProvider || 'nvidia',
       geminiKey: params.geminiKey || '',
       nvidiaKey: params.nvidiaKey || '',
+      nvidiaModel: params.nvidiaModel || 'meta/llama-3.1-8b-instruct',
       deepseekKey: params.deepseekKey || '',
     };
 
