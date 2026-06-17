@@ -1453,9 +1453,20 @@ export class MobileRequestsService {
       apiKey = aiConfig.deepseekKey;
       modelName = 'deepseek-chat';
     } else {
-      this.logger.warn(
-        `[AI] API Key no configurada para ${activeProvider} → usando fallback "${fallbackCategory}".`,
-      );
+      const msg = `[AI] API Key no configurada para ${activeProvider} → usando fallback "${fallbackCategory}".`;
+      this.logger.warn(msg);
+      
+      this.apiLogsService
+        .capture({
+          method: 'POST',
+          path: `[AI] ${activeProvider} - BLOCKED`,
+          statusCode: 400,
+          durationMs: 0,
+          requestBodyJson: { activeProvider, fallbackCategory },
+          errorMessage: msg,
+        })
+        .catch((e) => this.logger.error('Failed to log AI API block', e));
+        
       return [
         {
           id: this.repo.toCategoryId(fallbackCategory),
@@ -1671,17 +1682,22 @@ Reglas obligatorias:
       `SELECT value_json FROM app_config WHERE key = 'ai_config' LIMIT 1`,
     );
     const defaultVal = {
-      activeProvider: 'nvidia',
-      geminiKey: '',
-      nvidiaKey: '',
-      deepseekKey: '',
+      activeProvider: this.configService.get<string>('AI_ACTIVE_PROVIDER') || 'nvidia',
+      geminiKey: this.configService.get<string>('GEMINI_API_KEY') || '',
+      nvidiaKey: this.configService.get<string>('NVIDIA_API_KEY') || '',
+      deepseekKey: this.configService.get<string>('DEEPSEEK_API_KEY') || '',
     };
     if (rows[0]) {
       const val =
         typeof rows[0].value_json === 'string'
           ? JSON.parse(rows[0].value_json)
           : rows[0].value_json;
-      return { ...defaultVal, ...val };
+      return {
+        activeProvider: val.activeProvider || defaultVal.activeProvider,
+        geminiKey: val.geminiKey || defaultVal.geminiKey,
+        nvidiaKey: val.nvidiaKey || defaultVal.nvidiaKey,
+        deepseekKey: val.deepseekKey || defaultVal.deepseekKey,
+      };
     }
     return defaultVal;
   }
