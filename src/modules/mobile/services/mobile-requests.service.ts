@@ -1521,10 +1521,12 @@ Reglas obligatorias:
     const requestBodyJson: any = {
       model: modelName,
       messages: [{ role: 'user', content: prompt }],
-      // MiniMax M2.x on NVIDIA NIM requires temperature >= 1.0 — values below 0.5 trigger HTTP 500
+      // MiniMax M2.x on NVIDIA NIM is a reasoning model: spends tokens on reasoning_content before
+      // writing the actual content. 480 tokens aren't enough — reasoning alone uses 700-900 tokens,
+      // leaving nothing for the JSON output. 1500 gives the model room to reason AND respond.
       temperature: activeProvider === 'nvidia' ? 1.0 : 0,
       top_p: activeProvider === 'nvidia' ? 0.95 : undefined,
-      max_tokens: 480,
+      max_tokens: activeProvider === 'nvidia' ? 1500 : 480,
       stream: false,
     };
 
