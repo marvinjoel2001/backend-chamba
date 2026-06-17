@@ -51,7 +51,7 @@ type CreateRequestInput = {
 export class MobileRequestsService {
   private readonly logger = new Logger(MobileRequestsService.name);
   private static readonly DEFAULT_CATEGORY = 'General';
-  private static readonly GEMINI_TIMEOUT_MS = 25000;
+  private static readonly GEMINI_TIMEOUT_MS = 45000;
   private static readonly WORKER_NOTIFICATION_WAVE_SIZE = 5;
   private static readonly WORKER_NOTIFICATION_WAVE_DELAY_MS = 7000;
 
