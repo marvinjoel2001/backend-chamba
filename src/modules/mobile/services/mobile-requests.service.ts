@@ -1518,15 +1518,18 @@ Reglas obligatorias:
     );
 
     const startTime = Date.now();
-    const requestBodyJson = {
+    const requestBodyJson: any = {
       model: modelName,
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0,
+      temperature: activeProvider === 'nvidia' ? 0.1 : 0,
       top_p: 0.95,
       max_tokens: 480,
       stream: false,
-      response_format: { type: 'json_object' },
     };
+    
+    if (activeProvider !== 'nvidia') {
+      requestBodyJson.response_format = { type: 'json_object' };
+    }
 
     try {
       const response = await fetch(endpoint, {
