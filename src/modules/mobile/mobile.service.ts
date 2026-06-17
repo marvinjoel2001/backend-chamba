@@ -94,6 +94,7 @@ export class MobileService implements OnModuleInit {
     firstName: string;
     lastName?: string;
     password: string;
+    ciNumber?: string;
   }) {
     const type = (input.type ?? 'client').toLowerCase().trim();
     if (type !== 'client' && type !== 'worker') {
@@ -137,6 +138,7 @@ export class MobileService implements OnModuleInit {
         throw new ConflictException('El correo o telefono ya esta registrado');
       }
 
+      const ciNumber = input.ciNumber?.trim() || null;
       const createdRows = await manager.query<any[]>(
         `
         INSERT INTO users (
@@ -145,14 +147,15 @@ export class MobileService implements OnModuleInit {
           phone,
           first_name,
           last_name,
-          is_available
+          is_available,
+          ci_number
         )
-        VALUES ($1, $2, $3, $4, $5, false)
+        VALUES ($1, $2, $3, $4, $5, false, $6)
         RETURNING id, type, first_name, last_name, email, phone, profile_photo_url,
                   verification_status, id_photo_url, face_photo_url,
                   id_photo_verified, face_photo_verified
         `,
-        [type, email, phone, firstName, lastName],
+        [type, email, phone, firstName, lastName, ciNumber],
       );
 
       const created = createdRows[0];
