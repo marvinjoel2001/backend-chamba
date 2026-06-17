@@ -247,23 +247,39 @@ export class MobileService implements OnModuleInit {
   }
 
   private async verifyGoogleToken(idToken: string) {
+    let response: Response;
     try {
-      const response = await fetch(
+      response = await fetch(
         `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`,
       );
-      if (!response.ok) {
-        throw new UnauthorizedException('Token de Google invalido');
-      }
-      const data = await response.json();
-      return {
-        email: data.email,
-        firstName: data.given_name,
-        lastName: data.family_name,
-        googleId: data.sub,
-      };
-    } catch (error) {
-      throw new UnauthorizedException('Fallo al verificar el token de Google');
+    } catch {
+      throw new UnauthorizedException(
+        'No se pudo conectar con Google para verificar el token',
+      );
     }
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      this.logger.warn(
+        `[Google] tokeninfo HTTP ${response.status}: ${detail.slice(0, 200)}`,
+      );
+      throw new UnauthorizedException('Token de Google invalido o expirado');
+    }
+
+    const data = await response.json();
+
+    if (!data.email || !data.sub) {
+      throw new UnauthorizedException(
+        'Token de Google no contiene email o id de usuario',
+      );
+    }
+
+    return {
+      email: data.email as string,
+      firstName: (data.given_name as string) ?? '',
+      lastName: (data.family_name as string) ?? null,
+      googleId: data.sub as string,
+    };
   }
 
   async googleLogin(idToken: string) {

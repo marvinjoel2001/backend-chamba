@@ -1521,12 +1521,13 @@ Reglas obligatorias:
     const requestBodyJson: any = {
       model: modelName,
       messages: [{ role: 'user', content: prompt }],
-      temperature: activeProvider === 'nvidia' ? 0.1 : 0,
-      top_p: 0.95,
+      // MiniMax M2.x on NVIDIA NIM requires temperature >= 1.0 — values below 0.5 trigger HTTP 500
+      temperature: activeProvider === 'nvidia' ? 1.0 : 0,
+      top_p: activeProvider === 'nvidia' ? 0.95 : undefined,
       max_tokens: 480,
       stream: false,
     };
-    
+
     if (activeProvider !== 'nvidia') {
       requestBodyJson.response_format = { type: 'json_object' };
     }
