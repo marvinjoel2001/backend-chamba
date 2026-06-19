@@ -148,7 +148,7 @@ export class ApiLogsService implements OnModuleInit, OnModuleDestroy {
     }
     if (params.search?.trim()) {
       filters.push(
-        `(path ILIKE $${i} OR COALESCE(error_message, '') ILIKE $${i})`,
+        `(path ILIKE $${i} OR COALESCE(error_message, '') ILIKE $${i} OR query_json::text ILIKE $${i} OR request_body_json::text ILIKE $${i} OR COALESCE(response_preview, '') ILIKE $${i})`,
       );
       values.push(`%${params.search.trim()}%`);
       i += 1;
