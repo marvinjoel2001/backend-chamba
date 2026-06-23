@@ -74,6 +74,7 @@ export declare class MobileService implements OnModuleInit {
         firstName: string;
         lastName?: string;
         password: string;
+        ciNumber?: string;
     }): Promise<{
         user: {
             id: any;
@@ -112,10 +113,10 @@ export declare class MobileService implements OnModuleInit {
     googleLogin(idToken: string): Promise<{
         requiresRegistration: boolean;
         googleData: {
-            email: any;
-            firstName: any;
-            lastName: any;
-            googleId: any;
+            email: string;
+            firstName: string;
+            lastName: string;
+            googleId: string;
         };
         user?: undefined;
         token?: undefined;
@@ -1138,15 +1139,43 @@ export declare class MobileService implements OnModuleInit {
         commissionPercent: number;
     }>;
     getAiConfig(): Promise<any>;
+    testAiMessage(message: string): Promise<{
+        ok: boolean;
+        response?: string;
+        model?: string;
+        provider?: string;
+        durationMs?: number;
+        error?: string;
+    }>;
+    checkAiStatus(): Promise<{
+        nvidia: {
+            ok: boolean;
+            model?: string;
+            durationMs?: number;
+            error?: string;
+        };
+        gemini: {
+            ok: boolean;
+            durationMs?: number;
+            error?: string;
+        };
+        deepseek: {
+            ok: boolean;
+            durationMs?: number;
+            error?: string;
+        };
+    }>;
     updateAiConfig(params: {
         activeProvider: string;
         geminiKey: string;
         nvidiaKey: string;
+        nvidiaModel: string;
         deepseekKey: string;
     }): Promise<{
         activeProvider: string;
         geminiKey: string;
         nvidiaKey: string;
+        nvidiaModel: string;
         deepseekKey: string;
     }>;
     updateCategory(params: {

@@ -30,7 +30,7 @@ let MobileController = class MobileController {
         this.mobileService = mobileService;
         this.notificationsService = notificationsService;
     }
-    register(type, email, phone, firstName, lastName, password) {
+    register(type, email, phone, firstName, lastName, password, ciNumber) {
         return this.mobileService.register({
             type,
             email,
@@ -38,6 +38,7 @@ let MobileController = class MobileController {
             firstName,
             lastName,
             password,
+            ciNumber,
         });
     }
     login(identifier, password) {
@@ -368,11 +369,21 @@ let MobileController = class MobileController {
     getAiConfig() {
         return this.mobileService.getAiConfig();
     }
-    updateAiConfig(activeProvider, geminiKey, nvidiaKey, deepseekKey) {
+    testAiMessage(message) {
+        if (!message?.trim()) {
+            return { ok: false, error: 'message is required' };
+        }
+        return this.mobileService.testAiMessage(message.trim());
+    }
+    checkAiStatus() {
+        return this.mobileService.checkAiStatus();
+    }
+    updateAiConfig(activeProvider, geminiKey, nvidiaKey, nvidiaModel, deepseekKey) {
         return this.mobileService.updateAiConfig({
             activeProvider,
             geminiKey,
             nvidiaKey,
+            nvidiaModel,
             deepseekKey,
         });
     }
@@ -401,8 +412,9 @@ __decorate([
     __param(3, (0, common_1.Body)('firstName')),
     __param(4, (0, common_1.Body)('lastName')),
     __param(5, (0, common_1.Body)('password')),
+    __param(6, (0, common_1.Body)('ciNumber')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, Object, String, Object, String]),
+    __metadata("design:paramtypes", [String, String, Object, String, Object, String, Object]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "register", null);
 __decorate([
@@ -965,13 +977,27 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getAiConfig", null);
 __decorate([
+    (0, common_1.Post)('mobile/admin/ai-config/test'),
+    __param(0, (0, common_1.Body)('message')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "testAiMessage", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/ai-config/status'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "checkAiStatus", null);
+__decorate([
     (0, common_1.Post)('mobile/admin/ai-config'),
     __param(0, (0, common_1.Body)('activeProvider')),
     __param(1, (0, common_1.Body)('geminiKey')),
     __param(2, (0, common_1.Body)('nvidiaKey')),
-    __param(3, (0, common_1.Body)('deepseekKey')),
+    __param(3, (0, common_1.Body)('nvidiaModel')),
+    __param(4, (0, common_1.Body)('deepseekKey')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String, String]),
+    __metadata("design:paramtypes", [String, String, String, String, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "updateAiConfig", null);
 __decorate([

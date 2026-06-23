@@ -4,7 +4,7 @@ export declare class MobileController {
     private readonly mobileService;
     private readonly notificationsService;
     constructor(mobileService: MobileService, notificationsService: NotificationsService);
-    register(type: string, email: string, phone: string | undefined, firstName: string, lastName: string | undefined, password: string): Promise<{
+    register(type: string, email: string, phone: string | undefined, firstName: string, lastName: string | undefined, password: string, ciNumber: string | undefined): Promise<{
         user: {
             id: any;
             type: any;
@@ -41,10 +41,10 @@ export declare class MobileController {
     googleLogin(idToken: string): Promise<{
         requiresRegistration: boolean;
         googleData: {
-            email: any;
-            firstName: any;
-            lastName: any;
-            googleId: any;
+            email: string;
+            firstName: string;
+            lastName: string;
+            googleId: string;
         };
         user?: undefined;
         token?: undefined;
@@ -1016,10 +1016,40 @@ export declare class MobileController {
         commissionPercent: number;
     }>;
     getAiConfig(): Promise<any>;
-    updateAiConfig(activeProvider: string, geminiKey: string, nvidiaKey: string, deepseekKey: string): Promise<{
+    testAiMessage(message: string): Promise<{
+        ok: boolean;
+        response?: string;
+        model?: string;
+        provider?: string;
+        durationMs?: number;
+        error?: string;
+    }> | {
+        ok: boolean;
+        error: string;
+    };
+    checkAiStatus(): Promise<{
+        nvidia: {
+            ok: boolean;
+            model?: string;
+            durationMs?: number;
+            error?: string;
+        };
+        gemini: {
+            ok: boolean;
+            durationMs?: number;
+            error?: string;
+        };
+        deepseek: {
+            ok: boolean;
+            durationMs?: number;
+            error?: string;
+        };
+    }>;
+    updateAiConfig(activeProvider: string, geminiKey: string, nvidiaKey: string, nvidiaModel: string, deepseekKey: string): Promise<{
         activeProvider: string;
         geminiKey: string;
         nvidiaKey: string;
+        nvidiaModel: string;
         deepseekKey: string;
     }>;
     listAllCategories(): Promise<{

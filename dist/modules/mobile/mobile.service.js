@@ -103,6 +103,7 @@ let MobileService = class MobileService {
             if (existing[0]) {
                 throw new common_1.ConflictException('El correo o telefono ya esta registrado');
             }
+            const ciNumber = input.ciNumber?.trim() || null;
             const createdRows = await manager.query(`
         INSERT INTO users (
           type,
@@ -110,13 +111,14 @@ let MobileService = class MobileService {
           phone,
           first_name,
           last_name,
-          is_available
+          is_available,
+          ci_number
         )
-        VALUES ($1, $2, $3, $4, $5, false)
+        VALUES ($1, $2, $3, $4, $5, false, $6)
         RETURNING id, type, first_name, last_name, email, phone, profile_photo_url,
                   verification_status, id_photo_url, face_photo_url,
                   id_photo_verified, face_photo_verified
-        `, [type, email, phone, firstName, lastName]);
+        `, [type, email, phone, firstName, lastName, ciNumber]);
             const created = createdRows[0];
             await manager.query(`
         INSERT INTO auth_credentials (user_id, password)
@@ -196,22 +198,28 @@ let MobileService = class MobileService {
         };
     }
     async verifyGoogleToken(idToken) {
+        let response;
         try {
-            const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
-            if (!response.ok) {
-                throw new common_1.UnauthorizedException('Token de Google invalido');
-            }
-            const data = await response.json();
-            return {
-                email: data.email,
-                firstName: data.given_name,
-                lastName: data.family_name,
-                googleId: data.sub,
-            };
+            response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
         }
-        catch (error) {
-            throw new common_1.UnauthorizedException('Fallo al verificar el token de Google');
+        catch {
+            throw new common_1.UnauthorizedException('No se pudo conectar con Google para verificar el token');
         }
+        if (!response.ok) {
+            const detail = await response.text().catch(() => '');
+            this.logger.warn(`[Google] tokeninfo HTTP ${response.status}: ${detail.slice(0, 200)}`);
+            throw new common_1.UnauthorizedException('Token de Google invalido o expirado');
+        }
+        const data = await response.json();
+        if (!data.email || !data.sub) {
+            throw new common_1.UnauthorizedException('Token de Google no contiene email o id de usuario');
+        }
+        return {
+            email: data.email,
+            firstName: data.given_name ?? '',
+            lastName: data.family_name ?? null,
+            googleId: data.sub,
+        };
     }
     async googleLogin(idToken) {
         const googleData = await this.verifyGoogleToken(idToken);
@@ -750,6 +758,12 @@ let MobileService = class MobileService {
     }
     async getAiConfig() {
         return this.adminService.getAiConfig();
+    }
+    async testAiMessage(message) {
+        return this.adminService.testAiMessage(message);
+    }
+    async checkAiStatus() {
+        return this.adminService.checkAiStatus();
     }
     async updateAiConfig(params) {
         return this.adminService.updateAiConfig(params);
