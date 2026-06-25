@@ -16,6 +16,8 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { UsersModule } from './modules/users/users.module';
 import { PaymentMethodsModule } from './modules/payment-methods/payment-methods.module';
 import { WorkerLeadsModule } from './modules/worker-leads/worker-leads.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { AdminUsersModule } from './modules/admin-users/admin-users.module';
 
 const envFilePath =
   process.env.NODE_ENV === 'production'
@@ -47,6 +49,8 @@ const envFilePath =
     PlaceholdersModule,
     PaymentMethodsModule,
     WorkerLeadsModule,
+    AdminUsersModule,
+    AuthModule,
   ],
   providers: [HttpLoggerInterceptor],
 })
