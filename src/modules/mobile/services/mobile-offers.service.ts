@@ -293,7 +293,7 @@ export class MobileOffersService {
     const clientUserId = requestRows[0].client_user_id;
 
     const tokenRows = await this.dataSource.query<any[]>(
-      `SELECT token AS push_token FROM push_tokens WHERE user_id = $1`,
+      `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
       [clientUserId],
     );
     if (!tokenRows[0]?.push_token) return;
