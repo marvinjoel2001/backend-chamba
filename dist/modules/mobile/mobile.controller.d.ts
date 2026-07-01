@@ -541,6 +541,7 @@ export declare class MobileController {
             startDate: any;
             address: any;
             status: any;
+            photos: any;
             distanceKm: number | null;
             client: {
                 id: any;
@@ -574,6 +575,7 @@ export declare class MobileController {
             startDate: any;
             address: any;
             status: any;
+            photos: any;
             distanceKm: number | null;
             client: {
                 id: any;

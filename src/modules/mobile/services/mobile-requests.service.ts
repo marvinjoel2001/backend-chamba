@@ -500,6 +500,11 @@ export class MobileRequestsService {
              c.average_rating AS client_rating,
              c.completed_jobs AS client_reviews,
              c.verification_status AS client_verification,
+             (
+               SELECT COALESCE(json_agg(json_build_object('id', p.id, 'url', p.url)), '[]'::json)
+               FROM job_request_photos p
+               WHERE p.request_id = jr.id
+             ) AS photos,
              jo.id AS offer_id,
              jo.amount AS offer_amount,
              jo.status AS offer_status,
@@ -602,6 +607,7 @@ export class MobileRequestsService {
         startDate: row.start_date,
         address: row.address,
         status: row.status,
+        photos: row.photos ?? [],
         distanceKm: row.distance_km == null ? null : Number(row.distance_km),
         client: {
           id: row.client_id,

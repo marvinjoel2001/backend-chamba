@@ -627,6 +627,7 @@ export declare class MobileService implements OnModuleInit {
             startDate: any;
             address: any;
             status: any;
+            photos: any;
             distanceKm: number | null;
             client: {
                 id: any;
@@ -660,6 +661,7 @@ export declare class MobileService implements OnModuleInit {
             startDate: any;
             address: any;
             status: any;
+            photos: any;
             distanceKm: number | null;
             client: {
                 id: any;
