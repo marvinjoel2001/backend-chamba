@@ -66,10 +66,22 @@ let PushService = PushService_1 = class PushService {
             data: Object.keys(data).length > 0 ? data : undefined,
             android: {
                 priority: 'high',
+                notification: notification
+                    ? {
+                        priority: 'max',
+                        defaultSound: true,
+                        defaultVibrateTimings: true,
+                    }
+                    : undefined,
             },
             apns: {
                 headers: {
                     'apns-priority': '10',
+                },
+                payload: {
+                    aps: {
+                        sound: 'default',
+                    },
                 },
             },
         });

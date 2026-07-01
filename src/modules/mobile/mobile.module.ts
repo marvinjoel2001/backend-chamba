@@ -16,6 +16,7 @@ import { MobileRequestsService } from './services/mobile-requests.service';
 import { MobileUsersService } from './services/mobile-users.service';
 import { MobileAdminService } from './services/mobile-admin.service';
 import { WaveDispatchProcessorService } from './services/wave-dispatch.processor.service';
+import { MobileRequestsCronService } from './services/mobile-requests-cron.service';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { WaveDispatchProcessorService } from './services/wave-dispatch.processor
     MobileUsersService,
     MobileAdminService,
     WaveDispatchProcessorService,
+    MobileRequestsCronService,
   ],
   exports: [MobileService],
 })

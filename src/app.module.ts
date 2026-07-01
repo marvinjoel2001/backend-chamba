@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { HttpLoggerInterceptor } from './common/interceptors/http-logger.interceptor';
 import { envValidationSchema } from './config/env.validation';
 import { ApiLogsModule } from './modules/api-logs/api-logs.module';
@@ -40,6 +41,7 @@ const envFilePath =
     RedisModule,
     PushModule,
     StorageModule,
+    ScheduleModule.forRoot(),
     HealthModule,
     UsersModule,
     RealtimeModule,

@@ -607,6 +607,80 @@ export class NotificationsService {
     });
   }
 
+  async notifyClientToImproveOffer(params: {
+    userId: string;
+    token: string | null;
+    jobTitle: string;
+    requestId: string;
+  }): Promise<string | null> {
+    const title = `⚠️ Nadie ha aceptado tu solicitud aún`;
+    const body = `Sube tu presupuesto en: ${params.jobTitle} para atraer más trabajadores.`;
+    const type = 'improve_offer_reminder';
+
+    await this.notificationRepository.save(
+      this.notificationRepository.create({
+        userId: params.userId,
+        title,
+        body,
+        type,
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
+      }),
+    );
+
+    if (!params.token) return null;
+    return this.pushService.sendToToken({
+      token: params.token,
+      title,
+      body,
+      data: {
+        type,
+        requestId: params.requestId,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        deep_link: `/request/${params.requestId}`,
+      },
+    });
+  }
+
+  async notifyClientTimeout(params: {
+    userId: string;
+    token: string | null;
+    jobTitle: string;
+    requestId: string;
+  }): Promise<string | null> {
+    const title = `⏱️ Solicitud expirada`;
+    const body = `Tu solicitud ${params.jobTitle} se ha cancelado por falta de trabajadores disponibles.`;
+    const type = 'request_timeout';
+
+    await this.notificationRepository.save(
+      this.notificationRepository.create({
+        userId: params.userId,
+        title,
+        body,
+        type,
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
+      }),
+    );
+
+    if (!params.token) return null;
+    return this.pushService.sendToToken({
+      token: params.token,
+      title,
+      body,
+      data: {
+        type,
+        requestId: params.requestId,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        deep_link: `/request/${params.requestId}`,
+      },
+    });
+  }
+
   async getUserNotifications(
     userId: string,
     page: number = 1,

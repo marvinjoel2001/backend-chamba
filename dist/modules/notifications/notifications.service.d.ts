@@ -123,6 +123,18 @@ export declare class NotificationsService {
         reason: string;
         disputeId: string;
     }): Promise<string | null>;
+    notifyClientToImproveOffer(params: {
+        userId: string;
+        token: string | null;
+        jobTitle: string;
+        requestId: string;
+    }): Promise<string | null>;
+    notifyClientTimeout(params: {
+        userId: string;
+        token: string | null;
+        jobTitle: string;
+        requestId: string;
+    }): Promise<string | null>;
     getUserNotifications(userId: string, page?: number, limit?: number): Promise<{
         items: Notification[];
         hasMore: boolean;

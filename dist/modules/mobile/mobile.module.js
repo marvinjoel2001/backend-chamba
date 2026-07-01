@@ -25,6 +25,7 @@ const mobile_requests_service_1 = require("./services/mobile-requests.service");
 const mobile_users_service_1 = require("./services/mobile-users.service");
 const mobile_admin_service_1 = require("./services/mobile-admin.service");
 const wave_dispatch_processor_service_1 = require("./services/wave-dispatch.processor.service");
+const mobile_requests_cron_service_1 = require("./services/mobile-requests-cron.service");
 let MobileModule = class MobileModule {
 };
 exports.MobileModule = MobileModule;
@@ -50,6 +51,7 @@ exports.MobileModule = MobileModule = __decorate([
             mobile_users_service_1.MobileUsersService,
             mobile_admin_service_1.MobileAdminService,
             wave_dispatch_processor_service_1.WaveDispatchProcessorService,
+            mobile_requests_cron_service_1.MobileRequestsCronService,
         ],
         exports: [mobile_service_1.MobileService],
     })

@@ -561,7 +561,7 @@ export class MobileUsersService {
           daily_rate = $4
       WHERE id = $1
       `,
-      [workerUserId, modalities, hourlyRate, dailyRate],
+      [workerUserId, JSON.stringify(modalities), hourlyRate, dailyRate],
     );
 
     return {

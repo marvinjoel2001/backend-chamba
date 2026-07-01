@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
+const schedule_1 = require("@nestjs/schedule");
 const http_logger_interceptor_1 = require("./common/interceptors/http-logger.interceptor");
 const env_validation_1 = require("./config/env.validation");
 const api_logs_module_1 = require("./modules/api-logs/api-logs.module");
@@ -25,6 +26,8 @@ const realtime_module_1 = require("./modules/realtime/realtime.module");
 const users_module_1 = require("./modules/users/users.module");
 const payment_methods_module_1 = require("./modules/payment-methods/payment-methods.module");
 const worker_leads_module_1 = require("./modules/worker-leads/worker-leads.module");
+const auth_module_1 = require("./modules/auth/auth.module");
+const admin_users_module_1 = require("./modules/admin-users/admin-users.module");
 const envFilePath = process.env.NODE_ENV === 'production'
     ? ['.env.production', '.env']
     : ['.env.local', '.env'];
@@ -48,6 +51,7 @@ exports.AppModule = AppModule = __decorate([
             redis_module_1.RedisModule,
             push_module_1.PushModule,
             storage_module_1.StorageModule,
+            schedule_1.ScheduleModule.forRoot(),
             health_module_1.HealthModule,
             users_module_1.UsersModule,
             realtime_module_1.RealtimeModule,
@@ -57,6 +61,8 @@ exports.AppModule = AppModule = __decorate([
             placeholders_module_1.PlaceholdersModule,
             payment_methods_module_1.PaymentMethodsModule,
             worker_leads_module_1.WorkerLeadsModule,
+            admin_users_module_1.AdminUsersModule,
+            auth_module_1.AuthModule,
         ],
         providers: [http_logger_interceptor_1.HttpLoggerInterceptor],
     })
