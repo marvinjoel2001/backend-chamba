@@ -516,6 +516,10 @@ export class MobileService implements OnModuleInit {
     return this.chatService.archiveThread(params);
   }
 
+  async markThreadRead(threadId: string, userId: string) {
+    return this.chatService.markThreadRead(threadId, userId);
+  }
+
   async broadcastNotification(payload: {
     target: 'all' | 'workers' | 'clients' | 'custom';
     type: 'push' | 'toast';

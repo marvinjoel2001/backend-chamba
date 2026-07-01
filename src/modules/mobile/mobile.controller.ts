@@ -312,6 +312,14 @@ export class MobileController {
     return this.mobileService.archiveThread({ threadId, userId });
   }
 
+  @Post('mobile/messages/:threadId/read')
+  markThreadRead(
+    @Param('threadId') threadId: string,
+    @Body('userId') userId: string,
+  ) {
+    return this.mobileService.markThreadRead(threadId, userId);
+  }
+
   @Post('mobile/admin/notifications/broadcast')
   broadcastNotification(
     @Body()

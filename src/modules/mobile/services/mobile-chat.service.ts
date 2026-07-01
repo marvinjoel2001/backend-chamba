@@ -33,8 +33,20 @@ export class MobileChatService {
              u.first_name AS counterpart_first_name,
              u.last_name AS counterpart_last_name,
              u.profile_photo_url AS counterpart_photo,
+             u.phone AS counterpart_phone,
              lm.content AS last_message,
-             lm.created_at AS last_message_at
+             lm.created_at AS last_message_at,
+             (
+               SELECT COUNT(*)::int
+               FROM chat_messages m2
+               WHERE m2.thread_id = t.id
+                 AND m2.sender_user_id <> $1
+                 AND (
+                   (t.client_user_id = $1 AND (t.client_last_read_at IS NULL OR m2.created_at > t.client_last_read_at))
+                   OR
+                   (t.worker_user_id = $1 AND (t.worker_last_read_at IS NULL OR m2.created_at > t.worker_last_read_at))
+                 )
+             ) AS unread_count
       FROM chat_threads t
       JOIN users u
         ON u.id = CASE WHEN t.client_user_id = $1 THEN t.worker_user_id ELSE t.client_user_id END
@@ -73,11 +85,31 @@ export class MobileChatService {
           firstName: row.counterpart_first_name,
           lastName: row.counterpart_last_name ?? '',
           profilePhotoUrl: row.counterpart_photo ?? null,
+          phone: row.counterpart_phone ?? null,
         },
         lastMessage: row.last_message ?? 'Sin mensajes',
         lastMessageAt: row.last_message_at ?? null,
+        unreadCount: row.unread_count ?? 0,
+        hasUnreadMessages: (row.unread_count ?? 0) > 0,
       })),
     };
+  }
+
+  /// Marca como leídos los mensajes de una conversación para el usuario dado.
+  /// Registra el instante de lectura en la columna correspondiente según el
+  /// usuario sea el cliente o el trabajador del hilo.
+  public async markThreadRead(threadId: string, userId: string) {
+    await this.repo.ensureThreadExists(threadId);
+    await this.dataSource.query(
+      `
+      UPDATE chat_threads
+      SET client_last_read_at = CASE WHEN client_user_id = $2 THEN NOW() ELSE client_last_read_at END,
+          worker_last_read_at = CASE WHEN worker_user_id = $2 THEN NOW() ELSE worker_last_read_at END
+      WHERE id = $1
+      `,
+      [threadId, userId],
+    );
+    return { ok: true };
   }
 
   public async getThreadMessages(
