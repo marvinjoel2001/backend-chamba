@@ -510,6 +510,7 @@ export declare class MobileController {
         body: string;
         toastType?: 'info' | 'success' | 'error';
         userIds?: string[];
+        isCallAlert?: boolean;
     }): Promise<{
         success: boolean;
         method: string;

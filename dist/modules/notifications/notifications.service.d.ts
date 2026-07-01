@@ -17,6 +17,7 @@ export declare class NotificationsService {
         tokens: string[];
         title: string;
         body: string;
+        isCallAlert?: boolean;
     }): Promise<number>;
     notifyWorkersForJobWave(params: {
         users: {

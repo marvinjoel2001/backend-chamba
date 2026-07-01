@@ -61,7 +61,7 @@ export class PushService {
 
     const isCall = params.data?.type === 'request_new';
 
-    const notification: any = {
+    let notification: any = {
       title: params.title,
       body: params.body,
     };
@@ -70,7 +70,7 @@ export class PushService {
 
     if (isCall) {
       // Data-only message for full screen intent in mobile app
-      // notification = undefined; // We send notification block so the OS shows it reliably
+      notification = undefined; // Enviar data-only para que Android OS no la secuestre
       data.title = params.title;
       data.body = params.body;
     }
@@ -114,7 +114,7 @@ export class PushService {
 
     const isCall = params.data?.type === 'request_new';
 
-    const notification: any = {
+    let notification: any = {
       title: params.title,
       body: params.body,
     };
@@ -123,7 +123,7 @@ export class PushService {
 
     if (isCall) {
       // Data-only message for full screen intent in mobile app
-      // notification = undefined; // We send notification block so the OS shows it reliably
+      notification = undefined; // Enviar data-only para que Android OS no la secuestre
       data.title = params.title;
       data.body = params.body;
     }

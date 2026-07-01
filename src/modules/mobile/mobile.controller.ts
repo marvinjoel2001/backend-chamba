@@ -322,6 +322,7 @@ export class MobileController {
       body: string;
       toastType?: 'info' | 'success' | 'error';
       userIds?: string[];
+      isCallAlert?: boolean;
     },
   ) {
     return this.mobileService.broadcastNotification(payload);

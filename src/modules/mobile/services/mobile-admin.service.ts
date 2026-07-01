@@ -27,6 +27,7 @@ export class MobileAdminService {
     body: string;
     toastType?: 'info' | 'success' | 'error';
     userIds?: string[];
+    isCallAlert?: boolean;
   }) {
     if (payload.type === 'toast') {
       this.realtimeGateway.server.emit('notification.toast', {
@@ -69,6 +70,7 @@ export class MobileAdminService {
         tokens,
         title: payload.title,
         body: payload.body,
+        isCallAlert: payload.isCallAlert,
       });
 
       return { success: true, method: 'push', count };
