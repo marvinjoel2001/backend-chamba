@@ -315,12 +315,12 @@ export class MobileOffersService {
       SELECT jo.id,
              jo.request_id,
              jo.worker_user_id,
-             jr.client_user_id
+             jo.status AS offer_status,
+             jr.client_user_id,
+             jr.status AS request_status
       FROM job_offers jo
       JOIN job_requests jr ON jr.id = jo.request_id
       WHERE jo.id = $1
-        AND jo.status <> 'expired'
-        AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
       LIMIT 1
       `,
       [params.offerId],
@@ -337,35 +337,64 @@ export class MobileOffersService {
       );
     }
 
-    const rejectedRows = await this.dataSource.query<any[]>(
-      `
-      SELECT id, worker_user_id
-      FROM job_offers
-      WHERE request_id = $1
-        AND id <> $2
-        AND status <> 'expired'
-      `,
-      [offer.request_id, params.offerId],
-    );
-    if (rejectedRows.length > 0) {
-      await this.dataSource.query(
-        `
-        UPDATE job_offers
-        SET status = 'rejected'
-        WHERE request_id = $1
-          AND id <> $2
-          AND status <> 'expired'
-        `,
-        [offer.request_id, params.offerId],
+    if (!['searching', 'negotiating'].includes(offer.request_status)) {
+      throw new BadRequestException(
+        offer.request_status === 'cancelled'
+          ? 'La solicitud fue cancelada y ya no admite aceptar ofertas'
+          : 'La solicitud ya no admite aceptar ofertas',
       );
     }
-    await this.dataSource.query(
-      `UPDATE job_offers SET status = 'accepted' WHERE id = $1`,
+    if (offer.offer_status !== 'pending') {
+      throw new BadRequestException('La oferta ya no está disponible');
+    }
+
+    // Updates condicionados al estado actual para evitar carreras
+    // (doble aceptación o aceptar mientras el cron/cliente cancela).
+    const acceptedRows = await this.dataSource.query<any[]>(
+      `
+      UPDATE job_offers
+      SET status = 'accepted'
+      WHERE id = $1
+        AND status = 'pending'
+        AND (expires_at IS NULL OR expires_at > NOW())
+      RETURNING id
+      `,
       [params.offerId],
     );
-    await this.dataSource.query(
-      `UPDATE job_requests SET status = 'assigned', updated_at = NOW() WHERE id = $1`,
+    if (!acceptedRows[0]) {
+      throw new BadRequestException('La oferta expiró o ya no está disponible');
+    }
+
+    const assignedRows = await this.dataSource.query<any[]>(
+      `
+      UPDATE job_requests
+      SET status = 'assigned', updated_at = NOW()
+      WHERE id = $1
+        AND status IN ('searching', 'negotiating')
+      RETURNING id
+      `,
       [offer.request_id],
+    );
+    if (!assignedRows[0]) {
+      await this.dataSource.query(
+        `UPDATE job_offers SET status = 'pending' WHERE id = $1`,
+        [params.offerId],
+      );
+      throw new BadRequestException(
+        'La solicitud cambió de estado y ya no admite aceptar ofertas',
+      );
+    }
+
+    const rejectedRows = await this.dataSource.query<any[]>(
+      `
+      UPDATE job_offers
+      SET status = 'rejected'
+      WHERE request_id = $1
+        AND id <> $2
+        AND status = 'pending'
+      RETURNING id, worker_user_id
+      `,
+      [offer.request_id, params.offerId],
     );
     this.realtimeGateway.server.emit('request.status.updated', {
       requestId: offer.request_id,

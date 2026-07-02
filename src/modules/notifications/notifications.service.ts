@@ -682,6 +682,120 @@ export class NotificationsService {
     });
   }
 
+  async notifyRequestClosed(params: {
+    userId: string;
+    token: string | null;
+    jobTitle: string;
+    requestId: string;
+  }): Promise<string | null> {
+    const title = `🚫 Solicitud ya no disponible`;
+    const body = `La solicitud "${params.jobTitle}" se cerró antes de elegir tu oferta.`;
+    const type = 'request_closed';
+
+    await this.notificationRepository.save(
+      this.notificationRepository.create({
+        userId: params.userId,
+        title,
+        body,
+        type,
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
+      }),
+    );
+
+    if (!params.token) return null;
+    return this.pushService.sendToToken({
+      token: params.token,
+      title,
+      body,
+      data: {
+        type,
+        requestId: params.requestId,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        deep_link: `/request/${params.requestId}`,
+      },
+    });
+  }
+
+  async notifyWorkerJobStartingSoon(params: {
+    userId: string;
+    token: string | null;
+    jobTitle: string;
+    requestId: string;
+    startsInLabel: string;
+  }): Promise<string | null> {
+    const title = `🕐 Tu trabajo empieza ${params.startsInLabel}`;
+    const body = `Prepárate para: ${params.jobTitle}. Revisa la dirección y llega a tiempo.`;
+    const type = 'job_starting_soon';
+
+    await this.notificationRepository.save(
+      this.notificationRepository.create({
+        userId: params.userId,
+        title,
+        body,
+        type,
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
+      }),
+    );
+
+    if (!params.token) return null;
+    return this.pushService.sendToToken({
+      token: params.token,
+      title,
+      body,
+      data: {
+        type,
+        requestId: params.requestId,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        deep_link: `/request/${params.requestId}`,
+      },
+    });
+  }
+
+  async notifyClientJobStartingSoon(params: {
+    userId: string;
+    token: string | null;
+    workerName: string;
+    jobTitle: string;
+    requestId: string;
+    startsInLabel: string;
+  }): Promise<string | null> {
+    const title = `🕐 Tu trabajo empieza ${params.startsInLabel}`;
+    const body = `${params.workerName} llegará pronto para: ${params.jobTitle}`;
+    const type = 'job_starting_soon';
+
+    await this.notificationRepository.save(
+      this.notificationRepository.create({
+        userId: params.userId,
+        title,
+        body,
+        type,
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
+      }),
+    );
+
+    if (!params.token) return null;
+    return this.pushService.sendToToken({
+      token: params.token,
+      title,
+      body,
+      data: {
+        type,
+        requestId: params.requestId,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        deep_link: `/request/${params.requestId}`,
+      },
+    });
+  }
+
   async getUserNotifications(
     userId: string,
     page: number = 1,

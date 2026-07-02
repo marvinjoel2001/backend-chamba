@@ -320,6 +320,80 @@ export class MobileAdminService {
     return { radiusKm };
   }
 
+  public async getOfferLifetimeSettings() {
+    const config = await this.repo.getOfferLifetimeConfig();
+    const defaults = this.repo.getDefaultOfferLifetimeByPriceType();
+    return {
+      fixed: this.repo.resolveOfferLifetimeSeconds(config, 'fixed'),
+      hour: this.repo.resolveOfferLifetimeSeconds(config, 'hour'),
+      day: this.repo.resolveOfferLifetimeSeconds(config, 'day'),
+      defaults,
+    };
+  }
+
+  public async updateOfferLifetimeSettings(params: {
+    fixed: number;
+    hour: number;
+    day: number;
+  }) {
+    const sanitized: Record<string, number> = {};
+    for (const key of ['fixed', 'hour', 'day'] as const) {
+      const parsed = Number(params[key]);
+      if (!Number.isFinite(parsed) || parsed < 30 || parsed > 24 * 3600) {
+        throw new BadRequestException(
+          `${key} debe estar entre 30 y 86400 segundos`,
+        );
+      }
+      sanitized[key] = Math.floor(parsed);
+    }
+
+    await this.repo.saveOfferLifetimeConfig(sanitized);
+    return sanitized;
+  }
+
+  public async getRequestTimeoutSettings() {
+    return this.repo.getRequestTimeoutConfig();
+  }
+
+  public async updateRequestTimeoutSettings(
+    params: Record<
+      string,
+      {
+        timeoutMinutes?: number;
+        reminder1Minutes?: number;
+        reminder2Minutes?: number;
+      }
+    >,
+  ) {
+    const current = await this.repo.getRequestTimeoutConfig();
+    for (const key of ['fixed', 'hour', 'day'] as const) {
+      const entry = params?.[key];
+      if (!entry || typeof entry !== 'object') continue;
+      for (const field of [
+        'timeoutMinutes',
+        'reminder1Minutes',
+        'reminder2Minutes',
+      ] as const) {
+        if (entry[field] == null) continue;
+        const parsed = Number(entry[field]);
+        if (!Number.isFinite(parsed) || parsed < 1 || parsed > 7 * 24 * 60) {
+          throw new BadRequestException(
+            `${key}.${field} debe estar entre 1 y 10080 minutos`,
+          );
+        }
+        current[key][field] = Math.floor(parsed);
+      }
+      if (current[key].timeoutMinutes <= current[key].reminder1Minutes) {
+        throw new BadRequestException(
+          `${key}: timeoutMinutes debe ser mayor a reminder1Minutes`,
+        );
+      }
+    }
+
+    await this.repo.saveRequestTimeoutConfig(current);
+    return current;
+  }
+
   public async getRequestNotifiedWorkers(requestId: string) {
     if (!requestId) {
       throw new BadRequestException('requestId is required');
@@ -633,6 +707,21 @@ export class MobileAdminService {
       `UPDATE job_requests SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
       [params.requestId],
     );
+
+    const closedOffers = await this.repo.closePendingOffers(params.requestId);
+    for (const closed of closedOffers) {
+      const token = await this.repo.getLatestPushToken(closed.workerUserId);
+      this.notificationsService
+        .notifyRequestClosed({
+          userId: closed.workerUserId,
+          token,
+          jobTitle: req.title,
+          requestId: params.requestId,
+        })
+        .catch((e) =>
+          this.logger.error('Failed to notify pending-offer worker', e),
+        );
+    }
 
     const offerRows = await this.dataSource.query<any[]>(
       `SELECT worker_user_id FROM job_offers WHERE request_id = $1 AND status = 'accepted' LIMIT 1`,

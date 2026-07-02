@@ -8,9 +8,33 @@ import { RealtimeGateway } from '../../realtime/realtime.gateway';
 
 @Injectable()
 export class MobileRequestRepository {
-  private static readonly OFFER_LIFETIME_SECONDS = 120;
+  // Vida de la oferta por modalidad (segundos): por hora es urgente,
+  // fijo es intermedio y por dia (trabajos planificados) da mas margen.
+  private static readonly DEFAULT_OFFER_LIFETIME_BY_PRICE_TYPE: Record<
+    'fixed' | 'hour' | 'day',
+    number
+  > = {
+    fixed: 300,
+    hour: 120,
+    day: 900,
+  };
   private static readonly OFFER_LIFETIME_CONFIG_KEY =
     'offer_lifetime_by_price_type';
+  private static readonly REQUEST_TIMEOUT_CONFIG_KEY =
+    'request_timeout_by_price_type';
+  // Timeouts de auto-cancelacion y recordatorios (minutos) por modalidad.
+  private static readonly DEFAULT_REQUEST_TIMEOUT_BY_PRICE_TYPE: Record<
+    'fixed' | 'hour' | 'day',
+    { timeoutMinutes: number; reminder1Minutes: number; reminder2Minutes: number }
+  > = {
+    fixed: { timeoutMinutes: 120, reminder1Minutes: 30, reminder2Minutes: 60 },
+    hour: { timeoutMinutes: 30, reminder1Minutes: 10, reminder2Minutes: 20 },
+    day: {
+      timeoutMinutes: 12 * 60,
+      reminder1Minutes: 2 * 60,
+      reminder2Minutes: 6 * 60,
+    },
+  };
   private static readonly WORKER_NOTIFICATION_RADIUS_CONFIG_KEY =
     'worker_notification_radius_km';
 
@@ -367,12 +391,13 @@ export class MobileRequestRepository {
     config: Record<string, any> | null,
     priceType?: string | null,
   ): number {
-    const fallback = MobileRequestRepository.OFFER_LIFETIME_SECONDS;
+    const key = this.normalizePriceTypeKey(priceType);
+    const fallback =
+      MobileRequestRepository.DEFAULT_OFFER_LIFETIME_BY_PRICE_TYPE[key];
     if (!config) {
       return fallback;
     }
 
-    const key = this.normalizePriceTypeKey(priceType);
     const candidate =
       key === 'hour' ? config.hour : key === 'day' ? config.day : config.fixed;
     const parsed = Number(candidate);
@@ -387,6 +412,189 @@ export class MobileRequestRepository {
   ): Promise<number> {
     const config = await this.getOfferLifetimeConfig();
     return this.resolveOfferLifetimeSeconds(config, priceType);
+  }
+
+  public getDefaultOfferLifetimeByPriceType() {
+    return { ...MobileRequestRepository.DEFAULT_OFFER_LIFETIME_BY_PRICE_TYPE };
+  }
+
+  public getDefaultRequestTimeoutByPriceType() {
+    return JSON.parse(
+      JSON.stringify(
+        MobileRequestRepository.DEFAULT_REQUEST_TIMEOUT_BY_PRICE_TYPE,
+      ),
+    ) as Record<
+      'fixed' | 'hour' | 'day',
+      {
+        timeoutMinutes: number;
+        reminder1Minutes: number;
+        reminder2Minutes: number;
+      }
+    >;
+  }
+
+  public async getRequestTimeoutConfig(): Promise<
+    Record<
+      'fixed' | 'hour' | 'day',
+      {
+        timeoutMinutes: number;
+        reminder1Minutes: number;
+        reminder2Minutes: number;
+      }
+    >
+  > {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT value_json
+      FROM app_config
+      WHERE key = $1
+      LIMIT 1
+      `,
+      [MobileRequestRepository.REQUEST_TIMEOUT_CONFIG_KEY],
+    );
+
+    const defaults = this.getDefaultRequestTimeoutByPriceType();
+    const config = rows[0]?.value_json;
+    if (!config || typeof config !== 'object') {
+      return defaults;
+    }
+
+    for (const key of ['fixed', 'hour', 'day'] as const) {
+      const entry = config[key];
+      if (!entry || typeof entry !== 'object') continue;
+      for (const field of [
+        'timeoutMinutes',
+        'reminder1Minutes',
+        'reminder2Minutes',
+      ] as const) {
+        const parsed = Number(entry[field]);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          defaults[key][field] = Math.floor(parsed);
+        }
+      }
+    }
+    return defaults;
+  }
+
+  public async saveRequestTimeoutConfig(
+    config: Record<string, any>,
+  ): Promise<void> {
+    await this.dataSource.query(
+      `
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ($1, $2::jsonb, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
+      `,
+      [
+        MobileRequestRepository.REQUEST_TIMEOUT_CONFIG_KEY,
+        JSON.stringify(config),
+      ],
+    );
+  }
+
+  public async saveOfferLifetimeConfig(
+    config: Record<string, any>,
+  ): Promise<void> {
+    await this.dataSource.query(
+      `
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ($1, $2::jsonb, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
+      `,
+      [
+        MobileRequestRepository.OFFER_LIFETIME_CONFIG_KEY,
+        JSON.stringify(config),
+      ],
+    );
+  }
+
+  /**
+   * Cierra (expira) todas las ofertas pendientes de una solicitud y avisa por
+   * realtime. Devuelve los workers afectados para que el llamador pueda
+   * enviarles push. Se usa al cancelar una solicitud (manual o por timeout).
+   */
+  public async closePendingOffers(requestId: string): Promise<
+    Array<{
+      offerId: string;
+      workerUserId: string;
+      clientUserId: string;
+    }>
+  > {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      UPDATE job_offers jo
+      SET status = 'expired', expires_at = NOW()
+      FROM job_requests jr
+      WHERE jo.request_id = jr.id
+        AND jo.request_id = $1
+        AND jo.status = 'pending'
+      RETURNING jo.id, jo.worker_user_id, jr.client_user_id
+      `,
+      [requestId],
+    );
+
+    return rows.map((row) => {
+      const payload = {
+        offerId: row.id,
+        requestId,
+        workerUserId: row.worker_user_id,
+        clientUserId: row.client_user_id,
+        status: 'expired',
+      };
+      this.realtimeGateway.emitToUser(
+        row.worker_user_id,
+        'offer.expired',
+        payload,
+      );
+      this.realtimeGateway.emitToUser(
+        row.client_user_id,
+        'offer.expired',
+        payload,
+      );
+      return {
+        offerId: row.id,
+        workerUserId: row.worker_user_id,
+        clientUserId: row.client_user_id,
+      };
+    });
+  }
+
+  public async getLatestPushToken(userId: string): Promise<string | null> {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+      [userId],
+    );
+    return rows[0]?.token ?? null;
+  }
+
+  /**
+   * Fecha/hora efectiva de inicio de un trabajo. Combina scheduled_at
+   * (timestamp) con start_date (texto 'YYYY-MM-DD' o 'YYYY-MM-DDTHH:mm').
+   * Las fechas sin hora se interpretan a las 09:00 de Bolivia (UTC-4).
+   */
+  public resolveStartAt(
+    scheduledAt?: Date | string | null,
+    startDate?: string | null,
+  ): Date | null {
+    if (scheduledAt) {
+      const parsed = new Date(scheduledAt);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+
+    const raw = String(startDate ?? '').trim();
+    if (!raw) return null;
+
+    // Bolivia no tiene horario de verano: offset fijo -04:00.
+    const withTime = raw.includes('T') ? raw : `${raw}T09:00:00`;
+    const iso = /[+-]\d{2}:?\d{2}$|Z$/.test(withTime)
+      ? withTime
+      : `${withTime}-04:00`;
+    const parsed = new Date(iso);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   public async ensureThreadExists(threadId: string) {

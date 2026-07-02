@@ -1025,6 +1025,35 @@ export class MobileService implements OnModuleInit {
     return this.adminService.updateAdminWorkerNotificationSettings(params);
   }
 
+  async getOfferLifetimeSettings() {
+    return this.adminService.getOfferLifetimeSettings();
+  }
+
+  async updateOfferLifetimeSettings(params: {
+    fixed: number;
+    hour: number;
+    day: number;
+  }) {
+    return this.adminService.updateOfferLifetimeSettings(params);
+  }
+
+  async getRequestTimeoutSettings() {
+    return this.adminService.getRequestTimeoutSettings();
+  }
+
+  async updateRequestTimeoutSettings(
+    params: Record<
+      string,
+      {
+        timeoutMinutes?: number;
+        reminder1Minutes?: number;
+        reminder2Minutes?: number;
+      }
+    >,
+  ) {
+    return this.adminService.updateRequestTimeoutSettings(params);
+  }
+
   async getRequestNotifiedWorkers(requestId: string) {
     return this.adminService.getRequestNotifiedWorkers(requestId);
   }

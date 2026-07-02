@@ -4,6 +4,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DatabaseBootstrapService } from './database.bootstrap.service';
 import { InitialBaselineSchema1717000000000 } from './migrations/1717000000000-InitialBaselineSchema';
 import { AddModalityToJobRequests1781633301782 } from './migrations/1781633301782-AddModalityToJobRequests';
+import { AddReminderLevelToJobRequests1782866723182 } from './migrations/1782866723182-AddReminderLevelToJobRequests';
+import { AddStartReminderSentAndTimeConfigSeeds1783500000000 } from './migrations/1783500000000-AddStartReminderSentAndTimeConfigSeeds';
 
 @Module({
   imports: [
@@ -25,6 +27,8 @@ import { AddModalityToJobRequests1781633301782 } from './migrations/178163330178
         migrations: [
           InitialBaselineSchema1717000000000,
           AddModalityToJobRequests1781633301782,
+          AddReminderLevelToJobRequests1782866723182,
+          AddStartReminderSentAndTimeConfigSeeds1783500000000,
         ],
         migrationsRun: true,
         migrationsTableName: 'typeorm_migrations',

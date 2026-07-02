@@ -984,7 +984,7 @@ export class MobileRequestsService {
   public async cancelJob(params: { requestId: string; userId: string }) {
     const rows = await this.dataSource.query<any[]>(
       `
-      SELECT jr.id, jr.title, jr.client_user_id, jo.worker_user_id
+      SELECT jr.id, jr.title, jr.status, jr.client_user_id, jo.worker_user_id
       FROM job_requests jr
       LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
       WHERE jr.id = $1
@@ -997,10 +997,30 @@ export class MobileRequestsService {
     if (!req)
       throw new NotFoundException('Request not found or not authorized');
 
-    await this.dataSource.query(
-      `UPDATE job_requests SET status = 'cancelled', updated_at = NOW(), cancelled_by = $2 WHERE id = $1`,
+    if (req.status === 'cancelled' || req.status === 'completed') {
+      throw new BadRequestException(
+        req.status === 'cancelled'
+          ? 'El trabajo ya fue cancelado'
+          : 'No se puede cancelar un trabajo completado',
+      );
+    }
+
+    const cancelledRows = await this.dataSource.query<any[]>(
+      `
+      UPDATE job_requests
+      SET status = 'cancelled', updated_at = NOW(), cancelled_by = $2
+      WHERE id = $1
+        AND status NOT IN ('cancelled', 'completed')
+      RETURNING id
+      `,
       [params.requestId, params.userId],
     );
+    if (!cancelledRows[0]) {
+      throw new BadRequestException('El trabajo ya no se puede cancelar');
+    }
+
+    // Cerrar ofertas pendientes y avisar a los workers que estaban negociando
+    const closedOffers = await this.repo.closePendingOffers(params.requestId);
     this.realtimeGateway.server.emit('request.status.updated', {
       requestId: params.requestId,
       status: 'cancelled',
@@ -1048,6 +1068,26 @@ export class MobileRequestsService {
           requestId: params.requestId,
         })
         .catch((e) => this.logger.error('Failed to notify cancel', e));
+    }
+
+    // Avisar a los workers con ofertas pendientes que la solicitud se cerró
+    for (const closed of closedOffers) {
+      if (closed.workerUserId === params.userId) continue;
+      this.realtimeGateway.emitToUser(closed.workerUserId, 'job.cancelled', {
+        requestId: params.requestId,
+        cancelerUserId: params.userId,
+      });
+      const token = await this.repo.getLatestPushToken(closed.workerUserId);
+      this.notificationsService
+        .notifyRequestClosed({
+          userId: closed.workerUserId,
+          token,
+          jobTitle: req.title,
+          requestId: params.requestId,
+        })
+        .catch((e) =>
+          this.logger.error('Failed to notify pending-offer worker', e),
+        );
     }
 
     return { requestId: params.requestId, status: 'cancelled' };

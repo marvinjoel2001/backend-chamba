@@ -500,6 +500,44 @@ export class MobileController {
     });
   }
 
+  @Get('mobile/admin/offer-lifetime-settings')
+  getOfferLifetimeSettings() {
+    return this.mobileService.getOfferLifetimeSettings();
+  }
+
+  @Post('mobile/admin/offer-lifetime-settings')
+  updateOfferLifetimeSettings(
+    @Body('fixed') fixed: number,
+    @Body('hour') hour: number,
+    @Body('day') day: number,
+  ) {
+    return this.mobileService.updateOfferLifetimeSettings({
+      fixed: Number(fixed),
+      hour: Number(hour),
+      day: Number(day),
+    });
+  }
+
+  @Get('mobile/admin/request-timeout-settings')
+  getRequestTimeoutSettings() {
+    return this.mobileService.getRequestTimeoutSettings();
+  }
+
+  @Post('mobile/admin/request-timeout-settings')
+  updateRequestTimeoutSettings(
+    @Body()
+    payload: Record<
+      string,
+      {
+        timeoutMinutes?: number;
+        reminder1Minutes?: number;
+        reminder2Minutes?: number;
+      }
+    >,
+  ) {
+    return this.mobileService.updateRequestTimeoutSettings(payload ?? {});
+  }
+
   @Get('mobile/admin/requests/:requestId/notified-workers')
   getRequestNotifiedWorkers(@Param('requestId') requestId: string) {
     return this.mobileService.getRequestNotifiedWorkers(requestId);
