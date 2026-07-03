@@ -27,8 +27,8 @@ const AppDataSource = new DataSource({
   database: process.env.DATABASE_NAME,
   ssl:
     process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
-  entities: ['src/**/*.entity.ts'],
-  migrations: ['src/infrastructure/database/migrations/*.ts'],
+  entities: [__dirname + '/**/*.entity{.ts,.js}'],
+  migrations: [__dirname + '/infrastructure/database/migrations/*{.ts,.js}'],
   migrationsTableName: 'typeorm_migrations',
   synchronize: false,
 });
