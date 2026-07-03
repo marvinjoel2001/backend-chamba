@@ -652,9 +652,27 @@ export class MobileOffersService {
       );
     }
 
+    // La contraoferta del cliente es sobre el monto TOTAL. En modalidades por
+    // hora/día se recalcula la tarifa para que tarifa × unidades = total y
+    // todas las pantallas muestren números consistentes.
+    const modality = (request.modality ?? 'fixed').toString();
+    const estimatedHours = Number(request.estimatedHours) || 0;
+    const days = Number(request.days) || 0;
+    let extraSet = '';
+    const updateParams: unknown[] = [params.requestId, params.amount];
+    if (modality === 'hourly' && estimatedHours > 0) {
+      extraSet = ', hourly_rate = $3';
+      updateParams.push(
+        Math.round((params.amount / estimatedHours) * 100) / 100,
+      );
+    } else if (modality === 'daily' && days > 0) {
+      extraSet = ', daily_rate = $3';
+      updateParams.push(Math.round((params.amount / days) * 100) / 100);
+    }
+
     await this.dataSource.query(
-      `UPDATE job_requests SET budget = $2, status = 'negotiating', updated_at = NOW() WHERE id = $1`,
-      [params.requestId, params.amount],
+      `UPDATE job_requests SET budget = $2${extraSet}, status = 'negotiating', updated_at = NOW() WHERE id = $1`,
+      updateParams,
     );
 
     const workerRows = await this.dataSource.query<any[]>(
