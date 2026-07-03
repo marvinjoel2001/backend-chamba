@@ -368,7 +368,8 @@ export class MobileUsersService {
              work_radius_km,
              work_modalities,
              hourly_rate,
-             daily_rate
+             daily_rate,
+             verification_status
       FROM users
       WHERE id = $1 AND type = 'worker'
       LIMIT 1
@@ -430,7 +431,10 @@ export class MobileUsersService {
           worker.hourly_rate == null ? null : Number(worker.hourly_rate),
         dailyRate: worker.daily_rate == null ? null : Number(worker.daily_rate),
         skills: skillRows.map((row) => row.skill),
-        bio: 'Especialista verificado. Puntual, responsable y con experiencia en servicios de hogar.',
+        // No existe bio en la base: no inventar texto, el cliente debe ver
+        // solo datos reales del trabajador.
+        bio: null,
+        verificationStatus: worker.verification_status ?? 'not_verified',
         gallery: galleryRows.map((row) => row.url),
       },
       reviews: reviewRows.map((row) => ({
