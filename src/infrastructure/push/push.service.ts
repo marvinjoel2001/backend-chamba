@@ -84,6 +84,9 @@ export class PushService {
         notification: notification
           ? {
               priority: 'max',
+              // Canal creado por la app con sonido y vibración; sin esto
+              // Android puede mostrar la notificación en un canal sin sonido.
+              channelId: 'chamba_default_channel',
               defaultSound: true,
               defaultVibrateTimings: true,
             }
@@ -137,6 +140,9 @@ export class PushService {
         notification: notification
           ? {
               priority: 'max',
+              // Canal creado por la app con sonido y vibración; sin esto
+              // Android puede mostrar la notificación en un canal sin sonido.
+              channelId: 'chamba_default_channel',
               defaultSound: true,
               defaultVibrateTimings: true,
             }
