@@ -113,6 +113,7 @@ export class MobileRequestsService {
       LEFT JOIN worker_skill_agg sa ON sa.user_id = w.id
       WHERE w.type = 'worker'
         AND w.is_available = true
+        AND w.is_agency_worker = false
         AND w.current_location IS NOT NULL
         AND origin.point IS NOT NULL
         AND ST_DWithin(w.current_location, origin.point, $4::float8 * 1000)
@@ -427,9 +428,11 @@ export class MobileRequestsService {
              u.first_name,
              u.last_name,
              u.average_rating,
-             u.completed_jobs
+             u.completed_jobs,
+             a.name AS agency_name
       FROM job_offers jo
       JOIN users u ON u.id = jo.worker_user_id
+      LEFT JOIN agencies a ON a.id = jo.offered_by_agency_id
       WHERE jo.request_id = $1
         AND jo.status = 'pending'
         AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
@@ -464,13 +467,17 @@ export class MobileRequestsService {
         workerName: `${row.first_name} ${row.last_name ?? ''}`.trim(),
         averageRating: Number(row.average_rating ?? 0),
         completedJobs: Number(row.completed_jobs ?? 0),
+        agencyName: row.agency_name ?? null,
       })),
     };
   }
 
   public async getIncomingRequest(workerUserId: string) {
     await this.repo.expireStaleOffers();
-    await this.repo.getUserById(workerUserId);
+    const user = await this.repo.getUserById(workerUserId);
+
+    // Nota: El filtrado de isAgencyWorker se hace ahora en el query principal
+    // para no bloquear los trabajos que ya tienen asignados.
 
     const rows = await this.dataSource.query<any[]>(
       `
@@ -529,6 +536,7 @@ export class MobileRequestsService {
         AND (
           (
             jr.status IN ('searching', 'negotiating')
+            AND w.is_agency_worker = false
             AND w.current_location IS NOT NULL
             AND ST_DWithin(
               jr.location,

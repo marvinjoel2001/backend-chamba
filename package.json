@@ -27,7 +27,8 @@
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/data-source.ts",
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/data-source.ts",
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/data-source.ts",
-    "migration:create": "typeorm-ts-node-commonjs migration:create"
+    "migration:create": "typeorm-ts-node-commonjs migration:create",
+    "seed:agency": "ts-node src/infrastructure/database/seeds/seed-agency.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1003.0",

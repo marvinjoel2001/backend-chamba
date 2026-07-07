@@ -49,6 +49,8 @@ let User = class User {
     workModalities;
     hourlyRate;
     dailyRate;
+    agencyId;
+    isAgencyWorker;
     createdAt;
     updatedAt;
 };
@@ -216,6 +218,16 @@ __decorate([
     }),
     __metadata("design:type", Number)
 ], User.prototype, "dailyRate", void 0);
+__decorate([
+    (0, swagger_1.ApiPropertyOptional)({ format: 'uuid' }),
+    (0, typeorm_1.Column)({ name: 'agency_id', type: 'uuid', nullable: true }),
+    __metadata("design:type", String)
+], User.prototype, "agencyId", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ example: false }),
+    (0, typeorm_1.Column)({ name: 'is_agency_worker', type: 'boolean', default: false }),
+    __metadata("design:type", Boolean)
+], User.prototype, "isAgencyWorker", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({ type: String, example: '2026-03-08T22:42:26.170Z' }),
     (0, typeorm_1.CreateDateColumn)({ name: 'created_at' }),

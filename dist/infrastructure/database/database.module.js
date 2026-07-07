@@ -13,6 +13,8 @@ const typeorm_1 = require("@nestjs/typeorm");
 const database_bootstrap_service_1 = require("./database.bootstrap.service");
 const _1717000000000_InitialBaselineSchema_1 = require("./migrations/1717000000000-InitialBaselineSchema");
 const _1781633301782_AddModalityToJobRequests_1 = require("./migrations/1781633301782-AddModalityToJobRequests");
+const _1782866723182_AddReminderLevelToJobRequests_1 = require("./migrations/1782866723182-AddReminderLevelToJobRequests");
+const _1783500000000_AddStartReminderSentAndTimeConfigSeeds_1 = require("./migrations/1783500000000-AddStartReminderSentAndTimeConfigSeeds");
 let DatabaseModule = class DatabaseModule {
 };
 exports.DatabaseModule = DatabaseModule;
@@ -37,6 +39,8 @@ exports.DatabaseModule = DatabaseModule = __decorate([
                     migrations: [
                         _1717000000000_InitialBaselineSchema_1.InitialBaselineSchema1717000000000,
                         _1781633301782_AddModalityToJobRequests_1.AddModalityToJobRequests1781633301782,
+                        _1782866723182_AddReminderLevelToJobRequests_1.AddReminderLevelToJobRequests1782866723182,
+                        _1783500000000_AddStartReminderSentAndTimeConfigSeeds_1.AddStartReminderSentAndTimeConfigSeeds1783500000000,
                     ],
                     migrationsRun: true,
                     migrationsTableName: 'typeorm_migrations',

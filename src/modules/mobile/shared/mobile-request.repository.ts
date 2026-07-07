@@ -161,6 +161,8 @@ export class MobileRequestRepository {
              verification_reviewed_at,
              is_available,
              work_radius_km,
+             is_agency_worker,
+             agency_id,
              ST_Y(current_location::geometry) AS current_latitude,
              ST_X(current_location::geometry) AS current_longitude
       FROM users
@@ -191,6 +193,8 @@ export class MobileRequestRepository {
       facePhotoVerified: row.face_photo_verified ?? null,
       verificationReviewedAt: row.verification_reviewed_at ?? null,
       isAvailable: row.is_available,
+      isAgencyWorker: row.is_agency_worker ?? false,
+      agencyId: row.agency_id ?? null,
       workRadiusKm: Number(row.work_radius_km ?? 0),
       currentLatitude:
         row.current_latitude == null ? null : Number(row.current_latitude),

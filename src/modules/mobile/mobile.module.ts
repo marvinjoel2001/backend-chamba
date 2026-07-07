@@ -41,6 +41,6 @@ import { MobileRequestsCronService } from './services/mobile-requests-cron.servi
     WaveDispatchProcessorService,
     MobileRequestsCronService,
   ],
-  exports: [MobileService],
+  exports: [MobileService, MobileOffersService],
 })
 export class MobileModule {}

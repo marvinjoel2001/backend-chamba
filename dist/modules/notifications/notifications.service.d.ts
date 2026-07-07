@@ -97,6 +97,14 @@ export declare class NotificationsService {
         jobTitle: string;
         requestId: string;
     }): Promise<string | null>;
+    notifyWorkerAgencyOffer(params: {
+        userId: string;
+        token: string | null;
+        agencyName: string;
+        amount: number;
+        jobTitle: string;
+        requestId: string;
+    }): Promise<string | null>;
     notifyNewReview(params: {
         userId: string;
         token: string | null;
@@ -135,6 +143,27 @@ export declare class NotificationsService {
         token: string | null;
         jobTitle: string;
         requestId: string;
+    }): Promise<string | null>;
+    notifyRequestClosed(params: {
+        userId: string;
+        token: string | null;
+        jobTitle: string;
+        requestId: string;
+    }): Promise<string | null>;
+    notifyWorkerJobStartingSoon(params: {
+        userId: string;
+        token: string | null;
+        jobTitle: string;
+        requestId: string;
+        startsInLabel: string;
+    }): Promise<string | null>;
+    notifyClientJobStartingSoon(params: {
+        userId: string;
+        token: string | null;
+        workerName: string;
+        jobTitle: string;
+        requestId: string;
+        startsInLabel: string;
     }): Promise<string | null>;
     getUserNotifications(userId: string, page?: number, limit?: number): Promise<{
         items: Notification[];

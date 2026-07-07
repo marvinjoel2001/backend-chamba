@@ -163,6 +163,14 @@ export class User {
   })
   dailyRate?: number;
 
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Column({ name: 'agency_id', type: 'uuid', nullable: true })
+  agencyId?: string;
+
+  @ApiProperty({ example: false })
+  @Column({ name: 'is_agency_worker', type: 'boolean', default: false })
+  isAgencyWorker: boolean;
+
   @ApiProperty({ type: String, example: '2026-03-08T22:42:26.170Z' })
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

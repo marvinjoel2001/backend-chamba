@@ -37,6 +37,8 @@ export declare class User {
     workModalities?: string[];
     hourlyRate?: number;
     dailyRate?: number;
+    agencyId?: string;
+    isAgencyWorker: boolean;
     createdAt: Date;
     updatedAt: Date;
 }

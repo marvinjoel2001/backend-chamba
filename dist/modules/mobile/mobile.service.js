@@ -161,7 +161,9 @@ let MobileService = class MobileService {
              u.face_photo_url,
              u.id_photo_verified,
              u.face_photo_verified,
-             u.is_blocked
+             u.is_blocked,
+             u.is_agency_worker,
+             u.agency_id
       FROM users u
       JOIN auth_credentials c ON c.user_id = u.id
       WHERE (
@@ -193,6 +195,8 @@ let MobileService = class MobileService {
                 idPhotoVerified: row.id_photo_verified,
                 facePhotoVerified: row.face_photo_verified,
                 isBlocked: row.is_blocked,
+                isAgencyWorker: row.is_agency_worker ?? false,
+                agencyId: row.agency_id ?? null,
             },
             token: 'fake-jwt-token-for-now',
         };
@@ -366,6 +370,9 @@ let MobileService = class MobileService {
     }
     async archiveThread(params) {
         return this.chatService.archiveThread(params);
+    }
+    async markThreadRead(threadId, userId) {
+        return this.chatService.markThreadRead(threadId, userId);
     }
     async broadcastNotification(payload) {
         return this.adminService.broadcastNotification(payload);
@@ -731,6 +738,18 @@ let MobileService = class MobileService {
     }
     async updateAdminWorkerNotificationSettings(params) {
         return this.adminService.updateAdminWorkerNotificationSettings(params);
+    }
+    async getOfferLifetimeSettings() {
+        return this.adminService.getOfferLifetimeSettings();
+    }
+    async updateOfferLifetimeSettings(params) {
+        return this.adminService.updateOfferLifetimeSettings(params);
+    }
+    async getRequestTimeoutSettings() {
+        return this.adminService.getRequestTimeoutSettings();
+    }
+    async updateRequestTimeoutSettings(params) {
+        return this.adminService.updateRequestTimeoutSettings(params);
     }
     async getRequestNotifiedWorkers(requestId) {
         return this.adminService.getRequestNotifiedWorkers(requestId);

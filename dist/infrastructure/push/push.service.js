@@ -70,6 +70,7 @@ let PushService = PushService_1 = class PushService {
                 notification: notification
                     ? {
                         priority: 'max',
+                        channelId: 'chamba_default_channel',
                         defaultSound: true,
                         defaultVibrateTimings: true,
                     }
@@ -111,6 +112,7 @@ let PushService = PushService_1 = class PushService {
                 notification: notification
                     ? {
                         priority: 'max',
+                        channelId: 'chamba_default_channel',
                         defaultSound: true,
                         defaultVibrateTimings: true,
                     }

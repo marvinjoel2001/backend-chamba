@@ -458,6 +458,45 @@ export class NotificationsService {
     });
   }
 
+  async notifyWorkerAgencyOffer(params: {
+    userId: string;
+    token: string | null;
+    agencyName: string;
+    amount: number;
+    jobTitle: string;
+    requestId: string;
+  }): Promise<string | null> {
+    const title = `🏢 ${params.agencyName} te postuló a un trabajo`;
+    const body = `Oferta de Bs ${params.amount} en: ${params.jobTitle}`;
+    const type = 'agency_offer_sent';
+
+    await this.notificationRepository.save(
+      this.notificationRepository.create({
+        userId: params.userId,
+        title,
+        body,
+        type,
+        data: {
+          requestId: params.requestId,
+          deep_link: `/request/${params.requestId}`,
+        },
+      }),
+    );
+
+    if (!params.token) return null;
+    return this.pushService.sendToToken({
+      token: params.token,
+      title,
+      body,
+      data: {
+        type,
+        requestId: params.requestId,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        deep_link: `/request/${params.requestId}`,
+      },
+    });
+  }
+
   async notifyNewReview(params: {
     userId: string;
     token: string | null;

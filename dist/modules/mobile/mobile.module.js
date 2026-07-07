@@ -53,7 +53,7 @@ exports.MobileModule = MobileModule = __decorate([
             wave_dispatch_processor_service_1.WaveDispatchProcessorService,
             mobile_requests_cron_service_1.MobileRequestsCronService,
         ],
-        exports: [mobile_service_1.MobileService],
+        exports: [mobile_service_1.MobileService, mobile_offers_service_1.MobileOffersService],
     })
 ], MobileModule);
 //# sourceMappingURL=mobile.module.js.map

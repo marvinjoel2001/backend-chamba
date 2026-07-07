@@ -35,6 +35,8 @@ export declare class MobileController {
             idPhotoVerified: any;
             facePhotoVerified: any;
             isBlocked: any;
+            isAgencyWorker: any;
+            agencyId: any;
         };
         token: string;
     }>;
@@ -106,6 +108,8 @@ export declare class MobileController {
             facePhotoVerified: any;
             verificationReviewedAt: any;
             isAvailable: any;
+            isAgencyWorker: any;
+            agencyId: any;
             workRadiusKm: number;
             currentLatitude: number | null;
             currentLongitude: number | null;
@@ -226,6 +230,8 @@ export declare class MobileController {
             facePhotoVerified: any;
             verificationReviewedAt: any;
             isAvailable: any;
+            isAgencyWorker: any;
+            agencyId: any;
             workRadiusKm: number;
             currentLatitude: number | null;
             currentLongitude: number | null;
@@ -248,6 +254,8 @@ export declare class MobileController {
             facePhotoVerified: any;
             verificationReviewedAt: any;
             isAvailable: any;
+            isAgencyWorker: any;
+            agencyId: any;
             workRadiusKm: number;
             currentLatitude: number | null;
             currentLongitude: number | null;
@@ -271,6 +279,8 @@ export declare class MobileController {
             facePhotoVerified: any;
             verificationReviewedAt: any;
             isAvailable: any;
+            isAgencyWorker: any;
+            agencyId: any;
             workRadiusKm: number;
             currentLatitude: number | null;
             currentLongitude: number | null;
@@ -355,6 +365,7 @@ export declare class MobileController {
             workerName: string;
             averageRating: number;
             completedJobs: number;
+            agencyName: any;
         }[];
     }>;
     getOffers(requestId?: string, clientUserId?: string): Promise<{
@@ -432,6 +443,7 @@ export declare class MobileController {
                 skills: any;
                 distanceKm: number | null;
             };
+            agencyName: any;
         }[];
         offerLifetimeSeconds: number;
     }>;
@@ -448,7 +460,8 @@ export declare class MobileController {
             hourlyRate: number | null;
             dailyRate: number | null;
             skills: any[];
-            bio: string;
+            bio: null;
+            verificationStatus: any;
             gallery: any[];
         };
         reviews: {
@@ -477,9 +490,12 @@ export declare class MobileController {
                 firstName: any;
                 lastName: any;
                 profilePhotoUrl: any;
+                phone: any;
             };
             lastMessage: any;
             lastMessageAt: any;
+            unreadCount: any;
+            hasUnreadMessages: boolean;
         }[];
     }>;
     getThreadMessages(threadId: string, limit?: string, before?: string): Promise<{
@@ -502,6 +518,9 @@ export declare class MobileController {
     }>;
     archiveThread(threadId: string, userId: string): Promise<{
         success: boolean;
+    }>;
+    markThreadRead(threadId: string, userId: string): Promise<{
+        ok: boolean;
     }>;
     broadcastNotification(payload: {
         target: 'all' | 'workers' | 'clients' | 'custom';
@@ -708,6 +727,8 @@ export declare class MobileController {
             facePhotoVerified: any;
             verificationReviewedAt: any;
             isAvailable: any;
+            isAgencyWorker: any;
+            agencyId: any;
             workRadiusKm: number;
             currentLatitude: number | null;
             currentLongitude: number | null;
@@ -785,6 +806,31 @@ export declare class MobileController {
     updateAdminWorkerNotificationSettings(radiusKm: number): Promise<{
         radiusKm: number;
     }>;
+    getOfferLifetimeSettings(): Promise<{
+        fixed: number;
+        hour: number;
+        day: number;
+        defaults: {
+            fixed: number;
+            hour: number;
+            day: number;
+        };
+    }>;
+    updateOfferLifetimeSettings(fixed: number, hour: number, day: number): Promise<Record<string, number>>;
+    getRequestTimeoutSettings(): Promise<Record<"fixed" | "hour" | "day", {
+        timeoutMinutes: number;
+        reminder1Minutes: number;
+        reminder2Minutes: number;
+    }>>;
+    updateRequestTimeoutSettings(payload: Record<string, {
+        timeoutMinutes?: number;
+        reminder1Minutes?: number;
+        reminder2Minutes?: number;
+    }>): Promise<Record<"fixed" | "hour" | "day", {
+        timeoutMinutes: number;
+        reminder1Minutes: number;
+        reminder2Minutes: number;
+    }>>;
     getRequestNotifiedWorkers(requestId: string): Promise<{
         requestId: string;
         total: number;

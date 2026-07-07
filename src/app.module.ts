@@ -19,6 +19,7 @@ import { PaymentMethodsModule } from './modules/payment-methods/payment-methods.
 import { WorkerLeadsModule } from './modules/worker-leads/worker-leads.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AdminUsersModule } from './modules/admin-users/admin-users.module';
+import { AgencyModule } from './modules/agency/agency.module';
 
 const envFilePath =
   process.env.NODE_ENV === 'production'
@@ -53,6 +54,7 @@ const envFilePath =
     WorkerLeadsModule,
     AdminUsersModule,
     AuthModule,
+    AgencyModule,
   ],
   providers: [HttpLoggerInterceptor],
 })

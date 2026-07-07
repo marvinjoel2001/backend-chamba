@@ -28,6 +28,7 @@ const payment_methods_module_1 = require("./modules/payment-methods/payment-meth
 const worker_leads_module_1 = require("./modules/worker-leads/worker-leads.module");
 const auth_module_1 = require("./modules/auth/auth.module");
 const admin_users_module_1 = require("./modules/admin-users/admin-users.module");
+const agency_module_1 = require("./modules/agency/agency.module");
 const envFilePath = process.env.NODE_ENV === 'production'
     ? ['.env.production', '.env']
     : ['.env.local', '.env'];
@@ -63,6 +64,7 @@ exports.AppModule = AppModule = __decorate([
             worker_leads_module_1.WorkerLeadsModule,
             admin_users_module_1.AdminUsersModule,
             auth_module_1.AuthModule,
+            agency_module_1.AgencyModule,
         ],
         providers: [http_logger_interceptor_1.HttpLoggerInterceptor],
     })

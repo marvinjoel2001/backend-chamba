@@ -169,6 +169,9 @@ let MobileController = class MobileController {
     archiveThread(threadId, userId) {
         return this.mobileService.archiveThread({ threadId, userId });
     }
+    markThreadRead(threadId, userId) {
+        return this.mobileService.markThreadRead(threadId, userId);
+    }
     broadcastNotification(payload) {
         return this.mobileService.broadcastNotification(payload);
     }
@@ -249,6 +252,22 @@ let MobileController = class MobileController {
         return this.mobileService.updateAdminWorkerNotificationSettings({
             radiusKm: Number(radiusKm),
         });
+    }
+    getOfferLifetimeSettings() {
+        return this.mobileService.getOfferLifetimeSettings();
+    }
+    updateOfferLifetimeSettings(fixed, hour, day) {
+        return this.mobileService.updateOfferLifetimeSettings({
+            fixed: Number(fixed),
+            hour: Number(hour),
+            day: Number(day),
+        });
+    }
+    getRequestTimeoutSettings() {
+        return this.mobileService.getRequestTimeoutSettings();
+    }
+    updateRequestTimeoutSettings(payload) {
+        return this.mobileService.updateRequestTimeoutSettings(payload ?? {});
     }
     getRequestNotifiedWorkers(requestId) {
         return this.mobileService.getRequestNotifiedWorkers(requestId);
@@ -613,6 +632,14 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "archiveThread", null);
 __decorate([
+    (0, common_1.Post)('mobile/messages/:threadId/read'),
+    __param(0, (0, common_1.Param)('threadId')),
+    __param(1, (0, common_1.Body)('userId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "markThreadRead", null);
+__decorate([
     (0, common_1.Post)('mobile/admin/notifications/broadcast'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -781,6 +808,34 @@ __decorate([
     __metadata("design:paramtypes", [Number]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "updateAdminWorkerNotificationSettings", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/offer-lifetime-settings'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getOfferLifetimeSettings", null);
+__decorate([
+    (0, common_1.Post)('mobile/admin/offer-lifetime-settings'),
+    __param(0, (0, common_1.Body)('fixed')),
+    __param(1, (0, common_1.Body)('hour')),
+    __param(2, (0, common_1.Body)('day')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Number, Number]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "updateOfferLifetimeSettings", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/request-timeout-settings'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getRequestTimeoutSettings", null);
+__decorate([
+    (0, common_1.Post)('mobile/admin/request-timeout-settings'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "updateRequestTimeoutSettings", null);
 __decorate([
     (0, common_1.Get)('mobile/admin/requests/:requestId/notified-workers'),
     __param(0, (0, common_1.Param)('requestId')),

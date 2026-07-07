@@ -52,6 +52,7 @@ export class MobileOffersService {
              u.average_rating,
              u.completed_jobs,
              sa.skills,
+             a.name AS agency_name,
              CASE
                WHEN u.current_location IS NOT NULL
                  THEN ST_Distance(u.current_location, jr.location) / 1000.0
@@ -61,6 +62,7 @@ export class MobileOffersService {
       JOIN users u ON u.id = jo.worker_user_id
       JOIN job_requests jr ON jr.id = jo.request_id
       LEFT JOIN skill_agg sa ON sa.user_id = u.id
+      LEFT JOIN agencies a ON a.id = jo.offered_by_agency_id
       WHERE jo.request_id = $1
         AND jo.status = 'pending'
         AND (jo.expires_at IS NULL OR jo.expires_at > NOW())
@@ -98,6 +100,7 @@ export class MobileOffersService {
           skills: row.skills ?? [],
           distanceKm: row.distance_km == null ? null : Number(row.distance_km),
         },
+        agencyName: row.agency_name ?? null,
       })),
       offerLifetimeSeconds,
     };
@@ -108,6 +111,7 @@ export class MobileOffersService {
     workerUserId: string;
     amount: number;
     message?: string;
+    offeredByAgencyId?: string;
   }) {
     if (!Number.isFinite(params.amount) || params.amount <= 0) {
       throw new BadRequestException('amount must be greater than 0');
@@ -150,6 +154,7 @@ export class MobileOffersService {
             message = $3,
             status = 'pending',
             expires_at = NOW() + ($4::int * INTERVAL '1 second'),
+            offered_by_agency_id = $5,
             created_at = NOW()
         WHERE id = $1
         `,
@@ -158,14 +163,15 @@ export class MobileOffersService {
           params.amount,
           params.message ?? null,
           offerLifetimeSeconds,
+          params.offeredByAgencyId ?? null,
         ],
       );
       offerId = existingRows[0].id;
     } else {
       const rows = await this.dataSource.query<any[]>(
         `
-        INSERT INTO job_offers (request_id, worker_user_id, amount, message, status, expires_at)
-        VALUES ($1, $2, $3, $4, 'pending', NOW() + ($5::int * INTERVAL '1 second'))
+        INSERT INTO job_offers (request_id, worker_user_id, amount, message, status, expires_at, offered_by_agency_id)
+        VALUES ($1, $2, $3, $4, 'pending', NOW() + ($5::int * INTERVAL '1 second'), $6)
         RETURNING id
         `,
         [
@@ -174,6 +180,7 @@ export class MobileOffersService {
           params.amount,
           params.message ?? null,
           offerLifetimeSeconds,
+          params.offeredByAgencyId ?? null,
         ],
       );
       offerId = rows[0].id;
