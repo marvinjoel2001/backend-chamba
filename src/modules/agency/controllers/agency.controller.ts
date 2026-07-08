@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -56,6 +57,15 @@ export class AgencyController {
     @Param('workerUserId', ParseUUIDPipe) workerUserId: string,
   ) {
     return this.agencyService.unlinkWorker(agency.agencyId, workerUserId);
+  }
+
+  @Patch('workers/:workerUserId/block')
+  @ApiOperation({ summary: 'Bloquear o desbloquear un trabajador de la agencia' })
+  toggleWorkerBlock(
+    @CurrentAgency() agency: AgencyPrincipal,
+    @Param('workerUserId', ParseUUIDPipe) workerUserId: string,
+  ) {
+    return this.agencyService.toggleWorkerBlock(agency.agencyId, workerUserId);
   }
 
   @Get('jobs/assigned')

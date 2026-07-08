@@ -164,6 +164,32 @@ export class AgencyService {
     return { unlinked: true, workerUserId };
   }
 
+  public async toggleWorkerBlock(agencyId: string, workerUserId: string) {
+    const [rows] = await this.dataSource.query<[any[], number]>(
+      `
+      UPDATE users
+      SET is_blocked = NOT COALESCE(is_blocked, false),
+          updated_at = NOW()
+      WHERE id = $1
+        AND agency_id = $2
+        AND is_agency_worker = true
+      RETURNING id, is_blocked
+      `,
+      [workerUserId, agencyId],
+    );
+
+    if (!rows[0]) {
+      throw new NotFoundException('El trabajador no pertenece a tu agencia');
+    }
+
+    const isBlocked = rows[0].is_blocked;
+    this.logger.log(
+      `[toggleWorkerBlock] Agencia ${agencyId} ${isBlocked ? 'bloqueó' : 'desbloqueó'} al trabajador ${workerUserId}`,
+    );
+
+    return { blocked: isBlocked, workerUserId };
+  }
+
   // ── Trabajos activos (mapa) ─────────────────────────────────────
 
   public async getActiveJobs(
