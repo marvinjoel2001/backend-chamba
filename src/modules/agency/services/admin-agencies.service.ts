@@ -138,4 +138,26 @@ export class AdminAgenciesService {
       offersAcceptedCount: Number(row.offers_accepted_count ?? 0),
     };
   }
+
+  public async remove(agencyId: string) {
+    const existing = await this.dataSource.query<any[]>(
+      `SELECT id FROM agencies WHERE id = $1 LIMIT 1`,
+      [agencyId],
+    );
+    if (!existing[0]) {
+      throw new NotFoundException('Agencia no encontrada');
+    }
+
+    try {
+      await this.dataSource.query(
+        `DELETE FROM agencies WHERE id = $1`,
+        [agencyId],
+      );
+    } catch (e: any) {
+      if (e.code === '23503') {
+        throw new ConflictException('No se puede eliminar la agencia porque tiene trabajadores u ofertas asociadas.');
+      }
+      throw e;
+    }
+  }
 }

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -43,5 +44,11 @@ export class AdminAgenciesController {
     @Body() dto: UpdateAgencyDto,
   ) {
     return this.adminAgenciesService.update(agencyId, dto);
+  }
+
+  @Delete(':agencyId')
+  @ApiOperation({ summary: 'Eliminar agencia (si no tiene trabajadores u ofertas)' })
+  remove(@Param('agencyId', ParseUUIDPipe) agencyId: string) {
+    return this.adminAgenciesService.remove(agencyId);
   }
 }
