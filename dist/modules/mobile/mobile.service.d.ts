@@ -521,6 +521,14 @@ export declare class MobileService implements OnModuleInit {
             };
             agencyName: any;
         }[];
+        nearbyWorkers: {
+            id: string;
+            firstName: string;
+            profilePhotoUrl: string | null;
+            latitude: number;
+            longitude: number;
+            distanceKm: number;
+        }[];
         offerLifetimeSeconds: number;
     }>;
     getWorkerProfile(workerId: string): Promise<{

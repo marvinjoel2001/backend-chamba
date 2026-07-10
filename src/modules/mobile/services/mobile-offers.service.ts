@@ -75,6 +75,11 @@ export class MobileOffersService {
       ],
     );
 
+    // Trabajadores reales cercanos y disponibles, para que la pantalla de
+    // "Buscando trabajadores" del cliente muestre sus fotos/ubicaciones en el
+    // mapa en vez de la simulación con avatares ficticios.
+    const nearbyWorkers = await this.getNearbyWorkersForRequest(request.id);
+
     return {
       request: {
         ...request,
@@ -102,8 +107,61 @@ export class MobileOffersService {
         },
         agencyName: row.agency_name ?? null,
       })),
+      nearbyWorkers,
       offerLifetimeSeconds,
     };
+  }
+
+  private async getNearbyWorkersForRequest(requestId: string): Promise<
+    Array<{
+      id: string;
+      firstName: string;
+      profilePhotoUrl: string | null;
+      latitude: number;
+      longitude: number;
+      distanceKm: number;
+    }>
+  > {
+    try {
+      const radiusKm = await this.repo.getWorkerNotificationRadiusKm();
+      const rows = await this.dataSource.query<any[]>(
+        `
+        SELECT u.id,
+               u.first_name,
+               u.profile_photo_url,
+               ST_Y(u.current_location::geometry) AS latitude,
+               ST_X(u.current_location::geometry) AS longitude,
+               ST_Distance(u.current_location, jr.location) / 1000.0 AS distance_km
+        FROM users u
+        JOIN job_requests jr ON jr.id = $1
+        WHERE u.type = 'worker'
+          AND u.is_available = true
+          AND u.is_blocked = false
+          AND u.is_agency_worker = false
+          AND u.current_location IS NOT NULL
+          AND u.id <> jr.client_user_id
+          AND ST_DWithin(u.current_location, jr.location, $2::float8 * 1000)
+        ORDER BY distance_km ASC
+        LIMIT 8
+        `,
+        [requestId, radiusKm],
+      );
+
+      return rows.map((row) => ({
+        id: row.id,
+        firstName: row.first_name,
+        profilePhotoUrl: row.profile_photo_url ?? null,
+        latitude: Number(row.latitude),
+        longitude: Number(row.longitude),
+        distanceKm: Number(row.distance_km ?? 0),
+      }));
+    } catch (error) {
+      // La lista de cercanos es decorativa: nunca debe romper getOffers.
+      this.logger.warn(
+        `[getNearbyWorkersForRequest] fallo al buscar cercanos: ${(error as Error).message}`,
+      );
+      return [];
+    }
   }
 
   public async upsertOffer(params: {
