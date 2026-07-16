@@ -371,6 +371,9 @@ let MobileService = class MobileService {
     async archiveThread(params) {
         return this.chatService.archiveThread(params);
     }
+    async deleteThread(params) {
+        return this.chatService.deleteThread(params);
+    }
     async markThreadRead(threadId, userId) {
         return this.chatService.markThreadRead(threadId, userId);
     }

@@ -312,6 +312,14 @@ export class MobileController {
     return this.mobileService.archiveThread({ threadId, userId });
   }
 
+  @Post('mobile/messages/:threadId/delete')
+  deleteThread(
+    @Param('threadId') threadId: string,
+    @Body('userId') userId: string,
+  ) {
+    return this.mobileService.deleteThread({ threadId, userId });
+  }
+
   @Post('mobile/messages/:threadId/read')
   markThreadRead(
     @Param('threadId') threadId: string,

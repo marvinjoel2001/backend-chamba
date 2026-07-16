@@ -58,7 +58,8 @@ export class MobileChatService {
         ORDER BY m.created_at DESC
         LIMIT 1
       ) lm ON true
-      WHERE t.client_user_id = $1 OR t.worker_user_id = $1
+      WHERE (t.client_user_id = $1 AND COALESCE(t.client_deleted, false) = false)
+         OR (t.worker_user_id = $1 AND COALESCE(t.worker_deleted, false) = false)
       ORDER BY COALESCE(lm.created_at, t.updated_at) DESC
       `,
       [userId],
@@ -157,6 +158,20 @@ export class MobileChatService {
     return { success: true };
   }
 
+  public async deleteThread(params: { threadId: string; userId: string }) {
+    await this.repo.ensureThreadExists(params.threadId);
+    await this.dataSource.query(
+      `
+      UPDATE chat_threads
+      SET client_deleted = CASE WHEN client_user_id = $2 THEN true ELSE client_deleted END,
+          worker_deleted = CASE WHEN worker_user_id = $2 THEN true ELSE worker_deleted END
+      WHERE id = $1
+      `,
+      [params.threadId, params.userId],
+    );
+    return { success: true };
+  }
+
   public async sendMessage(params: {
     threadId: string;
     senderUserId: string;
@@ -179,7 +194,7 @@ export class MobileChatService {
     );
 
     await this.dataSource.query(
-      `UPDATE chat_threads SET updated_at = NOW() WHERE id = $1`,
+      `UPDATE chat_threads SET updated_at = NOW(), client_deleted = false, worker_deleted = false WHERE id = $1`,
       [params.threadId],
     );
 

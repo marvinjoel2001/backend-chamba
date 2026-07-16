@@ -520,6 +520,10 @@ export class MobileService implements OnModuleInit {
     return this.chatService.archiveThread(params);
   }
 
+  async deleteThread(params: { threadId: string; userId: string }) {
+    return this.chatService.deleteThread(params);
+  }
+
   async markThreadRead(threadId: string, userId: string) {
     return this.chatService.markThreadRead(threadId, userId);
   }

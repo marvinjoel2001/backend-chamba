@@ -601,6 +601,12 @@ export declare class MobileService implements OnModuleInit {
     }): Promise<{
         success: boolean;
     }>;
+    deleteThread(params: {
+        threadId: string;
+        userId: string;
+    }): Promise<{
+        success: boolean;
+    }>;
     markThreadRead(threadId: string, userId: string): Promise<{
         ok: boolean;
     }>;

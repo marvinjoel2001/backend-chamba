@@ -527,6 +527,9 @@ export declare class MobileController {
     archiveThread(threadId: string, userId: string): Promise<{
         success: boolean;
     }>;
+    deleteThread(threadId: string, userId: string): Promise<{
+        success: boolean;
+    }>;
     markThreadRead(threadId: string, userId: string): Promise<{
         ok: boolean;
     }>;

@@ -169,6 +169,9 @@ let MobileController = class MobileController {
     archiveThread(threadId, userId) {
         return this.mobileService.archiveThread({ threadId, userId });
     }
+    deleteThread(threadId, userId) {
+        return this.mobileService.deleteThread({ threadId, userId });
+    }
     markThreadRead(threadId, userId) {
         return this.mobileService.markThreadRead(threadId, userId);
     }
@@ -631,6 +634,14 @@ __decorate([
     __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "archiveThread", null);
+__decorate([
+    (0, common_1.Post)('mobile/messages/:threadId/delete'),
+    __param(0, (0, common_1.Param)('threadId')),
+    __param(1, (0, common_1.Body)('userId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "deleteThread", null);
 __decorate([
     (0, common_1.Post)('mobile/messages/:threadId/read'),
     __param(0, (0, common_1.Param)('threadId')),
