@@ -19,10 +19,35 @@ export class PaymentMethodsService {
 
   async findAll(includeInactive = false): Promise<PaymentMethod[]> {
     const where = includeInactive ? {} : { isActive: true };
-    return this.paymentMethodRepository.find({
+    const methods = await this.paymentMethodRepository.find({
       where,
       order: { sortOrder: 'ASC', name: 'ASC' },
     });
+
+    if (!includeInactive) {
+      const rows = await this.paymentMethodRepository.manager.query(
+        `SELECT value_json FROM app_config WHERE key = 'stripe_config' LIMIT 1`,
+      );
+      if (rows[0]) {
+        const val = typeof rows[0].value_json === 'string'
+            ? JSON.parse(rows[0].value_json)
+            : rows[0].value_json;
+        if (val && val.active) {
+          const cardMethod = new PaymentMethod();
+          cardMethod.id = 'stripe-card';
+          cardMethod.name = 'Tarjeta';
+          cardMethod.code = 'card';
+          cardMethod.description = 'Paga de forma segura con tarjeta';
+          cardMethod.icon = 'credit-card';
+          cardMethod.color = '#5469d4'; // Stripe blurple
+          cardMethod.isActive = true;
+          cardMethod.sortOrder = 2;
+          methods.push(cardMethod);
+        }
+      }
+    }
+
+    return methods;
   }
 
   async findOne(id: string): Promise<PaymentMethod> {

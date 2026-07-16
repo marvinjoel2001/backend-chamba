@@ -1126,6 +1126,18 @@ export class MobileService implements OnModuleInit {
     return this.adminService.updateAiConfig(params);
   }
 
+  async getStripeConfig() {
+    return this.adminService.getStripeConfig();
+  }
+
+  async updateStripeConfig(params: {
+    active: boolean;
+    publishableKey: string;
+    secretKey: string;
+  }) {
+    return this.adminService.updateStripeConfig(params);
+  }
+
   async updateCategory(params: {
     id: string;
     name?: string;

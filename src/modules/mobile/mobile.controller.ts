@@ -800,6 +800,24 @@ export class MobileController {
     });
   }
 
+  @Get('mobile/admin/stripe-config')
+  getStripeConfig() {
+    return this.mobileService.getStripeConfig();
+  }
+
+  @Post('mobile/admin/stripe-config')
+  updateStripeConfig(
+    @Body('active') active: boolean,
+    @Body('publishableKey') publishableKey: string,
+    @Body('secretKey') secretKey: string,
+  ) {
+    return this.mobileService.updateStripeConfig({
+      active: active === true || active === 'true' as any,
+      publishableKey: publishableKey ?? '',
+      secretKey: secretKey ?? '',
+    });
+  }
+
   // --- Admin: Categories CRUD ---
 
   @Get('mobile/admin/categories')
