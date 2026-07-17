@@ -689,6 +689,67 @@ export class MobileAdminService {
     return value;
   }
 
+  // ── Stripe config (switch centralizado de pagos con tarjeta) ────
+
+  public async getStripeConfig() {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT value_json FROM app_config WHERE key = 'stripe_config' LIMIT 1`,
+    );
+    const val = rows[0]
+      ? typeof rows[0].value_json === 'string'
+        ? JSON.parse(rows[0].value_json)
+        : rows[0].value_json
+      : {};
+
+    const secretKey: string = val?.secretKey ?? '';
+    // Nunca devolver la secret key completa: solo si está configurada y sus
+    // últimos 4 caracteres para que el admin la identifique.
+    return {
+      active: val?.active === true,
+      publishableKey: val?.publishableKey ?? '',
+      currency: val?.currency ?? 'usd',
+      secretKeySet: secretKey.length > 0,
+      secretKeyLast4: secretKey.length > 4 ? secretKey.slice(-4) : '',
+    };
+  }
+
+  public async updateStripeConfig(params: {
+    active: boolean;
+    publishableKey: string;
+    secretKey: string;
+    currency?: string;
+  }) {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT value_json FROM app_config WHERE key = 'stripe_config' LIMIT 1`,
+    );
+    const previous = rows[0]
+      ? typeof rows[0].value_json === 'string'
+        ? JSON.parse(rows[0].value_json)
+        : rows[0].value_json
+      : {};
+
+    const value = {
+      active: params.active === true,
+      publishableKey: params.publishableKey || previous?.publishableKey || '',
+      // Si no envían secretKey se conserva la anterior (permite togglear
+      // active sin re-pegar la llave).
+      secretKey: params.secretKey || previous?.secretKey || '',
+      currency: (params.currency || previous?.currency || 'usd').toLowerCase(),
+    };
+
+    await this.dataSource.query(
+      `
+      INSERT INTO app_config (key, value_json, updated_at)
+      VALUES ('stripe_config', $1::jsonb, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
+      `,
+      [JSON.stringify(value)],
+    );
+
+    return this.getStripeConfig();
+  }
+
   public async adminCancelJob(params: { requestId: string }) {
     const rows = await this.dataSource.query<any[]>(
       `SELECT id, title, client_user_id, status FROM job_requests WHERE id = $1 LIMIT 1`,

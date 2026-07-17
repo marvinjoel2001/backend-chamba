@@ -409,6 +409,16 @@ let MobileController = class MobileController {
             deepseekKey,
         });
     }
+    getStripeConfig() {
+        return this.mobileService.getStripeConfig();
+    }
+    updateStripeConfig(active, publishableKey, secretKey) {
+        return this.mobileService.updateStripeConfig({
+            active: active === true || active === 'true',
+            publishableKey: publishableKey ?? '',
+            secretKey: secretKey ?? '',
+        });
+    }
     listAllCategories() {
         return this.mobileService.listAllCategories();
     }
@@ -1066,6 +1076,21 @@ __decorate([
     __metadata("design:paramtypes", [String, String, String, String, String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "updateAiConfig", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/stripe-config'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getStripeConfig", null);
+__decorate([
+    (0, common_1.Post)('mobile/admin/stripe-config'),
+    __param(0, (0, common_1.Body)('active')),
+    __param(1, (0, common_1.Body)('publishableKey')),
+    __param(2, (0, common_1.Body)('secretKey')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Boolean, String, String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "updateStripeConfig", null);
 __decorate([
     (0, common_1.Get)('mobile/admin/categories'),
     __metadata("design:type", Function),

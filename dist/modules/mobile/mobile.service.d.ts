@@ -220,6 +220,7 @@ export declare class MobileService implements OnModuleInit {
             days: number | null;
             dailyRate: number | null;
             startDate: any;
+            paymentMethod: any;
             pendingOffersCount: number;
         } | null;
         nearbyWorkers: {
@@ -396,6 +397,7 @@ export declare class MobileService implements OnModuleInit {
             days: number | null;
             dailyRate: number | null;
             startDate: any;
+            paymentMethod: any;
         } | {
             photos: {
                 id: any;
@@ -423,6 +425,7 @@ export declare class MobileService implements OnModuleInit {
             days: number | null;
             dailyRate: number | null;
             startDate: any;
+            paymentMethod: any;
             pendingOffersCount: number;
         };
         metrics: {
@@ -473,6 +476,7 @@ export declare class MobileService implements OnModuleInit {
             days: number | null;
             dailyRate: number | null;
             startDate: any;
+            paymentMethod: any;
         } | {
             photos: {
                 id: any;
@@ -500,6 +504,7 @@ export declare class MobileService implements OnModuleInit {
             days: number | null;
             dailyRate: number | null;
             startDate: any;
+            paymentMethod: any;
             pendingOffersCount: number;
         };
         offers: {
@@ -1243,6 +1248,24 @@ export declare class MobileService implements OnModuleInit {
         nvidiaKey: string;
         nvidiaModel: string;
         deepseekKey: string;
+    }>;
+    getStripeConfig(): Promise<{
+        active: boolean;
+        publishableKey: any;
+        currency: any;
+        secretKeySet: boolean;
+        secretKeyLast4: string;
+    }>;
+    updateStripeConfig(params: {
+        active: boolean;
+        publishableKey: string;
+        secretKey: string;
+    }): Promise<{
+        active: boolean;
+        publishableKey: any;
+        currency: any;
+        secretKeySet: boolean;
+        secretKeyLast4: string;
     }>;
     updateCategory(params: {
         id: string;

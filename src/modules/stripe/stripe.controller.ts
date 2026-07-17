@@ -1,7 +1,6 @@
-import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body } from '@nestjs/common';
 import { StripeService } from './stripe.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
 
 @ApiTags('Mobile Stripe')
 @Controller('mobile/stripe')
@@ -14,9 +13,10 @@ export class StripeController {
     return this.stripeService.getPublishableKey();
   }
 
+  // Sin guard: la app móvil no maneja JWT todavía (mismo modelo que el resto
+  // de endpoints /mobile/*). El JwtAuthGuard anterior era el del panel admin
+  // y hacía que la app recibiera 401 siempre.
   @Post('payment-intent')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a payment intent' })
   createPaymentIntent(
     @Body('amount') amount: number,

@@ -790,6 +790,12 @@ let MobileService = class MobileService {
     async updateAiConfig(params) {
         return this.adminService.updateAiConfig(params);
     }
+    async getStripeConfig() {
+        return this.adminService.getStripeConfig();
+    }
+    async updateStripeConfig(params) {
+        return this.adminService.updateStripeConfig(params);
+    }
     async updateCategory(params) {
         return this.catalogService.updateCategory(params);
     }

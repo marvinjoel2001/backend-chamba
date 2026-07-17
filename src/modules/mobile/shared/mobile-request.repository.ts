@@ -106,7 +106,8 @@ export class MobileRequestRepository {
              hourly_rate,
              days,
              daily_rate,
-             start_date
+             start_date,
+             payment_method
       FROM job_requests
       WHERE id = $1
       LIMIT 1
@@ -139,6 +140,7 @@ export class MobileRequestRepository {
       days: row.days == null ? null : Number(row.days),
       dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
       startDate: row.start_date,
+      paymentMethod: row.payment_method ?? 'Efectivo',
     };
   }
 
@@ -227,6 +229,7 @@ export class MobileRequestRepository {
              jr.days,
              jr.daily_rate,
              jr.start_date,
+             jr.payment_method,
              (SELECT COUNT(*) FROM job_offers jo WHERE jo.request_id = jr.id AND jo.status = 'pending') AS pending_offers_count
       FROM job_requests jr
       WHERE jr.client_user_id = $1
@@ -260,6 +263,7 @@ export class MobileRequestRepository {
       days: row.days == null ? null : Number(row.days),
       dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
       startDate: row.start_date,
+      paymentMethod: row.payment_method ?? 'Efectivo',
       pendingOffersCount: Number(row.pending_offers_count ?? 0),
     };
   }
