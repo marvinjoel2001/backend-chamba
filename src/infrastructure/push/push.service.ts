@@ -61,45 +61,57 @@ export class PushService {
 
     const isCall = params.data?.type === 'request_new';
 
-    let notification: any = {
-      title: params.title,
-      body: params.body,
-    };
-
     const data = params.data ? { ...params.data } : {};
 
     if (isCall) {
-      // Data-only message for full screen intent in mobile app
-      notification = undefined; // Enviar data-only para que Android OS no la secuestre
+      // La app usa estos campos para reconstruir la alerta local cuando el
+      // mensaje llega data-only a su handler de segundo plano.
       data.title = params.title;
       data.body = params.body;
     }
 
     return this.messaging.send({
       token: params.token,
-      ...(notification ? { notification } : {}),
+      // request_new va data-only en Android: la app construye la alerta tipo
+      // llamada (full screen intent + ringtone insistente) en su handler de
+      // segundo plano. En iOS sí lleva alerta visible vía apns.
+      ...(isCall
+        ? {}
+        : {
+            notification: {
+              title: params.title,
+              body: params.body,
+            },
+          }),
       data: Object.keys(data).length > 0 ? data : undefined,
       android: {
-        priority: 'high',
-        notification: notification
-          ? {
-              priority: 'max',
-              // Canal creado por la app con sonido y vibración; sin esto
-              // Android puede mostrar la notificación en un canal sin sonido.
-              channelId: 'chamba_default_channel',
-              defaultSound: true,
-              defaultVibrateTimings: true,
-            }
-          : undefined,
+        priority: 'high' as const,
+        ...(isCall
+          ? {}
+          : {
+              notification: {
+                priority: 'max' as const,
+                // Canal creado por la app con sonido y vibración; sin esto
+                // Android puede mostrar la notificación en un canal sin sonido.
+                channelId: 'chamba_default_channel',
+                defaultSound: true,
+                defaultVibrateTimings: true,
+              },
+            }),
       },
       apns: {
         headers: {
           'apns-priority': '10',
         },
         payload: {
-          aps: {
-            sound: 'default',
-          },
+          aps: isCall
+            ? {
+                alert: { title: params.title, body: params.body },
+                sound: 'default',
+              }
+            : {
+                sound: 'default',
+              },
         },
       },
     });
@@ -117,45 +129,57 @@ export class PushService {
 
     const isCall = params.data?.type === 'request_new';
 
-    let notification: any = {
-      title: params.title,
-      body: params.body,
-    };
-
     const data = params.data ? { ...params.data } : {};
 
     if (isCall) {
-      // Data-only message for full screen intent in mobile app
-      notification = undefined; // Enviar data-only para que Android OS no la secuestre
+      // La app usa estos campos para reconstruir la alerta local cuando el
+      // mensaje llega data-only a su handler de segundo plano.
       data.title = params.title;
       data.body = params.body;
     }
 
     const response = await this.messaging.sendEachForMulticast({
       tokens: params.tokens,
-      ...(notification ? { notification } : {}),
+      // request_new va data-only en Android: la app construye la alerta tipo
+      // llamada (full screen intent + ringtone insistente) en su handler de
+      // segundo plano. En iOS sí lleva alerta visible vía apns.
+      ...(isCall
+        ? {}
+        : {
+            notification: {
+              title: params.title,
+              body: params.body,
+            },
+          }),
       data: Object.keys(data).length > 0 ? data : undefined,
       android: {
-        priority: 'high',
-        notification: notification
-          ? {
-              priority: 'max',
-              // Canal creado por la app con sonido y vibración; sin esto
-              // Android puede mostrar la notificación en un canal sin sonido.
-              channelId: 'chamba_default_channel',
-              defaultSound: true,
-              defaultVibrateTimings: true,
-            }
-          : undefined,
+        priority: 'high' as const,
+        ...(isCall
+          ? {}
+          : {
+              notification: {
+                priority: 'max' as const,
+                // Canal creado por la app con sonido y vibración; sin esto
+                // Android puede mostrar la notificación en un canal sin sonido.
+                channelId: 'chamba_default_channel',
+                defaultSound: true,
+                defaultVibrateTimings: true,
+              },
+            }),
       },
       apns: {
         headers: {
           'apns-priority': '10',
         },
         payload: {
-          aps: {
-            sound: 'default',
-          },
+          aps: isCall
+            ? {
+                alert: { title: params.title, body: params.body },
+                sound: 'default',
+              }
+            : {
+                sound: 'default',
+              },
         },
       },
     });

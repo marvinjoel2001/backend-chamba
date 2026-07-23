@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { DataSource } from 'typeorm';
 import { NotificationsService } from '../../notifications/notifications.service';
@@ -6,7 +6,7 @@ import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import { MobileRequestRepository } from '../shared/mobile-request.repository';
 
 @Injectable()
-export class MobileRequestsCronService {
+export class MobileRequestsCronService implements OnApplicationBootstrap {
   private readonly logger = new Logger(MobileRequestsCronService.name);
   // Si la solicitud sigue sin asignarse cuando falta menos de esto para el
   // inicio programado, se cancela automaticamente.
@@ -20,6 +20,12 @@ export class MobileRequestsCronService {
     private readonly realtimeGateway: RealtimeGateway,
     private readonly repo: MobileRequestRepository,
   ) {}
+
+  async onApplicationBootstrap() {
+    this.logger.log('Running initial checks on startup...');
+    await this.handleRequestTimeouts();
+    await this.handleStartReminders();
+  }
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async handleRequestTimeouts() {
