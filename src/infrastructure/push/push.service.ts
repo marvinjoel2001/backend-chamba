@@ -1,7 +1,33 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { App, cert, getApps, initializeApp } from 'firebase-admin/app';
-import { Messaging, getMessaging } from 'firebase-admin/messaging';
+import { AndroidConfig, Messaging, getMessaging } from 'firebase-admin/messaging';
+
+/**
+ * La alerta de trabajo nuevo DEBE viajar como data-only puro.
+ *
+ * Si se incluye un bloque `android.notification`, FCM puede tratar el mensaje
+ * como notificación y mostrarlo él mismo: en ese caso el handler de segundo
+ * plano de la app nunca corre, no se construye la notificación con
+ * `fullScreenIntent` y el usuario recibe un aviso común y silencioso.
+ * Con solo `priority: 'high'` el mensaje llega siempre a la app, que arma la
+ * alerta en el canal de llamadas con ringtone y pantalla completa.
+ */
+function buildAndroidConfig(isCall: boolean): AndroidConfig {
+  if (isCall) {
+    return { priority: 'high' };
+  }
+
+  return {
+    priority: 'high',
+    notification: {
+      priority: 'max',
+      channelId: 'chamba_default_channel',
+      defaultSound: true,
+      defaultVibrateTimings: true,
+    },
+  };
+}
 
 @Injectable()
 export class PushService {
@@ -79,18 +105,7 @@ export class PushService {
             body: params.body,
           },
       data: Object.keys(data).length > 0 ? data : undefined,
-      android: {
-        priority: 'high' as const,
-        notification: {
-          priority: 'max' as const,
-          channelId: isCall
-            ? 'chamba_call_channel_v3'
-            : 'chamba_default_channel',
-          defaultSound: !isCall,
-          sound: isCall ? 'chamba_ringtone' : undefined,
-          defaultVibrateTimings: true,
-        },
-      },
+      android: buildAndroidConfig(isCall),
       apns: {
         headers: {
           'apns-priority': '10',
@@ -140,18 +155,7 @@ export class PushService {
             body: params.body,
           },
       data: Object.keys(data).length > 0 ? data : undefined,
-      android: {
-        priority: 'high' as const,
-        notification: {
-          priority: 'max' as const,
-          channelId: isCall
-            ? 'chamba_call_channel_v3'
-            : 'chamba_default_channel',
-          defaultSound: !isCall,
-          sound: isCall ? 'chamba_ringtone' : undefined,
-          defaultVibrateTimings: true,
-        },
-      },
+      android: buildAndroidConfig(isCall),
       apns: {
         headers: {
           'apns-priority': '10',

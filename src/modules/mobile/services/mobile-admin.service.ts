@@ -77,6 +77,44 @@ export class MobileAdminService {
     }
   }
 
+  /**
+   * Dispara la alerta de "trabajo nuevo" tal cual la recibe un worker en
+   * producción, sin crear una solicitud ni escribir texto.
+   */
+  public async simulateJobRequestNotification(payload: {
+    target: 'all' | 'workers' | 'custom';
+    userIds?: string[];
+  }) {
+    let query = `
+      SELECT pt.token
+      FROM push_tokens pt
+      JOIN users u ON u.id = pt.user_id
+      WHERE pt.token IS NOT NULL
+    `;
+    const args: any[] = [];
+
+    if (payload.target === 'custom') {
+      if (!payload.userIds || payload.userIds.length === 0) {
+        return { success: true, count: 0 };
+      }
+      query += ` AND u.id = ANY($1::uuid[])`;
+      args.push(payload.userIds);
+    } else {
+      // La alerta solo tiene sentido para workers, incluso con target 'all'.
+      query += ` AND u.type = $1`;
+      args.push('worker');
+    }
+
+    const rows = await this.dataSource.query<any[]>(query, args);
+    const tokens = rows.map((r) => r.token);
+
+    const count = await this.notificationsService.simulateJobWavePush({
+      tokens,
+    });
+
+    return { success: true, count };
+  }
+
   public async getPushUsers() {
     const query = `
       SELECT DISTINCT ON (u.id)

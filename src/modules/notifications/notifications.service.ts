@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -58,6 +59,33 @@ export class NotificationsService {
       data: {
         type: params.isCallAlert ? 'request_new' : 'broadcast',
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
+      },
+    });
+  }
+
+  /**
+   * Manda el mismo push que `notifyWorkersForJobWave` — mismo `type`, mismo
+   * formato de título/cuerpo, con `jobId` y `deep_link` — pero sin persistir
+   * notificaciones ni requerir una solicitud real. Sirve para probar en un
+   * dispositivo la alerta de trabajo nuevo (full screen intent + ringtone).
+   *
+   * El `jobId` es único en cada envío a propósito: la app descarta alertas
+   * repetidas del mismo `jobId` dentro de 15 s, así que un id fijo haría que
+   * el segundo intento de prueba pareciera "no llegó".
+   */
+  async simulateJobWavePush(params: { tokens: string[] }): Promise<number> {
+    if (params.tokens.length === 0) return 0;
+
+    const jobId = randomUUID();
+    return this.pushService.sendToTokens({
+      tokens: params.tokens,
+      title: '📍 Trabajo nuevo cerca: Prueba',
+      body: 'Tienes una solicitud de Bs 150 a 1.2 km. Toca para revisar.',
+      data: {
+        type: 'request_new',
+        jobId,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        deep_link: `/request/${jobId}`,
       },
     });
   }

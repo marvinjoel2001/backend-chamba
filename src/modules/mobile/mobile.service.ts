@@ -535,8 +535,16 @@ export class MobileService implements OnModuleInit {
     body: string;
     toastType?: 'info' | 'success' | 'error';
     userIds?: string[];
+    isCallAlert?: boolean;
   }) {
     return this.adminService.broadcastNotification(payload);
+  }
+
+  async simulateJobRequestNotification(payload: {
+    target: 'all' | 'workers' | 'custom';
+    userIds?: string[];
+  }) {
+    return this.adminService.simulateJobRequestNotification(payload);
   }
 
   async getPushUsers() {

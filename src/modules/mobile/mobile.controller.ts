@@ -344,6 +344,17 @@ export class MobileController {
     return this.mobileService.broadcastNotification(payload);
   }
 
+  @Post('mobile/admin/notifications/simulate-request')
+  simulateJobRequestNotification(
+    @Body()
+    payload: {
+      target: 'all' | 'workers' | 'custom';
+      userIds?: string[];
+    },
+  ) {
+    return this.mobileService.simulateJobRequestNotification(payload);
+  }
+
   @Get('mobile/admin/push-users')
   getPushUsers() {
     return this.mobileService.getPushUsers();
