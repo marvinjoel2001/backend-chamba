@@ -23,8 +23,19 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap() {
     this.logger.log('Running initial checks on startup...');
-    await this.handleRequestTimeouts();
-    await this.handleStartReminders();
+    // Estas son tareas de mantenimiento: si fallan, se reintentan en el próximo
+    // cron. Nunca deben impedir que la API arranque — una excepción sin capturar
+    // acá tumba el proceso entero y deja el deploy en crash loop.
+    try {
+      await this.handleRequestTimeouts();
+    } catch (e) {
+      this.logger.error('Initial request timeout check failed', e);
+    }
+    try {
+      await this.handleStartReminders();
+    } catch (e) {
+      this.logger.error('Initial start reminder check failed', e);
+    }
   }
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -233,7 +244,7 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
     const cancelledRows = await this.dataSource.query<any[]>(
       `
       UPDATE job_requests
-      SET status = 'cancelled', cancelled_by = 'system', updated_at = NOW()
+      SET status = 'cancelled', cancelled_by = NULL, updated_at = NOW()
       WHERE id = $1
         AND status IN ('searching', 'negotiating')
       RETURNING id
