@@ -37,7 +37,8 @@ export class AdminAgenciesController {
 
   @Patch(':agencyId')
   @ApiOperation({
-    summary: 'Actualizar agencia (datos, comisión, estado, reset de contraseña)',
+    summary:
+      'Actualizar agencia (datos, comisión, estado, reset de contraseña)',
   })
   update(
     @Param('agencyId', ParseUUIDPipe) agencyId: string,
@@ -47,7 +48,9 @@ export class AdminAgenciesController {
   }
 
   @Delete(':agencyId')
-  @ApiOperation({ summary: 'Eliminar agencia (si no tiene trabajadores u ofertas)' })
+  @ApiOperation({
+    summary: 'Eliminar agencia (si no tiene trabajadores u ofertas)',
+  })
   remove(@Param('agencyId', ParseUUIDPipe) agencyId: string) {
     return this.adminAgenciesService.remove(agencyId);
   }

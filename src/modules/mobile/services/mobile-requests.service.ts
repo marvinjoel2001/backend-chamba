@@ -1280,9 +1280,15 @@ export class MobileRequestsService {
       normalizedSkills.length === 0 ||
       normalizedSkills.every((s) => s === 'general');
 
-    const requiredModality =
-      String(request.price_type ?? '').toLowerCase().includes('hora') ? 'hourly' :
-      String(request.price_type ?? '').toLowerCase().includes('dia') ? 'daily' : 'fixed';
+    const requiredModality = String(request.price_type ?? '')
+      .toLowerCase()
+      .includes('hora')
+      ? 'hourly'
+      : String(request.price_type ?? '')
+            .toLowerCase()
+            .includes('dia')
+        ? 'daily'
+        : 'fixed';
 
     const workers = await this.dataSource.query<any[]>(
       `
@@ -1313,7 +1319,13 @@ export class MobileRequestsService {
         )
       ORDER BY ST_Distance(u.current_location, $1::geography) ASC
       `,
-      [request.location, isGeneral, normalizedSkills, notificationRadiusKm, requiredModality],
+      [
+        request.location,
+        isGeneral,
+        normalizedSkills,
+        notificationRadiusKm,
+        requiredModality,
+      ],
     );
 
     const targetWorkers = workers.map((worker, index) => ({
@@ -1507,7 +1519,7 @@ export class MobileRequestsService {
     } else {
       const msg = `[AI] API Key no configurada para ${activeProvider} → usando fallback "${fallbackCategory}".`;
       this.logger.warn(msg);
-      
+
       this.apiLogsService
         .capture({
           method: 'POST',
@@ -1518,7 +1530,7 @@ export class MobileRequestsService {
           errorMessage: msg,
         })
         .catch((e) => this.logger.error('Failed to log AI API block', e));
-        
+
       return [
         {
           id: this.repo.toCategoryId(fallbackCategory),
@@ -1739,10 +1751,13 @@ Reglas obligatorias:
       `SELECT value_json FROM app_config WHERE key = 'ai_config' LIMIT 1`,
     );
     const defaultVal = {
-      activeProvider: this.configService.get<string>('AI_ACTIVE_PROVIDER') || 'nvidia',
+      activeProvider:
+        this.configService.get<string>('AI_ACTIVE_PROVIDER') || 'nvidia',
       geminiKey: this.configService.get<string>('GEMINI_API_KEY') || '',
       nvidiaKey: this.configService.get<string>('NVIDIA_API_KEY') || '',
-      nvidiaModel: this.configService.get<string>('NVIDIA_MODEL') || 'meta/llama-3.1-8b-instruct',
+      nvidiaModel:
+        this.configService.get<string>('NVIDIA_MODEL') ||
+        'meta/llama-3.1-8b-instruct',
       deepseekKey: this.configService.get<string>('DEEPSEEK_API_KEY') || '',
     };
     if (rows[0]) {

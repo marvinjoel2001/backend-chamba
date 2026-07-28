@@ -10,7 +10,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { AgencyService } from '../services/agency.service';
 import { AgencyJwtAuthGuard } from '../guards/agency-jwt-auth.guard';
 import { CurrentAgency } from '../decorators/current-agency.decorator';
@@ -60,7 +65,9 @@ export class AgencyController {
   }
 
   @Patch('workers/:workerUserId/block')
-  @ApiOperation({ summary: 'Bloquear o desbloquear un trabajador de la agencia' })
+  @ApiOperation({
+    summary: 'Bloquear o desbloquear un trabajador de la agencia',
+  })
   toggleWorkerBlock(
     @CurrentAgency() agency: AgencyPrincipal,
     @Param('workerUserId', ParseUUIDPipe) workerUserId: string,

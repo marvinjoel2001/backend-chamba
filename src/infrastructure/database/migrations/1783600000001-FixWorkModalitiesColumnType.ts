@@ -7,9 +7,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * columna ya es jsonb, así que esta corrección solo actúa si detecta text[]
  * (instalaciones desde cero vía migraciones). Idempotente y no destructiva.
  */
-export class FixWorkModalitiesColumnType1783600000001
-  implements MigrationInterface
-{
+export class FixWorkModalitiesColumnType1783600000001 implements MigrationInterface {
   name = 'FixWorkModalitiesColumnType1783600000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

@@ -55,7 +55,10 @@ export class NotificationsService {
       tokens: params.tokens,
       title: params.title,
       body: params.body,
-      data: { type: params.isCallAlert ? 'request_new' : 'broadcast', click_action: 'FLUTTER_NOTIFICATION_CLICK' },
+      data: {
+        type: params.isCallAlert ? 'request_new' : 'broadcast',
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+      },
     });
   }
 

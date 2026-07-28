@@ -1,9 +1,8 @@
-import { MigrationInterface, QueryRunner } from "typeorm";
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class WorkerLeads1782247365704 implements MigrationInterface {
-
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
             CREATE TABLE "worker_leads" (
                 "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
                 "fullName" character varying NOT NULL,
@@ -17,10 +16,9 @@ export class WorkerLeads1782247365704 implements MigrationInterface {
                 CONSTRAINT "PK_worker_leads_id" PRIMARY KEY ("id")
             )
         `);
-    }
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`DROP TABLE "worker_leads"`);
-    }
-
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP TABLE "worker_leads"`);
+  }
 }

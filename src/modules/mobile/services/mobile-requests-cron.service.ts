@@ -60,11 +60,15 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
 
     for (const req of rows) {
       const createdAt = new Date(req.created_at);
-      const startAt = this.repo.resolveStartAt(req.scheduled_at, req.start_date);
+      const startAt = this.repo.resolveStartAt(
+        req.scheduled_at,
+        req.start_date,
+      );
       const priceKey = this.repo.normalizePriceTypeKey(req.price_type);
       const modalityConfig = timeoutConfig[priceKey];
 
-      const elapsedMinutes = (now.getTime() - createdAt.getTime()) / (1000 * 60);
+      const elapsedMinutes =
+        (now.getTime() - createdAt.getTime()) / (1000 * 60);
 
       let timeoutMinutes = modalityConfig.timeoutMinutes;
       let reminder1Minutes = modalityConfig.reminder1Minutes;
@@ -131,7 +135,10 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
     const now = new Date();
 
     for (const req of rows) {
-      const startAt = this.repo.resolveStartAt(req.scheduled_at, req.start_date);
+      const startAt = this.repo.resolveStartAt(
+        req.scheduled_at,
+        req.start_date,
+      );
       if (!startAt) continue;
 
       const minutesUntilStart =
@@ -271,31 +278,35 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
       timestamp: new Date().toISOString(),
     });
 
-    await this.notificationsService.notifyClientTimeout({
-      userId: req.client_user_id,
-      token: req.token,
-      jobTitle: req.title,
-      requestId: req.id
-    }).catch(e => this.logger.error('Error sending timeout push', e));
+    await this.notificationsService
+      .notifyClientTimeout({
+        userId: req.client_user_id,
+        token: req.token,
+        jobTitle: req.title,
+        requestId: req.id,
+      })
+      .catch((e) => this.logger.error('Error sending timeout push', e));
   }
 
   private async sendReminder(req: any, newLevel: number) {
     this.logger.log(`Sending reminder level ${newLevel} for request ${req.id}`);
     await this.dataSource.query(
       `UPDATE job_requests SET reminder_level = $1 WHERE id = $2`,
-      [newLevel, req.id]
+      [newLevel, req.id],
     );
 
     this.realtimeGateway.emitToUser(req.client_user_id, 'job.reminder', {
       requestId: req.id,
-      level: newLevel
+      level: newLevel,
     });
 
-    await this.notificationsService.notifyClientToImproveOffer({
-      userId: req.client_user_id,
-      token: req.token,
-      jobTitle: req.title,
-      requestId: req.id
-    }).catch(e => this.logger.error('Error sending reminder push', e));
+    await this.notificationsService
+      .notifyClientToImproveOffer({
+        userId: req.client_user_id,
+        token: req.token,
+        jobTitle: req.title,
+        requestId: req.id,
+      })
+      .catch((e) => this.logger.error('Error sending reminder push', e));
   }
 }

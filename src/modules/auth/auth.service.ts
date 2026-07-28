@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  NotFoundException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AdminUsersService } from '../admin-users/admin-users.service';
 import * as bcrypt from 'bcryptjs';
@@ -14,7 +18,7 @@ export class AuthService {
 
   async validateAdminUser(loginDto: LoginDto): Promise<any> {
     const user = await this.adminUsersService.findByUsername(loginDto.username);
-    if (user && await bcrypt.compare(loginDto.password, user.passwordHash)) {
+    if (user && (await bcrypt.compare(loginDto.password, user.passwordHash))) {
       const { passwordHash, ...result } = user;
       return result;
     }
@@ -32,7 +36,7 @@ export class AuthService {
       user: {
         id: user.id,
         username: user.username,
-      }
+      },
     };
   }
 
@@ -42,16 +46,22 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    const isPasswordValid = await bcrypt.compare(changePasswordDto.currentPassword, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(
+      changePasswordDto.currentPassword,
+      user.passwordHash,
+    );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid current password');
     }
 
     const salt = await bcrypt.genSalt();
-    const newPasswordHash = await bcrypt.hash(changePasswordDto.newPassword, salt);
-    
+    const newPasswordHash = await bcrypt.hash(
+      changePasswordDto.newPassword,
+      salt,
+    );
+
     await this.adminUsersService.updatePassword(userId, newPasswordHash);
-    
+
     return { message: 'Password changed successfully' };
   }
 }

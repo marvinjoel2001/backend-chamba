@@ -86,6 +86,11 @@ export class ApiLogsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async clearAll(): Promise<void> {
+    await this.dataSource.query(`TRUNCATE TABLE api_request_logs`);
+    this.logger.log('Todos los registros de api_request_logs han sido eliminados manualmente');
+  }
+
   async capture(input: CaptureLogInput): Promise<void> {
     await this.dataSource.query(
       `

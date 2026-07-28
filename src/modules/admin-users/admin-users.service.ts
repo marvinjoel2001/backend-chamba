@@ -40,6 +40,8 @@ export class AdminUsersService implements OnApplicationBootstrap {
   }
 
   async updatePassword(id: string, newPasswordHash: string): Promise<void> {
-    await this.adminUserRepository.update(id, { passwordHash: newPasswordHash });
+    await this.adminUserRepository.update(id, {
+      passwordHash: newPasswordHash,
+    });
   }
 }

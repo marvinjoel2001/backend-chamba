@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Delete } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiLogsService } from './api-logs.service';
 
@@ -24,6 +24,12 @@ export class ApiLogsController {
       statusMax: statusMax ? Number(statusMax) : undefined,
       search,
     });
+  }
+
+  @Delete('clear')
+  async clearAll() {
+    await this.apiLogsService.clearAll();
+    return { success: true };
   }
 
   @Get('grafana/timeseries')

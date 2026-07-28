@@ -29,7 +29,8 @@ export class PaymentMethodsService {
         `SELECT value_json FROM app_config WHERE key = 'stripe_config' LIMIT 1`,
       );
       if (rows[0]) {
-        const val = typeof rows[0].value_json === 'string'
+        const val =
+          typeof rows[0].value_json === 'string'
             ? JSON.parse(rows[0].value_json)
             : rows[0].value_json;
         if (val && val.active) {

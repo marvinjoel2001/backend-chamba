@@ -13,7 +13,10 @@ export interface AgencyPrincipal {
 // Estrategia con nombre propio ('agency-jwt') para no interferir con la
 // estrategia 'jwt' del panel admin, que valida contra admin_users.
 @Injectable()
-export class AgencyJwtStrategy extends PassportStrategy(Strategy, 'agency-jwt') {
+export class AgencyJwtStrategy extends PassportStrategy(
+  Strategy,
+  'agency-jwt',
+) {
   constructor(
     configService: ConfigService,
     private readonly dataSource: DataSource,

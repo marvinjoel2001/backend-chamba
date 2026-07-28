@@ -25,7 +25,11 @@ export class MobileRequestRepository {
   // Timeouts de auto-cancelacion y recordatorios (minutos) por modalidad.
   private static readonly DEFAULT_REQUEST_TIMEOUT_BY_PRICE_TYPE: Record<
     'fixed' | 'hour' | 'day',
-    { timeoutMinutes: number; reminder1Minutes: number; reminder2Minutes: number }
+    {
+      timeoutMinutes: number;
+      reminder1Minutes: number;
+      reminder2Minutes: number;
+    }
   > = {
     fixed: { timeoutMinutes: 120, reminder1Minutes: 30, reminder2Minutes: 60 },
     hour: { timeoutMinutes: 30, reminder1Minutes: 10, reminder2Minutes: 20 },

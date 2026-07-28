@@ -29,7 +29,7 @@ export class WorkerLeadsService {
     if (!lead) {
       throw new NotFoundException(`Worker lead with id ${id} not found`);
     }
-    
+
     lead.isContacted = true;
     return this.workerLeadRepository.save(lead);
   }

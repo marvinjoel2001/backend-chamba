@@ -51,39 +51,42 @@ let PushService = PushService_1 = class PushService {
             return null;
         }
         const isCall = params.data?.type === 'request_new';
-        let notification = {
-            title: params.title,
-            body: params.body,
-        };
         const data = params.data ? { ...params.data } : {};
         if (isCall) {
-            notification = undefined;
             data.title = params.title;
             data.body = params.body;
         }
         return this.messaging.send({
             token: params.token,
-            ...(notification ? { notification } : {}),
+            notification: {
+                title: params.title,
+                body: params.body,
+            },
             data: Object.keys(data).length > 0 ? data : undefined,
             android: {
                 priority: 'high',
-                notification: notification
-                    ? {
-                        priority: 'max',
-                        channelId: 'chamba_default_channel',
-                        defaultSound: true,
-                        defaultVibrateTimings: true,
-                    }
-                    : undefined,
+                notification: {
+                    priority: 'max',
+                    channelId: isCall ? 'chamba_call_channel_v2' : 'chamba_default_channel',
+                    defaultSound: !isCall,
+                    sound: isCall ? 'chamba_ringtone' : undefined,
+                    defaultVibrateTimings: true,
+                },
             },
             apns: {
                 headers: {
                     'apns-priority': '10',
                 },
                 payload: {
-                    aps: {
-                        sound: 'default',
-                    },
+                    aps: isCall
+                        ? {
+                            alert: { title: params.title, body: params.body },
+                            sound: 'chamba_ringtone.mp3',
+                            'interruption-level': 'time-sensitive',
+                        }
+                        : {
+                            sound: 'default',
+                        },
                 },
             },
         });
@@ -93,39 +96,42 @@ let PushService = PushService_1 = class PushService {
             return 0;
         }
         const isCall = params.data?.type === 'request_new';
-        let notification = {
-            title: params.title,
-            body: params.body,
-        };
         const data = params.data ? { ...params.data } : {};
         if (isCall) {
-            notification = undefined;
             data.title = params.title;
             data.body = params.body;
         }
         const response = await this.messaging.sendEachForMulticast({
             tokens: params.tokens,
-            ...(notification ? { notification } : {}),
+            notification: {
+                title: params.title,
+                body: params.body,
+            },
             data: Object.keys(data).length > 0 ? data : undefined,
             android: {
                 priority: 'high',
-                notification: notification
-                    ? {
-                        priority: 'max',
-                        channelId: 'chamba_default_channel',
-                        defaultSound: true,
-                        defaultVibrateTimings: true,
-                    }
-                    : undefined,
+                notification: {
+                    priority: 'max',
+                    channelId: isCall ? 'chamba_call_channel_v2' : 'chamba_default_channel',
+                    defaultSound: !isCall,
+                    sound: isCall ? 'chamba_ringtone' : undefined,
+                    defaultVibrateTimings: true,
+                },
             },
             apns: {
                 headers: {
                     'apns-priority': '10',
                 },
                 payload: {
-                    aps: {
-                        sound: 'default',
-                    },
+                    aps: isCall
+                        ? {
+                            alert: { title: params.title, body: params.body },
+                            sound: 'chamba_ringtone.mp3',
+                            'interruption-level': 'time-sensitive',
+                        }
+                        : {
+                            sound: 'default',
+                        },
                 },
             },
         });

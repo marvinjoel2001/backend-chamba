@@ -67,7 +67,12 @@ export class AdminAgenciesService {
       ],
     );
 
-    return this.mapAgency({ ...rows[0], workers_count: 0, offers_count: 0, offers_accepted_count: 0 });
+    return this.mapAgency({
+      ...rows[0],
+      workers_count: 0,
+      offers_count: 0,
+      offers_accepted_count: 0,
+    });
   }
 
   public async update(agencyId: string, dto: UpdateAgencyDto) {
@@ -149,13 +154,14 @@ export class AdminAgenciesService {
     }
 
     try {
-      await this.dataSource.query(
-        `DELETE FROM agencies WHERE id = $1`,
-        [agencyId],
-      );
+      await this.dataSource.query(`DELETE FROM agencies WHERE id = $1`, [
+        agencyId,
+      ]);
     } catch (e: any) {
       if (e.code === '23503') {
-        throw new ConflictException('No se puede eliminar la agencia porque tiene trabajadores u ofertas asociadas.');
+        throw new ConflictException(
+          'No se puede eliminar la agencia porque tiene trabajadores u ofertas asociadas.',
+        );
       }
       throw e;
     }

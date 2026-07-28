@@ -113,9 +113,7 @@ export class AgencyService {
       );
     }
     if (user.agency_id && user.agency_id !== agencyId) {
-      throw new ConflictException(
-        'El trabajador ya pertenece a otra agencia',
-      );
+      throw new ConflictException('El trabajador ya pertenece a otra agencia');
     }
 
     await this.dataSource.query(
@@ -490,7 +488,9 @@ export class AgencyService {
         offersAcceptedMonth: Number(stats?.offers_accepted_month ?? 0),
         revenueMonth,
         commissionRate,
-        commissionMonth: Number(((revenueMonth * commissionRate) / 100).toFixed(2)),
+        commissionMonth: Number(
+          ((revenueMonth * commissionRate) / 100).toFixed(2),
+        ),
         averageRating: Number(Number(stats?.avg_rating ?? 0).toFixed(2)),
       },
       recentActivity: recentActivity.map((row) => ({

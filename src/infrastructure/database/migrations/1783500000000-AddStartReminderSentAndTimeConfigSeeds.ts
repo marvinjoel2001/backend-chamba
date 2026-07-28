@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddStartReminderSentAndTimeConfigSeeds1783500000000
-  implements MigrationInterface
-{
+export class AddStartReminderSentAndTimeConfigSeeds1783500000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `ALTER TABLE "job_requests" ADD "start_reminder_sent" boolean NOT NULL DEFAULT false`,

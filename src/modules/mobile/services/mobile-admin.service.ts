@@ -542,7 +542,8 @@ export class MobileAdminService {
       apiKey = config.nvidiaKey;
       modelName = config.nvidiaModel || 'meta/llama-3.1-8b-instruct';
     } else if (activeProvider === 'gemini' && config.geminiKey) {
-      endpointUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+      endpointUrl =
+        'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
       apiKey = config.geminiKey;
       modelName = 'gemini-2.0-flash';
     } else if (activeProvider === 'deepseek' && config.deepseekKey) {
@@ -550,7 +551,10 @@ export class MobileAdminService {
       apiKey = config.deepseekKey;
       modelName = 'deepseek-chat';
     } else {
-      return { ok: false, error: `API key no configurada para ${activeProvider}` };
+      return {
+        ok: false,
+        error: `API key no configurada para ${activeProvider}`,
+      };
     }
 
     const isReasoningModel = modelName.includes('minimax');
@@ -569,7 +573,10 @@ export class MobileAdminService {
       const t = setTimeout(() => controller.abort(), 40000);
       const res = await fetch(endpointUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
         body: JSON.stringify(body),
         signal: controller.signal,
       });
@@ -579,30 +586,49 @@ export class MobileAdminService {
         const errText = await res.text().catch(() => '');
         let friendlyError = `Error ${res.status} del proveedor de IA`;
         if (res.status === 401) friendlyError = 'API key inválida o expirada';
-        else if (res.status === 404) friendlyError = 'Modelo no encontrado. Verifica el nombre del modelo.';
-        else if (res.status === 429) friendlyError = 'Límite de requests alcanzado. Intenta más tarde.';
-        else if (res.status >= 500) friendlyError = `Error interno del proveedor (${res.status}). Intenta más tarde.`;
+        else if (res.status === 404)
+          friendlyError =
+            'Modelo no encontrado. Verifica el nombre del modelo.';
+        else if (res.status === 429)
+          friendlyError = 'Límite de requests alcanzado. Intenta más tarde.';
+        else if (res.status >= 500)
+          friendlyError = `Error interno del proveedor (${res.status}). Intenta más tarde.`;
         else if (errText) friendlyError = errText.slice(0, 120);
         return { ok: false, error: friendlyError };
       }
 
       const payload = await res.json();
       const response = payload.choices?.[0]?.message?.content?.trim() ?? '';
-      return { ok: true, response, model: modelName, provider: activeProvider, durationMs: Date.now() - start };
+      return {
+        ok: true,
+        response,
+        model: modelName,
+        provider: activeProvider,
+        durationMs: Date.now() - start,
+      };
     } catch (err) {
       return { ok: false, error: (err as Error)?.message ?? String(err) };
     }
   }
 
   public async checkAiStatus(): Promise<{
-    nvidia: { ok: boolean; model?: string; durationMs?: number; error?: string };
+    nvidia: {
+      ok: boolean;
+      model?: string;
+      durationMs?: number;
+      error?: string;
+    };
     gemini: { ok: boolean; durationMs?: number; error?: string };
     deepseek: { ok: boolean; durationMs?: number; error?: string };
   }> {
     const config = await this.getAiConfig();
     const probe = 'Responde exactamente con: OK';
 
-    const testProvider = async (endpointUrl: string, apiKey: string, modelName: string) => {
+    const testProvider = async (
+      endpointUrl: string,
+      apiKey: string,
+      modelName: string,
+    ) => {
       if (!apiKey) return { ok: false, error: 'Sin API key' };
       const isReasoning = modelName.includes('minimax');
       const body: any = {
@@ -619,7 +645,10 @@ export class MobileAdminService {
         const t = setTimeout(() => controller.abort(), 40000);
         const res = await fetch(endpointUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
           body: JSON.stringify(body),
           signal: controller.signal,
         });

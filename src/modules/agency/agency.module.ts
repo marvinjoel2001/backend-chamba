@@ -31,7 +31,11 @@ import { AgencyJwtStrategy } from './strategies/agency-jwt.strategy';
       }),
     }),
   ],
-  controllers: [AgencyAuthController, AgencyController, AdminAgenciesController],
+  controllers: [
+    AgencyAuthController,
+    AgencyController,
+    AdminAgenciesController,
+  ],
   providers: [
     AgencyAuthService,
     AgencyService,

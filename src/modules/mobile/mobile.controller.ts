@@ -812,7 +812,7 @@ export class MobileController {
     @Body('secretKey') secretKey: string,
   ) {
     return this.mobileService.updateStripeConfig({
-      active: active === true || active === 'true' as any,
+      active: active === true || active === ('true' as any),
       publishableKey: publishableKey ?? '',
       secretKey: secretKey ?? '',
     });
