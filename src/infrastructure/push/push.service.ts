@@ -84,7 +84,7 @@ export class PushService {
         notification: {
           priority: 'max' as const,
           channelId: isCall
-            ? 'chamba_call_channel_v2'
+            ? 'chamba_call_channel_v3'
             : 'chamba_default_channel',
           defaultSound: !isCall,
           sound: isCall ? 'chamba_ringtone' : undefined,
@@ -145,7 +145,7 @@ export class PushService {
         notification: {
           priority: 'max' as const,
           channelId: isCall
-            ? 'chamba_call_channel_v2'
+            ? 'chamba_call_channel_v3'
             : 'chamba_default_channel',
           defaultSound: !isCall,
           sound: isCall ? 'chamba_ringtone' : undefined,
