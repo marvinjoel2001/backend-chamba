@@ -591,6 +591,7 @@ export class MobileUsersService {
              jr.category,
              jr.address,
              jr.status AS request_status,
+             jr.payment_method,
              c.id AS client_id,
              c.first_name AS client_first_name,
              c.last_name AS client_last_name,
@@ -628,6 +629,7 @@ export class MobileUsersService {
         acceptedAt: row.accepted_at,
         threadId: row.thread_id ?? null,
         photoUrl: row.photo_url ?? null,
+        paymentMethod: row.payment_method ?? 'Efectivo',
         client: {
           id: row.client_id,
           firstName: row.client_first_name,

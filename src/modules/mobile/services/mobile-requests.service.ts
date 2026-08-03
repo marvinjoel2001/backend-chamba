@@ -805,6 +805,7 @@ export class MobileRequestsService {
       UPDATE job_requests
       SET worker_arrived = true, updated_at = NOW()
       WHERE id = $1
+        AND status NOT IN ('cancelled', 'completed')
         AND EXISTS (
           SELECT 1 FROM job_offers jo
           WHERE jo.request_id = $1
@@ -815,18 +816,25 @@ export class MobileRequestsService {
       `,
       [params.requestId, params.workerUserId],
     );
+    // Sin el guard de estado bastaba con que existiera la oferta aceptada — que
+    // sobrevive a la cancelación — para marcar "ya llegué" en un trabajo
+    // cancelado y dispararle un push al cliente.
     if (!rows[0])
-      throw new NotFoundException('Request not found or not authorized');
+      throw new NotFoundException(
+        'Request not found, not authorized, or no longer active',
+      );
 
     this.realtimeGateway.emitToUser(params.workerUserId, 'job.worker_arrived', {
       requestId: params.requestId,
     });
+    // Sin ORDER BY/LIMIT este JOIN devolvía una fila por cada token del cliente
+    // y `[0]` tomaba uno arbitrario, a menudo muerto. El token se resuelve
+    // aparte con el helper que ya usa el resto del archivo (más reciente).
     const clientRows = await this.dataSource.query<any[]>(
       `
-      SELECT jr.client_user_id, jr.title, u.first_name as worker_name, pt.token
+      SELECT jr.client_user_id, jr.title, u.first_name as worker_name
       FROM job_requests jr
       JOIN users u ON u.id = $2
-      LEFT JOIN push_tokens pt ON pt.user_id = jr.client_user_id
       WHERE jr.id = $1
       `,
       [params.requestId, params.workerUserId],
@@ -836,11 +844,12 @@ export class MobileRequestsService {
       this.realtimeGateway.emitToUser(clientUserId, 'job.worker_arrived', {
         requestId: params.requestId,
       });
-      if (clientRows[0].token) {
+      const clientToken = await this.repo.getLatestPushToken(clientUserId);
+      if (clientToken) {
         await this.notificationsService
           .notifyWorkerArrived({
             userId: clientUserId,
-            token: clientRows[0].token,
+            token: clientToken,
             workerName: clientRows[0].worker_name,
             jobTitle: clientRows[0].title,
             requestId: params.requestId,
@@ -864,13 +873,22 @@ export class MobileRequestsService {
       SET client_confirmed_arrival = true,
           work_started_at = NOW(),
           updated_at = NOW()
-      WHERE id = $1 AND client_user_id = $2
+      WHERE id = $1
+        AND client_user_id = $2
+        AND status NOT IN ('cancelled', 'completed')
+        AND worker_arrived = true
       RETURNING id, worker_arrived, client_confirmed_arrival, work_started_at
       `,
       [params.requestId, params.clientUserId],
     );
+    // `work_started_at` es la base del cobro por hora: sin estos guards se podía
+    // arrancar el reloj de un trabajo cancelado, o de una llegada que el worker
+    // nunca marcó. La UI ya exige `workerArrived && !clientConfirmed` para
+    // habilitar el botón, así que esto solo cierra la puerta a nivel API.
     if (!rows[0])
-      throw new NotFoundException('Request not found or not authorized');
+      throw new BadRequestException(
+        'No se puede confirmar la llegada: el trabajo no está activo o el trabajador aún no marcó su llegada',
+      );
 
     const offerRows = await this.dataSource.query<any[]>(
       `SELECT worker_user_id FROM job_offers WHERE request_id = $1 AND status = 'accepted' LIMIT 1`,
@@ -930,14 +948,24 @@ export class MobileRequestsService {
       );
     }
 
-    await this.dataSource.query(
+    // La oferta aceptada sobrevive a la cancelación (closePendingOffers solo
+    // cierra las 'pending'), así que sin este guard un trabajo cancelado podía
+    // completarse igual y "resucitar", contando para pagos y estadísticas.
+    const completedRows = await this.dataSource.query<any[]>(
       `
       UPDATE job_requests
       SET status = 'completed', completed_at = NOW(), updated_at = NOW()
       WHERE id = $1
+        AND status NOT IN ('cancelled', 'completed')
+      RETURNING id
       `,
       [params.requestId],
     );
+    if (!completedRows[0]) {
+      throw new BadRequestException(
+        'El trabajo ya fue cancelado o completado',
+      );
+    }
     this.realtimeGateway.server.emit('request.status.updated', {
       requestId: params.requestId,
       status: 'completed',
