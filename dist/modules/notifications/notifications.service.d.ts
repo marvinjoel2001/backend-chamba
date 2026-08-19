@@ -19,6 +19,9 @@ export declare class NotificationsService {
         body: string;
         isCallAlert?: boolean;
     }): Promise<number>;
+    simulateJobWavePush(params: {
+        tokens: string[];
+    }): Promise<number>;
     notifyWorkersForJobWave(params: {
         users: {
             userId: string;

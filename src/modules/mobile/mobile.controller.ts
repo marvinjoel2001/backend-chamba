@@ -562,6 +562,11 @@ export class MobileController {
     return this.mobileService.getRequestNotifiedWorkers(requestId);
   }
 
+  @Get('mobile/admin/requests/:requestId')
+  getRequestDetail(@Param('requestId') requestId: string) {
+    return this.mobileService.getRequestDetail(requestId);
+  }
+
   @Post('mobile/worker/availability')
   setWorkerAvailability(
     @Body('workerUserId') workerUserId: string,

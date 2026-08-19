@@ -380,6 +380,9 @@ let MobileService = class MobileService {
     async broadcastNotification(payload) {
         return this.adminService.broadcastNotification(payload);
     }
+    async simulateJobRequestNotification(payload) {
+        return this.adminService.simulateJobRequestNotification(payload);
+    }
     async getPushUsers() {
         return this.adminService.getPushUsers();
     }
@@ -756,6 +759,9 @@ let MobileService = class MobileService {
     }
     async getRequestNotifiedWorkers(requestId) {
         return this.adminService.getRequestNotifiedWorkers(requestId);
+    }
+    async getRequestDetail(requestId) {
+        return this.adminService.getRequestDetail(requestId);
     }
     async listDisputes(params) {
         return this.disputesService.listDisputes(params);

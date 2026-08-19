@@ -622,6 +622,7 @@ export declare class MobileService implements OnModuleInit {
         body: string;
         toastType?: 'info' | 'success' | 'error';
         userIds?: string[];
+        isCallAlert?: boolean;
     }): Promise<{
         success: boolean;
         method: string;
@@ -629,6 +630,13 @@ export declare class MobileService implements OnModuleInit {
     } | {
         success: boolean;
         method: string;
+        count: number;
+    }>;
+    simulateJobRequestNotification(payload: {
+        target: 'all' | 'workers' | 'custom';
+        userIds?: string[];
+    }): Promise<{
+        success: boolean;
         count: number;
     }>;
     getPushUsers(): Promise<any[]>;
@@ -1035,6 +1043,7 @@ export declare class MobileService implements OnModuleInit {
             acceptedAt: any;
             threadId: any;
             photoUrl: any;
+            paymentMethod: any;
             client: {
                 id: any;
                 firstName: any;
@@ -1140,6 +1149,72 @@ export declare class MobileService implements OnModuleInit {
             notifiedAt: any;
             offerStatus: any;
             offerAmount: number | null;
+        }[];
+    }>;
+    getRequestDetail(requestId: string): Promise<{
+        id: any;
+        title: any;
+        description: any;
+        category: any;
+        budget: number;
+        currency: string;
+        status: any;
+        address: any;
+        latitude: number;
+        longitude: number;
+        paymentMethod: any;
+        modality: any;
+        estimatedHours: number | null;
+        hourlyRate: number | null;
+        days: number | null;
+        dailyRate: number | null;
+        startDate: any;
+        workerArrived: any;
+        clientConfirmedArrival: any;
+        createdAt: any;
+        updatedAt: any;
+        assignedAt: any;
+        completedAt: any;
+        cancelledAt: any;
+        cancelledBy: string | null;
+        cancelReason: any;
+        notifiedCount: number;
+        client: {
+            id: any;
+            firstName: any;
+            lastName: any;
+            phone: any;
+            profilePhotoUrl: any;
+            averageRating: number;
+        };
+        worker: {
+            id: any;
+            firstName: any;
+            lastName: any;
+            phone: any;
+            profilePhotoUrl: any;
+            averageRating: number;
+            completedJobs: number;
+        } | null;
+        photos: {
+            id: any;
+            url: any;
+            createdAt: any;
+        }[];
+        offers: {
+            id: any;
+            workerUserId: any;
+            workerName: string;
+            workerPhoto: any;
+            workerPhone: any;
+            workerRating: number;
+            workerCompletedJobs: number;
+            agencyName: any;
+            amount: number;
+            message: any;
+            status: any;
+            expiresAt: any;
+            createdAt: any;
         }[];
     }>;
     listDisputes(params?: {

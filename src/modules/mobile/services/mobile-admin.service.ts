@@ -478,6 +478,147 @@ export class MobileAdminService {
     };
   }
 
+  public async getRequestDetail(requestId: string) {
+    if (!requestId) {
+      throw new BadRequestException('requestId is required');
+    }
+
+    const requestRows = await this.dataSource.query<any[]>(
+      `
+      SELECT jr.*,
+             ST_Y(jr.location::geometry) as latitude,
+             ST_X(jr.location::geometry) as longitude,
+             cu.first_name as client_first_name,
+             cu.last_name as client_last_name,
+             cu.phone as client_phone,
+             cu.profile_photo_url as client_photo,
+             cu.average_rating as client_rating,
+             wu.id as worker_user_id,
+             wu.first_name as worker_first_name,
+             wu.last_name as worker_last_name,
+             wu.phone as worker_phone,
+             wu.profile_photo_url as worker_photo,
+             wu.average_rating as worker_rating,
+             wu.completed_jobs as worker_completed_jobs,
+             cb.first_name as cancelled_by_first_name,
+             cb.last_name as cancelled_by_last_name
+      FROM job_requests jr
+      JOIN users cu ON cu.id = jr.client_user_id
+      LEFT JOIN job_offers jo_acc ON jo_acc.request_id = jr.id AND jo_acc.status = 'accepted'
+      LEFT JOIN users wu ON wu.id = jo_acc.worker_user_id
+      LEFT JOIN users cb ON cb.id = jr.cancelled_by
+      WHERE jr.id = $1::uuid
+      LIMIT 1
+      `,
+      [requestId],
+    );
+
+    if (!requestRows || requestRows.length === 0) {
+      throw new NotFoundException(`Request with id ${requestId} not found`);
+    }
+
+    const row = requestRows[0];
+
+    const photos = await this.dataSource.query<any[]>(
+      `SELECT id, url, created_at FROM job_request_photos WHERE request_id = $1::uuid ORDER BY created_at ASC`,
+      [requestId],
+    );
+
+    const offerRows = await this.dataSource.query<any[]>(
+      `
+      SELECT jo.*,
+             u.first_name as worker_first_name,
+             u.last_name as worker_last_name,
+             u.phone as worker_phone,
+             u.profile_photo_url as worker_photo,
+             u.average_rating as worker_rating,
+             u.completed_jobs as worker_completed_jobs,
+             ag.name as agency_name
+      FROM job_offers jo
+      JOIN users u ON u.id = jo.worker_user_id
+      LEFT JOIN agencies ag ON ag.id = jo.offered_by_agency_id
+      WHERE jo.request_id = $1::uuid
+      ORDER BY jo.created_at DESC
+      `,
+      [requestId],
+    );
+
+    const notifiedRows = await this.dataSource.query<any[]>(
+      `
+      SELECT COUNT(*)::int as notified_count
+      FROM notifications
+      WHERE type = 'request_new' AND data->>'jobId' = $1::text
+      `,
+      [requestId],
+    );
+    const notifiedCount = Number(notifiedRows[0]?.notified_count ?? 0);
+
+    return {
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      category: row.category,
+      budget: Number(row.budget),
+      currency: 'BOB',
+      status: row.status,
+      address: row.address,
+      latitude: Number(row.latitude),
+      longitude: Number(row.longitude),
+      paymentMethod: row.payment_method || 'Efectivo',
+      modality: row.modality || 'fixed',
+      estimatedHours: row.estimated_hours != null ? Number(row.estimated_hours) : null,
+      hourlyRate: row.hourly_rate != null ? Number(row.hourly_rate) : null,
+      days: row.days != null ? Number(row.days) : null,
+      dailyRate: row.daily_rate != null ? Number(row.daily_rate) : null,
+      startDate: row.start_date || null,
+      workerArrived: row.worker_arrived ?? false,
+      clientConfirmedArrival: row.client_confirmed_arrival ?? false,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      assignedAt: row.work_started_at || null,
+      completedAt: row.completed_at || null,
+      cancelledAt: row.cancelled_at || null,
+      cancelledBy: row.cancelled_by ? `${row.cancelled_by_first_name || ''} ${row.cancelled_by_last_name || ''}`.trim() : null,
+      cancelReason: row.cancel_reason || null,
+      notifiedCount,
+      client: {
+        id: row.client_user_id,
+        firstName: row.client_first_name,
+        lastName: row.client_last_name || '',
+        phone: row.client_phone || null,
+        profilePhotoUrl: row.client_photo || null,
+        averageRating: Number(row.client_rating || 0),
+      },
+      worker: row.worker_user_id
+        ? {
+            id: row.worker_user_id,
+            firstName: row.worker_first_name,
+            lastName: row.worker_last_name || '',
+            phone: row.worker_phone || null,
+            profilePhotoUrl: row.worker_photo || null,
+            averageRating: Number(row.worker_rating || 0),
+            completedJobs: Number(row.worker_completed_jobs || 0),
+          }
+        : null,
+      photos: photos.map((p) => ({ id: p.id, url: p.url, createdAt: p.created_at })),
+      offers: offerRows.map((o) => ({
+        id: o.id,
+        workerUserId: o.worker_user_id,
+        workerName: `${o.worker_first_name || ''} ${o.worker_last_name || ''}`.trim(),
+        workerPhoto: o.worker_photo || null,
+        workerPhone: o.worker_phone || null,
+        workerRating: Number(o.worker_rating || 0),
+        workerCompletedJobs: Number(o.worker_completed_jobs || 0),
+        agencyName: o.agency_name || null,
+        amount: Number(o.amount),
+        message: o.message || '',
+        status: o.status,
+        expiresAt: o.expires_at || null,
+        createdAt: o.created_at,
+      })),
+    };
+  }
+
   public async getCancellationStats() {
     const rows = await this.dataSource.query<any[]>(`
       SELECT

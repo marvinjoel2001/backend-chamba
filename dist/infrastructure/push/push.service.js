@@ -15,6 +15,20 @@ const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const app_1 = require("firebase-admin/app");
 const messaging_1 = require("firebase-admin/messaging");
+function buildAndroidConfig(isCall) {
+    if (isCall) {
+        return { priority: 'high' };
+    }
+    return {
+        priority: 'high',
+        notification: {
+            priority: 'max',
+            channelId: 'chamba_default_channel',
+            defaultSound: true,
+            defaultVibrateTimings: true,
+        },
+    };
+}
 let PushService = PushService_1 = class PushService {
     configService;
     logger = new common_1.Logger(PushService_1.name);
@@ -58,21 +72,14 @@ let PushService = PushService_1 = class PushService {
         }
         return this.messaging.send({
             token: params.token,
-            notification: {
-                title: params.title,
-                body: params.body,
-            },
-            data: Object.keys(data).length > 0 ? data : undefined,
-            android: {
-                priority: 'high',
-                notification: {
-                    priority: 'max',
-                    channelId: isCall ? 'chamba_call_channel_v2' : 'chamba_default_channel',
-                    defaultSound: !isCall,
-                    sound: isCall ? 'chamba_ringtone' : undefined,
-                    defaultVibrateTimings: true,
+            notification: isCall
+                ? undefined
+                : {
+                    title: params.title,
+                    body: params.body,
                 },
-            },
+            data: Object.keys(data).length > 0 ? data : undefined,
+            android: buildAndroidConfig(isCall),
             apns: {
                 headers: {
                     'apns-priority': '10',
@@ -103,21 +110,14 @@ let PushService = PushService_1 = class PushService {
         }
         const response = await this.messaging.sendEachForMulticast({
             tokens: params.tokens,
-            notification: {
-                title: params.title,
-                body: params.body,
-            },
-            data: Object.keys(data).length > 0 ? data : undefined,
-            android: {
-                priority: 'high',
-                notification: {
-                    priority: 'max',
-                    channelId: isCall ? 'chamba_call_channel_v2' : 'chamba_default_channel',
-                    defaultSound: !isCall,
-                    sound: isCall ? 'chamba_ringtone' : undefined,
-                    defaultVibrateTimings: true,
+            notification: isCall
+                ? undefined
+                : {
+                    title: params.title,
+                    body: params.body,
                 },
-            },
+            data: Object.keys(data).length > 0 ? data : undefined,
+            android: buildAndroidConfig(isCall),
             apns: {
                 headers: {
                     'apns-priority': '10',

@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 var NotificationsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotificationsService = void 0;
+const crypto_1 = require("crypto");
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
@@ -56,7 +57,26 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
             tokens: params.tokens,
             title: params.title,
             body: params.body,
-            data: { type: params.isCallAlert ? 'request_new' : 'broadcast', click_action: 'FLUTTER_NOTIFICATION_CLICK' },
+            data: {
+                type: params.isCallAlert ? 'request_new' : 'broadcast',
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+            },
+        });
+    }
+    async simulateJobWavePush(params) {
+        if (params.tokens.length === 0)
+            return 0;
+        const jobId = (0, crypto_1.randomUUID)();
+        return this.pushService.sendToTokens({
+            tokens: params.tokens,
+            title: '📍 Trabajo nuevo cerca: Prueba',
+            body: 'Tienes una solicitud de Bs 150 a 1.2 km. Toca para revisar.',
+            data: {
+                type: 'request_new',
+                jobId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                deep_link: `/request/${jobId}`,
+            },
         });
     }
     async notifyWorkersForJobWave(params) {

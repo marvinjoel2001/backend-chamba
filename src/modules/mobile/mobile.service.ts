@@ -1074,6 +1074,10 @@ export class MobileService implements OnModuleInit {
     return this.adminService.getRequestNotifiedWorkers(requestId);
   }
 
+  async getRequestDetail(requestId: string) {
+    return this.adminService.getRequestDetail(requestId);
+  }
+
   async listDisputes(params?: { status?: string }) {
     return this.disputesService.listDisputes(params);
   }

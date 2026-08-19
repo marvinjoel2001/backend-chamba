@@ -178,6 +178,9 @@ let MobileController = class MobileController {
     broadcastNotification(payload) {
         return this.mobileService.broadcastNotification(payload);
     }
+    simulateJobRequestNotification(payload) {
+        return this.mobileService.simulateJobRequestNotification(payload);
+    }
     getPushUsers() {
         return this.mobileService.getPushUsers();
     }
@@ -274,6 +277,9 @@ let MobileController = class MobileController {
     }
     getRequestNotifiedWorkers(requestId) {
         return this.mobileService.getRequestNotifiedWorkers(requestId);
+    }
+    getRequestDetail(requestId) {
+        return this.mobileService.getRequestDetail(requestId);
     }
     setWorkerAvailability(workerUserId, available) {
         return this.mobileService.setWorkerAvailability(workerUserId, available);
@@ -668,6 +674,13 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "broadcastNotification", null);
 __decorate([
+    (0, common_1.Post)('mobile/admin/notifications/simulate-request'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "simulateJobRequestNotification", null);
+__decorate([
     (0, common_1.Get)('mobile/admin/push-users'),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
@@ -864,6 +877,13 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], MobileController.prototype, "getRequestNotifiedWorkers", null);
+__decorate([
+    (0, common_1.Get)('mobile/admin/requests/:requestId'),
+    __param(0, (0, common_1.Param)('requestId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], MobileController.prototype, "getRequestDetail", null);
 __decorate([
     (0, common_1.Post)('mobile/worker/availability'),
     __param(0, (0, common_1.Body)('workerUserId')),
