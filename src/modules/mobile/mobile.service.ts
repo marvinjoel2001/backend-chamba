@@ -153,7 +153,7 @@ export class MobileService implements OnModuleInit {
         VALUES ($1, $2, $3, $4, $5, false, $6)
         RETURNING id, type, first_name, last_name, email, phone, profile_photo_url,
                   verification_status, id_photo_url, face_photo_url,
-                  id_photo_verified, face_photo_verified
+                  id_photo_verified, face_photo_verified, is_available
         `,
         [type, email, phone, firstName, lastName, ciNumber],
       );
@@ -181,6 +181,7 @@ export class MobileService implements OnModuleInit {
           facePhotoUrl: created.face_photo_url ?? null,
           idPhotoVerified: created.id_photo_verified ?? null,
           facePhotoVerified: created.face_photo_verified ?? null,
+          isAvailable: Boolean(created.is_available),
         },
       };
     });
@@ -210,7 +211,8 @@ export class MobileService implements OnModuleInit {
              u.face_photo_verified,
              u.is_blocked,
              u.is_agency_worker,
-             u.agency_id
+             u.agency_id,
+             u.is_available
       FROM users u
       JOIN auth_credentials c ON c.user_id = u.id
       WHERE (
@@ -248,6 +250,7 @@ export class MobileService implements OnModuleInit {
         isBlocked: row.is_blocked,
         isAgencyWorker: row.is_agency_worker ?? false,
         agencyId: row.agency_id ?? null,
+        isAvailable: Boolean(row.is_available),
       },
       token: 'fake-jwt-token-for-now',
     };
@@ -297,7 +300,7 @@ export class MobileService implements OnModuleInit {
       SELECT u.id, u.type, u.first_name, u.last_name, u.email, u.phone,
              u.profile_photo_url, u.verification_status, u.id_photo_url,
              u.face_photo_url, u.id_photo_verified, u.face_photo_verified, u.is_blocked,
-             u.google_id
+             u.is_available, u.google_id
       FROM users u
       WHERE LOWER(u.email) = LOWER($1) OR u.google_id = $2
       LIMIT 1
@@ -336,6 +339,7 @@ export class MobileService implements OnModuleInit {
         idPhotoVerified: row.id_photo_verified,
         facePhotoVerified: row.face_photo_verified,
         isBlocked: row.is_blocked,
+        isAvailable: Boolean(row.is_available),
       },
       token: 'fake-jwt-token-for-now',
     };
@@ -366,7 +370,7 @@ export class MobileService implements OnModuleInit {
         VALUES ($1, $2, $3, $4, false, $5)
         RETURNING id, type, first_name, last_name, email, phone, profile_photo_url,
                   verification_status, id_photo_url, face_photo_url,
-                  id_photo_verified, face_photo_verified, is_blocked
+                  id_photo_verified, face_photo_verified, is_blocked, is_available
         `,
         [
           params.type,
@@ -399,6 +403,7 @@ export class MobileService implements OnModuleInit {
           idPhotoVerified: row.id_photo_verified,
           facePhotoVerified: row.face_photo_verified,
           isBlocked: row.is_blocked,
+          isAvailable: Boolean(row.is_available),
         },
         token: 'fake-jwt-token-for-now',
       };

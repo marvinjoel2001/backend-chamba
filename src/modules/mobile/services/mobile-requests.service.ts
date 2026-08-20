@@ -475,6 +475,8 @@ export class MobileRequestsService {
   public async getIncomingRequest(workerUserId: string) {
     await this.repo.expireStaleOffers();
     const user = await this.repo.getUserById(workerUserId);
+    const notificationRadiusKm =
+      await this.repo.getWorkerNotificationRadiusKm();
 
     // Nota: El filtrado de isAgencyWorker se hace ahora en el query principal
     // para no bloquear los trabajos que ya tienen asignados.
@@ -536,12 +538,13 @@ export class MobileRequestsService {
         AND (
           (
             jr.status IN ('searching', 'negotiating')
+            AND w.is_available = true
             AND w.is_agency_worker = false
             AND w.current_location IS NOT NULL
             AND ST_DWithin(
               jr.location,
               w.current_location,
-              w.work_radius_km * 1000
+              $2::float8 * 1000
             )
             AND (
               NOT EXISTS (SELECT 1 FROM worker_skills ws0 WHERE ws0.user_id = $1)
@@ -586,11 +589,15 @@ export class MobileRequestsService {
         distance_km ASC NULLS LAST,
         jr.created_at DESC
       `,
-      [workerUserId],
+      [workerUserId, notificationRadiusKm],
     );
 
     if (rows.length === 0) {
-      return { requests: [] };
+      return {
+        isAvailable: Boolean(user.isAvailable),
+        available: Boolean(user.isAvailable),
+        requests: [],
+      };
     }
 
     const offerLifetimeConfig = await this.repo.getOfferLifetimeConfig();
@@ -642,6 +649,8 @@ export class MobileRequestsService {
     });
 
     return {
+      isAvailable: Boolean(user.isAvailable),
+      available: Boolean(user.isAvailable),
       offerLifetimeSeconds:
         requests.length > 0 ? requests[0].offerLifetimeSeconds : 120,
       request: requests.length > 0 ? requests[0] : null,
@@ -1131,6 +1140,8 @@ export class MobileRequestsService {
 
   public async getWorkerRadar(workerUserId: string) {
     const worker = await this.repo.getUserById(workerUserId);
+    const notificationRadiusKm =
+      await this.repo.getWorkerNotificationRadiusKm();
 
     const rows = await this.dataSource.query<any[]>(
       `
@@ -1148,14 +1159,15 @@ export class MobileRequestsService {
         FROM users w
         JOIN job_requests jr ON true
         WHERE w.id = $1
+          AND w.is_available = true
           AND w.current_location IS NOT NULL
           AND jr.status IN ('searching', 'negotiating')
-          AND ST_DWithin(jr.location, w.current_location, w.work_radius_km * 1000)
+          AND ST_DWithin(jr.location, w.current_location, $2::float8 * 1000)
       )
       SELECT jobs.jobs_today, jobs.earnings_today, nearby.nearby_requests
       FROM jobs, nearby
       `,
-      [workerUserId],
+      [workerUserId, notificationRadiusKm],
     );
 
     const skills = await this.getWorkerSkills(workerUserId);

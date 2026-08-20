@@ -89,6 +89,7 @@ export declare class MobileService implements OnModuleInit {
             facePhotoUrl: any;
             idPhotoVerified: any;
             facePhotoVerified: any;
+            isAvailable: boolean;
         };
     }>;
     login(identifier: string, password: string): Promise<{
@@ -108,6 +109,7 @@ export declare class MobileService implements OnModuleInit {
             isBlocked: any;
             isAgencyWorker: any;
             agencyId: any;
+            isAvailable: boolean;
         };
         token: string;
     }>;
@@ -137,6 +139,7 @@ export declare class MobileService implements OnModuleInit {
             idPhotoVerified: any;
             facePhotoVerified: any;
             isBlocked: any;
+            isAvailable: boolean;
         };
         token: string;
         requiresRegistration?: undefined;
@@ -163,6 +166,7 @@ export declare class MobileService implements OnModuleInit {
             idPhotoVerified: any;
             facePhotoVerified: any;
             isBlocked: any;
+            isAvailable: boolean;
         };
         token: string;
     }>;
@@ -653,10 +657,14 @@ export declare class MobileService implements OnModuleInit {
         };
     }>;
     getIncomingRequest(workerUserId: string): Promise<{
+        isAvailable: boolean;
+        available: boolean;
         requests: never[];
         offerLifetimeSeconds?: undefined;
         request?: undefined;
     } | {
+        isAvailable: boolean;
+        available: boolean;
         offerLifetimeSeconds: number;
         request: {
             id: any;

@@ -18,6 +18,7 @@ export declare class MobileController {
             facePhotoUrl: any;
             idPhotoVerified: any;
             facePhotoVerified: any;
+            isAvailable: boolean;
         };
     }>;
     login(identifier: string, password: string): Promise<{
@@ -37,6 +38,7 @@ export declare class MobileController {
             isBlocked: any;
             isAgencyWorker: any;
             agencyId: any;
+            isAvailable: boolean;
         };
         token: string;
     }>;
@@ -65,6 +67,7 @@ export declare class MobileController {
             idPhotoVerified: any;
             facePhotoVerified: any;
             isBlocked: any;
+            isAvailable: boolean;
         };
         token: string;
         requiresRegistration?: undefined;
@@ -85,6 +88,7 @@ export declare class MobileController {
             idPhotoVerified: any;
             facePhotoVerified: any;
             isBlocked: any;
+            isAvailable: boolean;
         };
         token: string;
     }>;
@@ -564,10 +568,14 @@ export declare class MobileController {
     }>;
     getPushUsers(): Promise<any[]>;
     getIncomingRequest(workerUserId: string): Promise<{
+        isAvailable: boolean;
+        available: boolean;
         requests: never[];
         offerLifetimeSeconds?: undefined;
         request?: undefined;
     } | {
+        isAvailable: boolean;
+        available: boolean;
         offerLifetimeSeconds: number;
         request: {
             id: any;
