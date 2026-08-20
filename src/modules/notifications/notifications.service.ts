@@ -208,19 +208,23 @@ export class NotificationsService {
   async notifyNewMessage(params: {
     userId: string;
     token: string;
-    senderName: string;
-    message: string;
+    senderName?: string;
+    message?: string;
+    title?: string;
+    body?: string;
     threadId: string;
   }): Promise<string | null> {
     // Note: We don't save chat messages in the notifications table to avoid spam
     // The chat list handles its own unread counts.
+    const title = params.title || `💬 ${params.senderName || 'Mensaje nuevo'}`;
+    const rawBody = params.body || params.message || 'Te ha enviado un mensaje';
+    const body =
+      rawBody.length > 80 ? rawBody.substring(0, 77) + '...' : rawBody;
+
     return this.pushService.sendToToken({
       token: params.token,
-      title: `💬 ${params.senderName}`,
-      body:
-        params.message.length > 60
-          ? params.message.substring(0, 60) + '...'
-          : params.message,
+      title,
+      body,
       data: {
         type: 'message_new',
         threadId: params.threadId,

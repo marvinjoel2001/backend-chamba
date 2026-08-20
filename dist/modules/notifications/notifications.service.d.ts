@@ -50,8 +50,10 @@ export declare class NotificationsService {
     notifyNewMessage(params: {
         userId: string;
         token: string;
-        senderName: string;
-        message: string;
+        senderName?: string;
+        message?: string;
+        title?: string;
+        body?: string;
         threadId: string;
     }): Promise<string | null>;
     notifyWorkerArrived(params: {

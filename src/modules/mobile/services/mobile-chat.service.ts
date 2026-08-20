@@ -239,12 +239,14 @@ export class MobileChatService {
         ? thread?.worker_user_id
         : thread?.client_user_id;
     if (recipientUserId) {
-      this.notifyRecipientOfNewMessage(
+      this.notifyRecipientOfNewMessage({
         recipientUserId,
-        params.senderUserId,
-        params.content,
-        params.threadId,
-      ).catch((err) => {
+        senderUserId: params.senderUserId,
+        message: params.content,
+        threadId: params.threadId,
+        requestId: thread?.request_id,
+        isSenderWorker: params.senderUserId === thread?.worker_user_id,
+      }).catch((err) => {
         this.logger.warn(
           'Failed to send push notification for new message:',
           err.message,
@@ -262,32 +264,90 @@ export class MobileChatService {
     };
   }
 
-  public async notifyRecipientOfNewMessage(
-    recipientUserId: string,
-    senderUserId: string,
-    message: string,
-    threadId: string,
-  ): Promise<void> {
-    const senderRows = await this.dataSource.query<any[]>(
-      `SELECT first_name, last_name FROM users WHERE id = $1`,
-      [senderUserId],
-    );
-    const senderName = senderRows[0]
-      ? `${senderRows[0].first_name} ${senderRows[0].last_name ?? ''}`.trim()
-      : 'Alguien';
+  private formatMessagePreview(rawContent: string): { preview: string; isMedia: boolean } {
+    if (!rawContent) return { preview: 'Te envió un mensaje', isMedia: false };
+    const trimmed = rawContent.trim();
+
+    // Image detection
+    if (
+      trimmed.startsWith('[Foto]') ||
+      trimmed.startsWith('[Imagen]') ||
+      /\.(jpeg|jpg|png|gif|webp)(\?.*)?$/i.test(trimmed) ||
+      (trimmed.startsWith('http') && (trimmed.includes('/image/upload/') || trimmed.includes('cloudinary') || trimmed.includes('/photos/')))
+    ) {
+      return { preview: '📷 Te envió una imagen', isMedia: true };
+    }
+
+    // Audio / Voice message detection
+    if (
+      trimmed.startsWith('[Audio]') ||
+      trimmed.startsWith('[Voz]') ||
+      /\.(mp3|m4a|wav|aac|ogg)(\?.*)?$/i.test(trimmed)
+    ) {
+      return { preview: '🎤 Te envió un mensaje de voz', isMedia: true };
+    }
+
+    // Location
+    if (trimmed.startsWith('[Ubicación]') || trimmed.startsWith('[Location]')) {
+      return { preview: '📍 Te envió una ubicación', isMedia: true };
+    }
+
+    // Document / file
+    if (trimmed.startsWith('[Archivo]') || trimmed.startsWith('[Documento]')) {
+      return { preview: '📎 Te envió un archivo', isMedia: true };
+    }
+
+    return {
+      preview: trimmed.length > 80 ? trimmed.substring(0, 77) + '...' : trimmed,
+      isMedia: false,
+    };
+  }
+
+  public async notifyRecipientOfNewMessage(params: {
+    recipientUserId: string;
+    senderUserId: string;
+    message: string;
+    threadId: string;
+    requestId?: string | null;
+    isSenderWorker: boolean;
+  }): Promise<void> {
+    let jobTitle: string | null = null;
+    if (params.requestId) {
+      const jobRows = await this.dataSource.query<any[]>(
+        `SELECT title FROM job_requests WHERE id = $1 LIMIT 1`,
+        [params.requestId],
+      );
+      if (jobRows[0]?.title) {
+        jobTitle = jobRows[0].title;
+      }
+    }
+
+    const { preview, isMedia } = this.formatMessagePreview(params.message);
+
+    // Si el remitente es el worker, el receptor (cliente) lee: "Tu trabajador..."
+    // Si el remitente es el cliente, el receptor (worker) lee: "Tu cliente..."
+    const senderRoleLabel = params.isSenderWorker ? 'Tu trabajador' : 'Tu cliente';
+
+    const title = jobTitle
+      ? `💬 ${jobTitle}`
+      : `💬 Mensaje de ${senderRoleLabel.toLowerCase()}`;
+
+    const body = isMedia
+      ? `${senderRoleLabel}: ${preview}`
+      : (jobTitle ? `${senderRoleLabel}: "${preview}"` : preview);
 
     const tokenRows = await this.dataSource.query<any[]>(
-      `SELECT token AS push_token FROM push_tokens WHERE user_id = $1`,
-      [recipientUserId],
+      `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+      [params.recipientUserId],
     );
     if (!tokenRows[0]?.push_token) return;
 
     await this.notificationsService.notifyNewMessage({
-      userId: recipientUserId,
+      userId: params.recipientUserId,
       token: tokenRows[0].push_token,
-      senderName,
-      message,
-      threadId,
+      title,
+      body,
+      threadId: params.threadId,
     });
   }
 }

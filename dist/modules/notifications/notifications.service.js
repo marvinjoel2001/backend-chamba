@@ -160,12 +160,13 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
         });
     }
     async notifyNewMessage(params) {
+        const title = params.title || `💬 ${params.senderName || 'Mensaje nuevo'}`;
+        const rawBody = params.body || params.message || 'Te ha enviado un mensaje';
+        const body = rawBody.length > 80 ? rawBody.substring(0, 77) + '...' : rawBody;
         return this.pushService.sendToToken({
             token: params.token,
-            title: `💬 ${params.senderName}`,
-            body: params.message.length > 60
-                ? params.message.substring(0, 60) + '...'
-                : params.message,
+            title,
+            body,
             data: {
                 type: 'message_new',
                 threadId: params.threadId,
