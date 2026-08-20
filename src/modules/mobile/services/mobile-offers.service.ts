@@ -750,10 +750,13 @@ export class MobileOffersService {
       [params.requestId],
     );
 
+    const client = await this.repo.getUserById(params.clientUserId);
     const payload = {
       requestId: params.requestId,
       newBudget: params.amount,
       clientUserId: params.clientUserId,
+      clientName: client?.firstName ?? 'El cliente',
+      jobTitle: request.title,
     };
 
     for (const row of workerRows) {
@@ -763,8 +766,6 @@ export class MobileOffersService {
         payload,
       );
     }
-
-    const client = await this.repo.getUserById(params.clientUserId);
     for (const row of workerRows) {
       const tokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,

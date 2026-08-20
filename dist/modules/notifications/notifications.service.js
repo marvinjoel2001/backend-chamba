@@ -307,8 +307,8 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
         });
     }
     async notifyWorkerCounterOffer(params) {
-        const title = `💰 ${params.clientName} subió su precio`;
-        const body = `Nuevo precio: Bs ${Math.round(params.newAmount)} para: ${params.jobTitle}`;
+        const title = `💰 ¡${params.clientName} mejoró su oferta!`;
+        const body = `Nuevo presupuesto: Bs ${Math.round(params.newAmount)} en ${params.jobTitle}`;
         const type = 'counter_offer';
         await this.notificationRepository.save(this.notificationRepository.create({
             userId: params.userId,

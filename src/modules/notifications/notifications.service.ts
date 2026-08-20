@@ -421,8 +421,8 @@ export class NotificationsService {
     jobTitle: string;
     requestId: string;
   }): Promise<string | null> {
-    const title = `💰 ${params.clientName} subió su precio`;
-    const body = `Nuevo precio: Bs ${Math.round(params.newAmount)} para: ${params.jobTitle}`;
+    const title = `💰 ¡${params.clientName} mejoró su oferta!`;
+    const body = `Nuevo presupuesto: Bs ${Math.round(params.newAmount)} en ${params.jobTitle}`;
     const type = 'counter_offer';
 
     await this.notificationRepository.save(
