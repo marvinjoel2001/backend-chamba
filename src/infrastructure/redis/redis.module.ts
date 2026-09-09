@@ -22,14 +22,30 @@ import type { RedisClient } from './redis.types';
         configService: ConfigService,
       ): Promise<RedisClient> => {
         const rawHost = configService.get<string>('REDIS_HOST');
-        const redisUrl =
+        let redisUrl =
           configService.get<string>('REDIS_URL') ||
           (rawHost?.includes('://') ? rawHost : undefined);
+
+        if (
+          redisUrl &&
+          redisUrl.includes('.railway.internal') &&
+          redisUrl.startsWith('rediss://')
+        ) {
+          redisUrl = redisUrl.replace('rediss://', 'redis://');
+        }
+
+        const isInternalRailway =
+          (rawHost && rawHost.includes('.railway.internal')) ||
+          (redisUrl && redisUrl.includes('.railway.internal'));
+
+        const useTls = isInternalRailway
+          ? false
+          : configService.get<boolean>('REDIS_TLS', false);
 
         const client = redisUrl
           ? createClient({ url: redisUrl })
           : createClient({
-              socket: configService.get<boolean>('REDIS_TLS', false)
+              socket: useTls
                 ? {
                     host: configService.getOrThrow<string>('REDIS_HOST'),
                     port: configService.getOrThrow<number>('REDIS_PORT'),

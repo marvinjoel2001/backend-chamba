@@ -38,12 +38,22 @@ exports.RedisModule = RedisModule = __decorate([
                 inject: [config_1.ConfigService],
                 useFactory: async (configService) => {
                     const rawHost = configService.get('REDIS_HOST');
-                    const redisUrl = configService.get('REDIS_URL') ||
+                    let redisUrl = configService.get('REDIS_URL') ||
                         (rawHost?.includes('://') ? rawHost : undefined);
+                    if (redisUrl &&
+                        redisUrl.includes('.railway.internal') &&
+                        redisUrl.startsWith('rediss://')) {
+                        redisUrl = redisUrl.replace('rediss://', 'redis://');
+                    }
+                    const isInternalRailway = (rawHost && rawHost.includes('.railway.internal')) ||
+                        (redisUrl && redisUrl.includes('.railway.internal'));
+                    const useTls = isInternalRailway
+                        ? false
+                        : configService.get('REDIS_TLS', false);
                     const client = redisUrl
                         ? (0, redis_1.createClient)({ url: redisUrl })
                         : (0, redis_1.createClient)({
-                            socket: configService.get('REDIS_TLS', false)
+                            socket: useTls
                                 ? {
                                     host: configService.getOrThrow('REDIS_HOST'),
                                     port: configService.getOrThrow('REDIS_PORT'),

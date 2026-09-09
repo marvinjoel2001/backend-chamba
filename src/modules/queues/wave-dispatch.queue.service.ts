@@ -65,9 +65,13 @@ export class WaveDispatchQueueService implements OnModuleInit, OnModuleDestroy {
 
   private buildConnection() {
     const password = this.configService.get<string>('REDIS_PASSWORD');
-    const useTls = this.configService.get<boolean>('REDIS_TLS', false);
+    const host = this.configService.getOrThrow<string>('REDIS_HOST');
+    const isInternalRailway = host.includes('.railway.internal');
+    const useTls = isInternalRailway
+      ? false
+      : this.configService.get<boolean>('REDIS_TLS', false);
     return {
-      host: this.configService.getOrThrow<string>('REDIS_HOST'),
+      host,
       port: this.configService.getOrThrow<number>('REDIS_PORT'),
       ...(password ? { password } : {}),
       db: this.configService.get<number>('REDIS_DB', 0),
