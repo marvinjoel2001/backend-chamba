@@ -37,23 +37,25 @@ exports.RedisModule = RedisModule = __decorate([
                 provide: redis_constants_1.REDIS_CLIENT,
                 inject: [config_1.ConfigService],
                 useFactory: async (configService) => {
-                    const host = configService.getOrThrow('REDIS_HOST');
-                    const port = configService.getOrThrow('REDIS_PORT');
-                    const useTls = configService.get('REDIS_TLS', false);
-                    const client = (0, redis_1.createClient)({
-                        socket: useTls
-                            ? {
-                                host,
-                                port,
-                                tls: true,
-                            }
-                            : {
-                                host,
-                                port,
-                            },
-                        password: configService.get('REDIS_PASSWORD') || undefined,
-                        database: configService.get('REDIS_DB', 0),
-                    });
+                    const rawHost = configService.get('REDIS_HOST');
+                    const redisUrl = configService.get('REDIS_URL') ||
+                        (rawHost?.includes('://') ? rawHost : undefined);
+                    const client = redisUrl
+                        ? (0, redis_1.createClient)({ url: redisUrl })
+                        : (0, redis_1.createClient)({
+                            socket: configService.get('REDIS_TLS', false)
+                                ? {
+                                    host: configService.getOrThrow('REDIS_HOST'),
+                                    port: configService.getOrThrow('REDIS_PORT'),
+                                    tls: true,
+                                }
+                                : {
+                                    host: configService.getOrThrow('REDIS_HOST'),
+                                    port: configService.getOrThrow('REDIS_PORT'),
+                                },
+                            password: configService.get('REDIS_PASSWORD') || undefined,
+                            database: configService.get('REDIS_DB', 0),
+                        });
                     client.on('error', (error) => {
                         common_1.Logger.error(error, 'RedisClient');
                     });

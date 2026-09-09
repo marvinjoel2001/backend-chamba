@@ -24,27 +24,37 @@ exports.DatabaseModule = DatabaseModule = __decorate([
             typeorm_1.TypeOrmModule.forRootAsync({
                 imports: [config_1.ConfigModule],
                 inject: [config_1.ConfigService],
-                useFactory: (configService) => ({
-                    type: 'postgres',
-                    host: configService.getOrThrow('DATABASE_HOST'),
-                    port: configService.getOrThrow('DATABASE_PORT'),
-                    username: configService.getOrThrow('DATABASE_USERNAME'),
-                    password: configService.getOrThrow('DATABASE_PASSWORD'),
-                    database: configService.getOrThrow('DATABASE_NAME'),
-                    synchronize: configService.get('DATABASE_SYNC', false),
-                    ssl: configService.get('DATABASE_SSL', false)
-                        ? { rejectUnauthorized: false }
-                        : false,
-                    autoLoadEntities: true,
-                    migrations: [
-                        _1717000000000_InitialBaselineSchema_1.InitialBaselineSchema1717000000000,
-                        _1781633301782_AddModalityToJobRequests_1.AddModalityToJobRequests1781633301782,
-                        _1782866723182_AddReminderLevelToJobRequests_1.AddReminderLevelToJobRequests1782866723182,
-                        _1783500000000_AddStartReminderSentAndTimeConfigSeeds_1.AddStartReminderSentAndTimeConfigSeeds1783500000000,
-                    ],
-                    migrationsRun: true,
-                    migrationsTableName: 'typeorm_migrations',
-                }),
+                useFactory: (configService) => {
+                    const rawHost = configService.get('DATABASE_HOST');
+                    const dbUrl = configService.get('DATABASE_URL') ||
+                        (rawHost?.includes('://') ? rawHost : undefined);
+                    const connectionConfig = dbUrl
+                        ? { url: dbUrl }
+                        : {
+                            host: configService.getOrThrow('DATABASE_HOST'),
+                            port: configService.getOrThrow('DATABASE_PORT'),
+                            username: configService.getOrThrow('DATABASE_USERNAME'),
+                            password: configService.getOrThrow('DATABASE_PASSWORD'),
+                            database: configService.getOrThrow('DATABASE_NAME'),
+                        };
+                    return {
+                        type: 'postgres',
+                        ...connectionConfig,
+                        synchronize: configService.get('DATABASE_SYNC', false),
+                        ssl: configService.get('DATABASE_SSL', false)
+                            ? { rejectUnauthorized: false }
+                            : false,
+                        autoLoadEntities: true,
+                        migrations: [
+                            _1717000000000_InitialBaselineSchema_1.InitialBaselineSchema1717000000000,
+                            _1781633301782_AddModalityToJobRequests_1.AddModalityToJobRequests1781633301782,
+                            _1782866723182_AddReminderLevelToJobRequests_1.AddReminderLevelToJobRequests1782866723182,
+                            _1783500000000_AddStartReminderSentAndTimeConfigSeeds_1.AddStartReminderSentAndTimeConfigSeeds1783500000000,
+                        ],
+                        migrationsRun: true,
+                        migrationsTableName: 'typeorm_migrations',
+                    };
+                },
             }),
         ],
         providers: [database_bootstrap_service_1.DatabaseBootstrapService],

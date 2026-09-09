@@ -12,27 +12,40 @@ import { AddStartReminderSentAndTimeConfigSeeds1783500000000 } from './migration
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.getOrThrow<string>('DATABASE_HOST'),
-        port: configService.getOrThrow<number>('DATABASE_PORT'),
-        username: configService.getOrThrow<string>('DATABASE_USERNAME'),
-        password: configService.getOrThrow<string>('DATABASE_PASSWORD'),
-        database: configService.getOrThrow<string>('DATABASE_NAME'),
-        synchronize: configService.get<boolean>('DATABASE_SYNC', false),
-        ssl: configService.get<boolean>('DATABASE_SSL', false)
-          ? { rejectUnauthorized: false }
-          : false,
-        autoLoadEntities: true,
-        migrations: [
-          InitialBaselineSchema1717000000000,
-          AddModalityToJobRequests1781633301782,
-          AddReminderLevelToJobRequests1782866723182,
-          AddStartReminderSentAndTimeConfigSeeds1783500000000,
-        ],
-        migrationsRun: true,
-        migrationsTableName: 'typeorm_migrations',
-      }),
+      useFactory: (configService: ConfigService) => {
+        const rawHost = configService.get<string>('DATABASE_HOST');
+        const dbUrl =
+          configService.get<string>('DATABASE_URL') ||
+          (rawHost?.includes('://') ? rawHost : undefined);
+
+        const connectionConfig = dbUrl
+          ? { url: dbUrl }
+          : {
+              host: configService.getOrThrow<string>('DATABASE_HOST'),
+              port: configService.getOrThrow<number>('DATABASE_PORT'),
+              username: configService.getOrThrow<string>('DATABASE_USERNAME'),
+              password: configService.getOrThrow<string>('DATABASE_PASSWORD'),
+              database: configService.getOrThrow<string>('DATABASE_NAME'),
+            };
+
+        return {
+          type: 'postgres',
+          ...connectionConfig,
+          synchronize: configService.get<boolean>('DATABASE_SYNC', false),
+          ssl: configService.get<boolean>('DATABASE_SSL', false)
+            ? { rejectUnauthorized: false }
+            : false,
+          autoLoadEntities: true,
+          migrations: [
+            InitialBaselineSchema1717000000000,
+            AddModalityToJobRequests1781633301782,
+            AddReminderLevelToJobRequests1782866723182,
+            AddStartReminderSentAndTimeConfigSeeds1783500000000,
+          ],
+          migrationsRun: true,
+          migrationsTableName: 'typeorm_migrations',
+        };
+      },
     }),
   ],
   providers: [DatabaseBootstrapService],

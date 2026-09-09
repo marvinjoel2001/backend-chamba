@@ -21,24 +21,27 @@ import type { RedisClient } from './redis.types';
       useFactory: async (
         configService: ConfigService,
       ): Promise<RedisClient> => {
-        const host = configService.getOrThrow<string>('REDIS_HOST');
-        const port = configService.getOrThrow<number>('REDIS_PORT');
-        const useTls = configService.get<boolean>('REDIS_TLS', false);
+        const rawHost = configService.get<string>('REDIS_HOST');
+        const redisUrl =
+          configService.get<string>('REDIS_URL') ||
+          (rawHost?.includes('://') ? rawHost : undefined);
 
-        const client = createClient({
-          socket: useTls
-            ? {
-                host,
-                port,
-                tls: true,
-              }
-            : {
-                host,
-                port,
-              },
-          password: configService.get<string>('REDIS_PASSWORD') || undefined,
-          database: configService.get<number>('REDIS_DB', 0),
-        });
+        const client = redisUrl
+          ? createClient({ url: redisUrl })
+          : createClient({
+              socket: configService.get<boolean>('REDIS_TLS', false)
+                ? {
+                    host: configService.getOrThrow<string>('REDIS_HOST'),
+                    port: configService.getOrThrow<number>('REDIS_PORT'),
+                    tls: true,
+                  }
+                : {
+                    host: configService.getOrThrow<string>('REDIS_HOST'),
+                    port: configService.getOrThrow<number>('REDIS_PORT'),
+                  },
+              password: configService.get<string>('REDIS_PASSWORD') || undefined,
+              database: configService.get<number>('REDIS_DB', 0),
+            });
 
         client.on('error', (error) => {
           Logger.error(error, 'RedisClient');
