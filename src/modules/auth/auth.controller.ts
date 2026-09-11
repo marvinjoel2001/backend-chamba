@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   UseGuards,
   HttpCode,
@@ -46,4 +47,18 @@ export class AuthController {
   ) {
     return this.authService.changePassword(admin.id, changePasswordDto);
   }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get current admin user profile' })
+  @ApiOkResponse({ description: 'Returns current admin user' })
+  @ApiUnauthorizedResponse({ description: 'Invalid or expired token' })
+  async getMe(@CurrentAdmin() admin: any) {
+    return {
+      id: admin.id,
+      username: admin.username,
+    };
+  }
 }
+
