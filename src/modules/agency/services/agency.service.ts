@@ -511,4 +511,218 @@ export class AgencyService {
       })),
     };
   }
+
+  // ── Reportes y Finanzas (Informes de Trabajadores y Ganancias) ──
+
+  public async getReports(
+    agencyId: string,
+    filters: { period?: string; workerId?: string } = {},
+  ) {
+    const [agencyRow] = await this.dataSource.query<any[]>(
+      `SELECT id, name, commission_rate FROM agencies WHERE id = $1 LIMIT 1`,
+      [agencyId],
+    );
+
+    const commissionRate = Number(agencyRow?.commission_rate ?? 0);
+
+    // Filtro de fecha según el periodo solicitado
+    let dateFilterSql = '';
+    if (filters.period === 'month') {
+      dateFilterSql = "AND jo.created_at >= date_trunc('month', NOW())";
+    } else if (filters.period === 'last_month') {
+      dateFilterSql =
+        "AND jo.created_at >= date_trunc('month', NOW() - INTERVAL '1 month') AND jo.created_at < date_trunc('month', NOW())";
+    } else if (filters.period === 'quarter') {
+      dateFilterSql =
+        "AND jo.created_at >= date_trunc('month', NOW() - INTERVAL '3 months')";
+    } else if (filters.period === 'year') {
+      dateFilterSql = "AND jo.created_at >= date_trunc('year', NOW())";
+    }
+
+    let workerFilterSql = '';
+    const queryParams: any[] = [agencyId];
+    if (filters.workerId?.trim()) {
+      queryParams.push(filters.workerId.trim());
+      workerFilterSql = `AND jo.worker_user_id = $${queryParams.length}`;
+    }
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT jr.id AS request_id,
+             jr.title,
+             jr.category,
+             jr.address,
+             jr.status AS request_status,
+             jr.created_at,
+             jr.completed_at,
+             jr.updated_at,
+             jo.id AS offer_id,
+             jo.amount,
+             jo.created_at AS offered_at,
+             u.id AS worker_id,
+             u.first_name,
+             u.last_name,
+             u.profile_photo_url,
+             u.average_rating,
+             u.phone AS worker_phone,
+             c.first_name AS client_first_name,
+             c.last_name AS client_last_name
+      FROM job_offers jo
+      JOIN job_requests jr ON jr.id = jo.request_id
+      JOIN users u ON u.id = jo.worker_user_id
+      JOIN users c ON c.id = jr.client_user_id
+      WHERE jo.offered_by_agency_id = $1
+        AND jo.status = 'accepted'
+        ${dateFilterSql}
+        ${workerFilterSql}
+      ORDER BY jo.created_at DESC
+      `,
+      queryParams,
+    );
+
+    // Obtener todos los trabajadores vinculados a la agencia para que aparezcan en el informe
+    const agencyWorkers = await this.getWorkers(agencyId);
+
+    // Mapear cada trabajo individual
+    const jobs = rows.map((r) => {
+      const amount = Number(r.amount);
+      const agencyCommission = Number(
+        ((amount * commissionRate) / 100).toFixed(2),
+      );
+      const workerEarnings = Number((amount - agencyCommission).toFixed(2));
+      return {
+        requestId: r.request_id,
+        offerId: r.offer_id,
+        title: r.title,
+        category: r.category,
+        address: r.address,
+        status: r.request_status,
+        amount,
+        commissionRate,
+        agencyCommission,
+        workerEarnings,
+        offeredAt: r.offered_at,
+        completedAt: r.completed_at ?? null,
+        worker: {
+          id: r.worker_id,
+          name: `${r.first_name} ${r.last_name ?? ''}`.trim(),
+          profilePhotoUrl: r.profile_photo_url ?? null,
+          phone: r.worker_phone ?? null,
+        },
+        clientName:
+          `${r.client_first_name} ${r.client_last_name ?? ''}`.trim(),
+      };
+    });
+
+    // Calcular métricas globales de la agencia
+    const totalRevenue = Number(
+      jobs.reduce((sum, j) => sum + j.amount, 0).toFixed(2),
+    );
+    const agencyEarnings = Number(
+      ((totalRevenue * commissionRate) / 100).toFixed(2),
+    );
+    const workersPayout = Number((totalRevenue - agencyEarnings).toFixed(2));
+    const completedJobsCount = jobs.filter(
+      (j) => j.status === 'completed',
+    ).length;
+    const inProgressJobsCount = jobs.filter(
+      (j) => j.status === 'assigned' || j.status === 'in_progress',
+    ).length;
+    const averageTicket =
+      jobs.length > 0 ? Number((totalRevenue / jobs.length).toFixed(2)) : 0;
+
+    // Consolidar informe agrupado por trabajador
+    const workerStatsMap = new Map<string, any>();
+
+    // Inicializar con todos los trabajadores de la agencia (si no hay filtro de workerId específico)
+    for (const w of agencyWorkers) {
+      if (!filters.workerId || filters.workerId === w.id) {
+        workerStatsMap.set(w.id, {
+          workerId: w.id,
+          workerName: `${w.firstName} ${w.lastName}`.trim(),
+          profilePhotoUrl: w.profilePhotoUrl,
+          phone: w.phone,
+          skills: w.skills,
+          averageRating: w.averageRating,
+          completedJobs: 0,
+          inProgressJobs: 0,
+          totalJobs: 0,
+          totalGenerated: 0,
+          agencyCommission: 0,
+          workerPayout: 0,
+          averageJobValue: 0,
+          jobs: [],
+        });
+      }
+    }
+
+    // Agregar datos de trabajos a cada trabajador
+    for (const j of jobs) {
+      let workerStat = workerStatsMap.get(j.worker.id);
+      if (!workerStat) {
+        workerStat = {
+          workerId: j.worker.id,
+          workerName: j.worker.name,
+          profilePhotoUrl: j.worker.profilePhotoUrl,
+          phone: j.worker.phone,
+          skills: [],
+          averageRating: 0,
+          completedJobs: 0,
+          inProgressJobs: 0,
+          totalJobs: 0,
+          totalGenerated: 0,
+          agencyCommission: 0,
+          workerPayout: 0,
+          averageJobValue: 0,
+          jobs: [],
+        };
+        workerStatsMap.set(j.worker.id, workerStat);
+      }
+
+      workerStat.totalJobs += 1;
+      workerStat.totalGenerated = Number(
+        (workerStat.totalGenerated + j.amount).toFixed(2),
+      );
+      workerStat.agencyCommission = Number(
+        (workerStat.agencyCommission + j.agencyCommission).toFixed(2),
+      );
+      workerStat.workerPayout = Number(
+        (workerStat.workerPayout + j.workerEarnings).toFixed(2),
+      );
+      if (j.status === 'completed') {
+        workerStat.completedJobs += 1;
+      } else if (j.status === 'assigned' || j.status === 'in_progress') {
+        workerStat.inProgressJobs += 1;
+      }
+      workerStat.jobs.push(j);
+    }
+
+    // Calcular promedios por trabajador y ordenar por mayor dinero generado
+    const workersReport = Array.from(workerStatsMap.values()).map((w) => ({
+      ...w,
+      averageJobValue:
+        w.totalJobs > 0
+          ? Number((w.totalGenerated / w.totalJobs).toFixed(2))
+          : 0,
+    }));
+
+    workersReport.sort((a, b) => b.totalGenerated - a.totalGenerated);
+
+    return {
+      summary: {
+        totalRevenue,
+        commissionRate,
+        agencyEarnings,
+        workersPayout,
+        totalJobsCount: jobs.length,
+        completedJobsCount,
+        inProgressJobsCount,
+        averageTicket,
+        period: filters.period ?? 'all',
+      },
+      workers: workersReport,
+      jobs,
+    };
+  }
 }
+

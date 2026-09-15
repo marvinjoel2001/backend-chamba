@@ -113,4 +113,23 @@ export class AgencyController {
   ) {
     return this.agencyService.sendOffer(agency.agencyId, requestId, dto);
   }
+
+  @Get('reports')
+  @ApiOperation({
+    summary: 'Reportes financieros y rendimiento de trabajadores de la agencia',
+  })
+  @ApiQuery({
+    name: 'period',
+    required: false,
+    enum: ['month', 'last_month', 'quarter', 'year', 'all'],
+  })
+  @ApiQuery({ name: 'workerId', required: false })
+  getReports(
+    @CurrentAgency() agency: AgencyPrincipal,
+    @Query('period') period?: string,
+    @Query('workerId') workerId?: string,
+  ) {
+    return this.agencyService.getReports(agency.agencyId, { period, workerId });
+  }
 }
+
