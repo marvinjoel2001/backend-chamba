@@ -5,5 +5,6 @@ export declare class DatabaseBootstrapService implements OnModuleInit {
     private readonly logger;
     constructor(dataSource: DataSource);
     onModuleInit(): Promise<void>;
+    private ensureOfferConstraints;
     private ensurePostgis;
 }

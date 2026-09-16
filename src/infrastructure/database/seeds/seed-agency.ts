@@ -15,36 +15,56 @@ async function run() {
 
   await AppDataSource.initialize();
 
-  const passwordHash = await bcrypt.hash(password, await bcrypt.genSalt());
+  const accounts = [
+    {
+      email: process.env.AGENCY_EMAIL ?? 'agencia@chamba.com',
+      password: process.env.AGENCY_PASSWORD ?? 'agencia123',
+      name: process.env.AGENCY_NAME ?? 'Agencia Demo',
+    },
+    {
+      email: 'agencia@chamba.bo',
+      password: 'password123',
+      name: 'Agencia Chamba Bolivia',
+    },
+  ];
 
-  const existing = await AppDataSource.query(
-    `SELECT id FROM agencies WHERE LOWER(contact_email) = LOWER($1) LIMIT 1`,
-    [email],
-  );
+  for (const account of accounts) {
+    const passwordHash = await bcrypt.hash(
+      account.password,
+      await bcrypt.genSalt(),
+    );
 
-  if (existing[0]) {
-    await AppDataSource.query(
-      `
-      UPDATE agencies
-      SET password_hash = $2, is_active = true, updated_at = NOW()
-      WHERE id = $1
-      `,
-      [existing[0].id, passwordHash],
+    const existing = await AppDataSource.query(
+      `SELECT id FROM agencies WHERE LOWER(contact_email) = LOWER($1) LIMIT 1`,
+      [account.email],
     );
-    console.log(`Agencia existente actualizada: ${existing[0].id} (${email})`);
-  } else {
-    const rows = await AppDataSource.query(
-      `
-      INSERT INTO agencies (name, contact_email, password_hash, is_active)
-      VALUES ($1, $2, $3, true)
-      RETURNING id
-      `,
-      [name, email, passwordHash],
-    );
-    console.log(`Agencia creada: ${rows[0].id} (${email})`);
+
+    if (existing[0]) {
+      await AppDataSource.query(
+        `
+        UPDATE agencies
+        SET password_hash = $2, is_active = true, updated_at = NOW()
+        WHERE id = $1
+        `,
+        [existing[0].id, passwordHash],
+      );
+      console.log(
+        `Agencia existente actualizada: ${existing[0].id} (${account.email})`,
+      );
+    } else {
+      const rows = await AppDataSource.query(
+        `
+        INSERT INTO agencies (name, contact_email, password_hash, is_active)
+        VALUES ($1, $2, $3, true)
+        RETURNING id
+        `,
+        [account.name, account.email, passwordHash],
+      );
+      console.log(`Agencia creada: ${rows[0].id} (${account.email})`);
+    }
+
+    console.log(`Credenciales: ${account.email} / ${account.password}`);
   }
-
-  console.log(`Credenciales: ${email} / ${password}`);
   await AppDataSource.destroy();
 }
 

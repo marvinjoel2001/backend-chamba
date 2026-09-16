@@ -667,8 +667,8 @@ export declare class MobileController {
     }>;
     acceptOffer(offerId: string, clientUserId: string): Promise<{
         accepted: boolean;
-        requestId: any;
-        workerUserId: any;
+        requestId: string;
+        workerUserId: string;
     }>;
     discardOffer(requestId: string, workerUserId: string): Promise<{
         discarded: boolean;

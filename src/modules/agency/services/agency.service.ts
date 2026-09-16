@@ -136,8 +136,7 @@ export class AgencyService {
   }
 
   public async unlinkWorker(agencyId: string, workerUserId: string) {
-    // Para UPDATE ... RETURNING, dataSource.query devuelve [rows, affected].
-    const [rows] = await this.dataSource.query<[any[], number]>(
+    const rawResult = await this.dataSource.query<any>(
       `
       UPDATE users
       SET agency_id = NULL,
@@ -151,7 +150,8 @@ export class AgencyService {
       [workerUserId, agencyId],
     );
 
-    if (!rows[0]) {
+    const rows = Array.isArray(rawResult?.[0]) ? rawResult[0] : rawResult;
+    if (!rows?.[0]) {
       throw new NotFoundException('El trabajador no pertenece a tu agencia');
     }
 
@@ -163,7 +163,7 @@ export class AgencyService {
   }
 
   public async toggleWorkerBlock(agencyId: string, workerUserId: string) {
-    const [rows] = await this.dataSource.query<[any[], number]>(
+    const rawResult = await this.dataSource.query<any>(
       `
       UPDATE users
       SET is_blocked = NOT COALESCE(is_blocked, false),
@@ -176,7 +176,8 @@ export class AgencyService {
       [workerUserId, agencyId],
     );
 
-    if (!rows[0]) {
+    const rows = Array.isArray(rawResult?.[0]) ? rawResult[0] : rawResult;
+    if (!rows?.[0]) {
       throw new NotFoundException('El trabajador no pertenece a tu agencia');
     }
 
@@ -723,6 +724,59 @@ export class AgencyService {
       workers: workersReport,
       jobs,
     };
+  }
+
+  // ── Disputas que involucran a trabajadores de la agencia ───────
+
+  public async getDisputes(agencyId: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT d.id,
+             d.request_id,
+             d.reason,
+             d.description,
+             d.status,
+             d.resolution,
+             d.created_at,
+             d.updated_at,
+             jr.title AS request_title,
+             u.id AS worker_id,
+             u.first_name AS worker_first_name,
+             u.last_name AS worker_last_name,
+             reporter.first_name AS reporter_first_name,
+             reporter.last_name AS reporter_last_name,
+             reporter.type AS reporter_type
+      FROM disputes d
+      JOIN users u ON u.id = d.reported_user
+      LEFT JOIN job_requests jr ON jr.id = d.request_id
+      LEFT JOIN users reporter ON reporter.id = d.reported_by
+      WHERE u.agency_id = $1
+        AND u.is_agency_worker = true
+      ORDER BY d.created_at DESC
+      LIMIT 100
+      `,
+      [agencyId],
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      requestId: row.request_id,
+      reason: row.reason,
+      description: row.description,
+      status: row.status,
+      resolution: row.resolution ?? null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      requestTitle: row.request_title ?? 'Sin título',
+      worker: {
+        id: row.worker_id,
+        name: `${row.worker_first_name} ${row.worker_last_name ?? ''}`.trim(),
+      },
+      reportedBy: {
+        name: `${row.reporter_first_name ?? 'Usuario'} ${row.reporter_last_name ?? ''}`.trim(),
+        type: row.reporter_type ?? 'client',
+      },
+    }));
   }
 }
 

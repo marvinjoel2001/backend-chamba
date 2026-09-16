@@ -131,5 +131,13 @@ export class AgencyController {
   ) {
     return this.agencyService.getReports(agency.agencyId, { period, workerId });
   }
+
+  @Get('disputes')
+  @ApiOperation({
+    summary: 'Listar disputas y reportes que involucran a trabajadores de la agencia',
+  })
+  getDisputes(@CurrentAgency() agency: AgencyPrincipal) {
+    return this.agencyService.getDisputes(agency.agencyId);
+  }
 }
 

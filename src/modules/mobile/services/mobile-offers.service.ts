@@ -375,130 +375,216 @@ export class MobileOffersService {
 
   public async acceptOffer(params: { offerId: string; clientUserId: string }) {
     await this.repo.expireStaleOffers();
-    const rows = await this.dataSource.query<any[]>(
-      `
-      SELECT jo.id,
-             jo.request_id,
-             jo.worker_user_id,
-             jo.status AS offer_status,
-             jr.client_user_id,
-             jr.status AS request_status
-      FROM job_offers jo
-      JOIN job_requests jr ON jr.id = jo.request_id
-      WHERE jo.id = $1
-      LIMIT 1
-      `,
-      [params.offerId],
-    );
 
-    const offer = rows[0];
-    if (!offer) {
-      throw new NotFoundException('Offer not found');
-    }
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    if (offer.client_user_id !== params.clientUserId) {
-      throw new UnauthorizedException(
-        'Solo el cliente puede aceptar la oferta',
-      );
-    }
+    let acceptedOffer: {
+      id: string;
+      request_id: string;
+      worker_user_id: string;
+      amount: number;
+    };
+    let rejectedRows: { id: string; worker_user_id: string }[] = [];
+    let jobTitle = 'un trabajo';
 
-    if (!['searching', 'negotiating'].includes(offer.request_status)) {
-      throw new BadRequestException(
-        offer.request_status === 'cancelled'
-          ? 'La solicitud fue cancelada y ya no admite aceptar ofertas'
-          : 'La solicitud ya no admite aceptar ofertas',
-      );
-    }
-    if (offer.offer_status !== 'pending') {
-      throw new BadRequestException('La oferta ya no está disponible');
-    }
-
-    // Updates condicionados al estado actual para evitar carreras
-    // (doble aceptación o aceptar mientras el cron/cliente cancela).
-    const acceptedRows = await this.dataSource.query<any[]>(
-      `
-      UPDATE job_offers
-      SET status = 'accepted'
-      WHERE id = $1
-        AND status = 'pending'
-        AND (expires_at IS NULL OR expires_at > NOW())
-      RETURNING id
-      `,
-      [params.offerId],
-    );
-    if (!acceptedRows[0]) {
-      throw new BadRequestException('La oferta expiró o ya no está disponible');
-    }
-
-    const assignedRows = await this.dataSource.query<any[]>(
-      `
-      UPDATE job_requests
-      SET status = 'assigned', updated_at = NOW()
-      WHERE id = $1
-        AND status IN ('searching', 'negotiating')
-      RETURNING id
-      `,
-      [offer.request_id],
-    );
-    if (!assignedRows[0]) {
-      await this.dataSource.query(
-        `UPDATE job_offers SET status = 'pending' WHERE id = $1`,
+    try {
+      // 1. Bloqueo pesimista de la solicitud (FOR UPDATE)
+      // Bloquear primero la fila de job_requests garantiza que cualquier intento concurrente
+      // de aceptar otra oferta de esta misma solicitud deba esperar a que termine esta transacción.
+      const rawRequests = await queryRunner.query(
+        `
+        SELECT jr.id,
+               jr.client_user_id,
+               jr.status,
+               jr.title
+        FROM job_requests jr
+        WHERE jr.id = (SELECT jo.request_id FROM job_offers jo WHERE jo.id = $1)
+        FOR UPDATE
+        `,
         [params.offerId],
       );
-      throw new BadRequestException(
-        'La solicitud cambió de estado y ya no admite aceptar ofertas',
+
+      const requestRows = Array.isArray(rawRequests?.[0])
+        ? rawRequests[0]
+        : rawRequests;
+      const request = requestRows?.[0];
+
+      if (!request) {
+        throw new NotFoundException('Solicitud o trabajo no encontrado');
+      }
+
+      if (request.client_user_id !== params.clientUserId) {
+        throw new UnauthorizedException(
+          'Solo el cliente puede aceptar la oferta',
+        );
+      }
+
+      if (!['searching', 'negotiating'].includes(request.status)) {
+        throw new BadRequestException(
+          request.status === 'cancelled'
+            ? 'La solicitud fue cancelada y ya no admite aceptar ofertas'
+            : 'La solicitud ya no admite aceptar ofertas',
+        );
+      }
+
+      // 2. Obtener y bloquear la oferta específica
+      const rawOffers = await queryRunner.query(
+        `
+        SELECT jo.id,
+               jo.request_id,
+               jo.worker_user_id,
+               jo.status,
+               jo.amount,
+               jo.expires_at
+        FROM job_offers jo
+        WHERE jo.id = $1
+        FOR UPDATE
+        `,
+        [params.offerId],
       );
+
+      const offerRows = Array.isArray(rawOffers?.[0])
+        ? rawOffers[0]
+        : rawOffers;
+      const offer = offerRows?.[0];
+
+      if (!offer) {
+        throw new NotFoundException('Offer not found');
+      }
+
+      if (offer.status !== 'pending') {
+        throw new BadRequestException('La oferta ya no está disponible');
+      }
+
+      if (offer.expires_at && new Date(offer.expires_at) <= new Date()) {
+        throw new BadRequestException('La oferta expiró o ya no está disponible');
+      }
+
+      // 3. Actualizar la oferta a 'accepted'
+      const rawAccepted = await queryRunner.query(
+        `
+        UPDATE job_offers
+        SET status = 'accepted'
+        WHERE id = $1
+          AND status = 'pending'
+        RETURNING id
+        `,
+        [params.offerId],
+      );
+      const acceptedRows = Array.isArray(rawAccepted?.[0])
+        ? rawAccepted[0]
+        : rawAccepted;
+
+      if (!acceptedRows?.[0]) {
+        throw new BadRequestException(
+          'La oferta expiró o ya no está disponible',
+        );
+      }
+
+      // 4. Actualizar job_requests a 'assigned'
+      const rawAssigned = await queryRunner.query(
+        `
+        UPDATE job_requests
+        SET status = 'assigned', updated_at = NOW()
+        WHERE id = $1
+          AND status IN ('searching', 'negotiating')
+        RETURNING id
+        `,
+        [request.id],
+      );
+      const assignedRows = Array.isArray(rawAssigned?.[0])
+        ? rawAssigned[0]
+        : rawAssigned;
+
+      if (!assignedRows?.[0]) {
+        throw new BadRequestException(
+          'La solicitud cambió de estado y ya no admite aceptar ofertas',
+        );
+      }
+
+      // 5. Rechazar automáticamente las demás ofertas pendientes
+      const rawRejected = await queryRunner.query(
+        `
+        UPDATE job_offers
+        SET status = 'rejected'
+        WHERE request_id = $1
+          AND id <> $2
+          AND status = 'pending'
+        RETURNING id, worker_user_id
+        `,
+        [request.id, params.offerId],
+      );
+      const rejectedList = Array.isArray(rawRejected?.[0])
+        ? rawRejected[0]
+        : rawRejected;
+      rejectedRows = rejectedList ?? [];
+
+      // 6. Marcar al trabajador asignado como ocupado
+      await queryRunner.query(
+        `UPDATE users SET is_available = false, updated_at = NOW() WHERE id = $1`,
+        [offer.worker_user_id],
+      );
+
+      this.logger.log(
+        `[acceptOffer] Worker ${offer.worker_user_id} marcado como no disponible (trabajo en curso)`,
+      );
+
+      acceptedOffer = {
+        id: offer.id,
+        request_id: offer.request_id,
+        worker_user_id: offer.worker_user_id,
+        amount: Number(offer.amount),
+      };
+      jobTitle = request.title ?? 'un trabajo';
+
+      // Commit atómico
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
 
-    const rejectedRows = await this.dataSource.query<any[]>(
-      `
-      UPDATE job_offers
-      SET status = 'rejected'
-      WHERE request_id = $1
-        AND id <> $2
-        AND status = 'pending'
-      RETURNING id, worker_user_id
-      `,
-      [offer.request_id, params.offerId],
-    );
+    // ────────────────────────────────────────────────────────────────────────
+    // Efectos secundarios: Solo tras commit confirmado
+    // ────────────────────────────────────────────────────────────────────────
+
     this.realtimeGateway.server.emit('request.status.updated', {
-      requestId: offer.request_id,
+      requestId: acceptedOffer.request_id,
       status: 'assigned',
       timestamp: new Date().toISOString(),
     });
-    await this.dataSource.query(
-      `UPDATE users SET is_available = false, updated_at = NOW() WHERE id = $1`,
-      [offer.worker_user_id],
-    );
-    this.logger.log(
-      `[acceptOffer] Worker ${offer.worker_user_id} marcado como no disponible (trabajo en curso)`,
-    );
 
     const payload = {
       offerId: params.offerId,
-      requestId: offer.request_id,
-      clientUserId: offer.client_user_id,
-      workerUserId: offer.worker_user_id,
+      requestId: acceptedOffer.request_id,
+      clientUserId: params.clientUserId,
+      workerUserId: acceptedOffer.worker_user_id,
       accepted: true,
     };
+
     this.realtimeGateway.emitToUser(
-      offer.client_user_id,
+      params.clientUserId,
       'offer.accepted',
       payload,
     );
     this.realtimeGateway.emitToUser(
-      offer.worker_user_id,
+      acceptedOffer.worker_user_id,
       'offer.accepted',
       payload,
     );
+
     for (const rejected of rejectedRows) {
       this.realtimeGateway.emitToUser(
         rejected.worker_user_id,
         'offer.rejected',
         {
           offerId: rejected.id,
-          requestId: offer.request_id,
-          clientUserId: offer.client_user_id,
+          requestId: acceptedOffer.request_id,
+          clientUserId: params.clientUserId,
           workerUserId: rejected.worker_user_id,
           status: 'rejected',
           reason: 'selected_other_worker',
@@ -507,8 +593,8 @@ export class MobileOffersService {
     }
 
     this.notifyWorkerOfAcceptedOffer(
-      offer.request_id,
-      offer.worker_user_id,
+      acceptedOffer.request_id,
+      acceptedOffer.worker_user_id,
       params.clientUserId,
     ).catch((err) => {
       this.logger.warn(
@@ -518,33 +604,34 @@ export class MobileOffersService {
     });
 
     if (rejectedRows.length > 0) {
-      const requestRows = await this.dataSource.query<any[]>(
-        `SELECT title FROM job_requests WHERE id = $1`,
-        [offer.request_id],
-      );
-      const jobTitle = requestRows[0]?.title ?? 'un trabajo';
       for (const rejected of rejectedRows) {
-        const tokenRows = await this.dataSource.query<any[]>(
-          `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
-          [rejected.worker_user_id],
-        );
-        this.notificationsService
-          .notifyOfferRejected({
-            userId: rejected.worker_user_id,
-            token: tokenRows[0]?.push_token || null,
-            jobTitle,
-            requestId: offer.request_id,
+        this.dataSource
+          .query<any[]>(
+            `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
+            [rejected.worker_user_id],
+          )
+          .then(([row]) => {
+            if (row?.push_token) {
+              this.notificationsService
+                .notifyOfferRejected({
+                  userId: rejected.worker_user_id,
+                  token: row.push_token,
+                  jobTitle,
+                  requestId: acceptedOffer.request_id,
+                })
+                .catch((e) =>
+                  this.logger.error('Failed to notify offer rejected', e),
+                );
+            }
           })
-          .catch((e) =>
-            this.logger.error('Failed to notify offer rejected', e),
-          );
+          .catch(() => {});
       }
     }
 
     return {
       accepted: true,
-      requestId: offer.request_id,
-      workerUserId: offer.worker_user_id,
+      requestId: acceptedOffer.request_id,
+      workerUserId: acceptedOffer.worker_user_id,
     };
   }
 

@@ -21,6 +21,23 @@ let DatabaseBootstrapService = DatabaseBootstrapService_1 = class DatabaseBootst
     }
     async onModuleInit() {
         await this.ensurePostgis();
+        await this.ensureOfferConstraints();
+    }
+    async ensureOfferConstraints() {
+        try {
+            await this.dataSource.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_one_accepted_offer_per_request
+        ON job_offers (request_id)
+        WHERE status = 'accepted';
+      `);
+            await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS idx_job_offers_request_status
+        ON job_offers (request_id, status);
+      `);
+        }
+        catch (e) {
+            this.logger.warn(`Could not ensure offer indexes: ${e.message}`);
+        }
     }
     async ensurePostgis() {
         await this.dataSource.query('CREATE EXTENSION IF NOT EXISTS postgis;');

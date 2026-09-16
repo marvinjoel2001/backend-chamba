@@ -112,21 +112,46 @@ describe('AgencyService', () => {
   });
 
   describe('unlinkWorker', () => {
-    // dataSource.query devuelve [rows, affected] para UPDATE ... RETURNING.
-    it('rechaza si el trabajador no pertenece a la agencia', async () => {
-      dataSource.query.mockResolvedValueOnce([[], 0]);
+    it('rechaza si el trabajador no pertenece a la agencia (retorno vacío)', async () => {
+      dataSource.query.mockResolvedValueOnce([]);
 
       await expect(
         service.unlinkWorker(AGENCY_ID, WORKER_ID),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('desvincula y devuelve confirmación', async () => {
+    it('desvincula y devuelve confirmación con retorno directo de Postgres', async () => {
+      dataSource.query.mockResolvedValueOnce([{ id: WORKER_ID }]);
+
+      await expect(service.unlinkWorker(AGENCY_ID, WORKER_ID)).resolves.toEqual(
+        { unlinked: true, workerUserId: WORKER_ID },
+      );
+    });
+
+    it('desvincula y devuelve confirmación con formato tupla [rows, affected]', async () => {
       dataSource.query.mockResolvedValueOnce([[{ id: WORKER_ID }], 1]);
 
       await expect(service.unlinkWorker(AGENCY_ID, WORKER_ID)).resolves.toEqual(
         { unlinked: true, workerUserId: WORKER_ID },
       );
+    });
+  });
+
+  describe('toggleWorkerBlock', () => {
+    it('rechaza si el trabajador no pertenece a la agencia', async () => {
+      dataSource.query.mockResolvedValueOnce([]);
+
+      await expect(
+        service.toggleWorkerBlock(AGENCY_ID, WORKER_ID),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('alterna el bloqueo y devuelve nuevo estado con retorno directo de Postgres', async () => {
+      dataSource.query.mockResolvedValueOnce([{ id: WORKER_ID, is_blocked: true }]);
+
+      await expect(
+        service.toggleWorkerBlock(AGENCY_ID, WORKER_ID),
+      ).resolves.toEqual({ blocked: true, workerUserId: WORKER_ID });
     });
   });
 
@@ -158,6 +183,42 @@ describe('AgencyService', () => {
         commissionRate: 10,
         commissionMonth: 100,
         averageRating: 4.5,
+      });
+    });
+  });
+
+  describe('getDisputes', () => {
+    it('retorna las disputas asociadas a los trabajadores de la agencia', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          id: 'disp-1',
+          request_id: 'req-1',
+          reason: 'Llegada tarde',
+          description: 'El trabajador llegó 2 horas tarde',
+          status: 'open',
+          resolution: null,
+          created_at: new Date('2026-09-01'),
+          updated_at: new Date('2026-09-01'),
+          request_title: 'Reparación de grifo',
+          worker_id: WORKER_ID,
+          worker_first_name: 'Juan',
+          worker_last_name: 'Pérez',
+          reporter_first_name: 'Ana',
+          reporter_last_name: 'Gómez',
+          reporter_type: 'client',
+        },
+      ]);
+
+      const result = await service.getDisputes(AGENCY_ID);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        id: 'disp-1',
+        requestId: 'req-1',
+        reason: 'Llegada tarde',
+        status: 'open',
+        worker: { id: WORKER_ID, name: 'Juan Pérez' },
+        reportedBy: { name: 'Ana Gómez', type: 'client' },
       });
     });
   });

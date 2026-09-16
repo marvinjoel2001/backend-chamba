@@ -764,8 +764,8 @@ export declare class MobileService implements OnModuleInit {
         clientUserId: string;
     }): Promise<{
         accepted: boolean;
-        requestId: any;
-        workerUserId: any;
+        requestId: string;
+        workerUserId: string;
     }>;
     discardOffer(params: {
         requestId: string;

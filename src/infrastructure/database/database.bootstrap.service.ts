@@ -9,6 +9,23 @@ export class DatabaseBootstrapService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.ensurePostgis();
+    await this.ensureOfferConstraints();
+  }
+
+  private async ensureOfferConstraints(): Promise<void> {
+    try {
+      await this.dataSource.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_one_accepted_offer_per_request
+        ON job_offers (request_id)
+        WHERE status = 'accepted';
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS idx_job_offers_request_status
+        ON job_offers (request_id, status);
+      `);
+    } catch (e) {
+      this.logger.warn(`Could not ensure offer indexes: ${(e as Error).message}`);
+    }
   }
 
   private async ensurePostgis(): Promise<void> {
