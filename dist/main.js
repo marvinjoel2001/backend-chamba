@@ -27,9 +27,30 @@ async function bootstrap() {
     const redisClient = app.get(redis_constants_1.REDIS_CLIENT);
     const sessionTtlSeconds = configService.get('SESSION_TTL_SECONDS', 86400);
     const isProduction = configService.get('NODE_ENV') === 'production';
-    const requestBodyLimit = '15mb';
     app.setGlobalPrefix('api');
-    app.enableCors();
+    app.enableCors({
+        origin: (origin, callback) => {
+            if (!origin)
+                return callback(null, true);
+            return callback(null, true);
+        },
+        methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+        allowedHeaders: [
+            'Origin',
+            'X-Requested-With',
+            'Content-Type',
+            'Accept',
+            'Authorization',
+            'Authentication',
+            'Access-Control-Allow-Origin',
+            'Access-Control-Allow-Headers',
+            'Access-Control-Allow-Methods',
+        ],
+        exposedHeaders: ['Content-Range', 'X-Total-Count'],
+        credentials: true,
+        maxAge: 86400,
+    });
+    const requestBodyLimit = '15mb';
     app.use((0, express_1.json)({ limit: requestBodyLimit }));
     app.use((0, express_1.urlencoded)({ extended: true, limit: requestBodyLimit }));
     app.useGlobalPipes(new common_1.ValidationPipe({

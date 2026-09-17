@@ -29,10 +29,30 @@ async function bootstrap() {
     86400,
   );
   const isProduction = configService.get<string>('NODE_ENV') === 'production';
-  const requestBodyLimit = '15mb';
-
   app.setGlobalPrefix('api');
-  app.enableCors();
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Permitir peticiones sin cabecera origin (móviles, curl, cron)
+      if (!origin) return callback(null, true);
+      return callback(null, true);
+    },
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Origin',
+      'X-Requested-With',
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'Authentication',
+      'Access-Control-Allow-Origin',
+      'Access-Control-Allow-Headers',
+      'Access-Control-Allow-Methods',
+    ],
+    exposedHeaders: ['Content-Range', 'X-Total-Count'],
+    credentials: true,
+    maxAge: 86400,
+  });
+  const requestBodyLimit = '15mb';
   app.use(json({ limit: requestBodyLimit }));
   app.use(urlencoded({ extended: true, limit: requestBodyLimit }));
   app.useGlobalPipes(
