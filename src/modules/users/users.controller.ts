@@ -90,8 +90,15 @@ export class UsersController {
   @ApiBody({ type: ReviewWorkerVerificationDto })
   @ApiOkResponse({ type: User })
   @Patch(':id/verification/review')
-  @Post(':id/verification/review')
   reviewWorkerVerification(
+    @Param('id') id: string,
+    @Body() body: ReviewWorkerVerificationDto,
+  ) {
+    return this.usersService.reviewWorkerVerification(id, body);
+  }
+
+  @Post(':id/verification/review')
+  reviewWorkerVerificationPost(
     @Param('id') id: string,
     @Body() body: ReviewWorkerVerificationDto,
   ) {
@@ -116,8 +123,12 @@ export class UsersController {
     description: 'Teléfono ya registrado por otro usuario',
   })
   @Patch(':id')
-  @Post(':id')
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+    return this.usersService.update(id, updateUserDto);
+  }
+
+  @Post(':id')
+  updatePost(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(id, updateUserDto);
   }
 

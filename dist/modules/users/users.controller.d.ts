@@ -11,8 +11,10 @@ export declare class UsersController {
     findNearbyWorkers(latitude: number, longitude: number, radiusKm?: number): Promise<User[]>;
     getWorkerVerificationInbox(): Promise<User[]>;
     reviewWorkerVerification(id: string, body: ReviewWorkerVerificationDto): Promise<User>;
+    reviewWorkerVerificationPost(id: string, body: ReviewWorkerVerificationDto): Promise<User>;
     findOne(id: string): Promise<User>;
     update(id: string, updateUserDto: UpdateUserDto): Promise<User>;
+    updatePost(id: string, updateUserDto: UpdateUserDto): Promise<User>;
     uploadVerificationPhotos(id: string, idPhoto: any, body: {
         facePhotoUrl?: string;
     }): Promise<User>;

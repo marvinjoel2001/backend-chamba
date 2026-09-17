@@ -45,10 +45,16 @@ let UsersController = class UsersController {
     reviewWorkerVerification(id, body) {
         return this.usersService.reviewWorkerVerification(id, body);
     }
+    reviewWorkerVerificationPost(id, body) {
+        return this.usersService.reviewWorkerVerification(id, body);
+    }
     findOne(id) {
         return this.usersService.findOne(id);
     }
     update(id, updateUserDto) {
+        return this.usersService.update(id, updateUserDto);
+    }
+    updatePost(id, updateUserDto) {
         return this.usersService.update(id, updateUserDto);
     }
     uploadVerificationPhotos(id, idPhoto, body) {
@@ -113,13 +119,20 @@ __decorate([
     (0, swagger_1.ApiBody)({ type: review_worker_verification_dto_1.ReviewWorkerVerificationDto }),
     (0, swagger_1.ApiOkResponse)({ type: user_entity_1.User }),
     (0, common_1.Patch)(':id/verification/review'),
-    (0, common_1.Post)(':id/verification/review'),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, review_worker_verification_dto_1.ReviewWorkerVerificationDto]),
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "reviewWorkerVerification", null);
+__decorate([
+    (0, common_1.Post)(':id/verification/review'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, review_worker_verification_dto_1.ReviewWorkerVerificationDto]),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "reviewWorkerVerificationPost", null);
 __decorate([
     (0, swagger_1.ApiOperation)({ summary: 'Obtener usuario por id' }),
     (0, swagger_1.ApiParam)({ name: 'id', format: 'uuid' }),
@@ -141,13 +154,20 @@ __decorate([
         description: 'Teléfono ya registrado por otro usuario',
     }),
     (0, common_1.Patch)(':id'),
-    (0, common_1.Post)(':id'),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, update_user_dto_1.UpdateUserDto]),
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "update", null);
+__decorate([
+    (0, common_1.Post)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_user_dto_1.UpdateUserDto]),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "updatePost", null);
 __decorate([
     (0, swagger_1.ApiOperation)({ summary: 'Subir fotos de verificación de identidad' }),
     (0, swagger_1.ApiParam)({ name: 'id', format: 'uuid' }),
