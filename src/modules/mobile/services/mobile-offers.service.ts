@@ -521,14 +521,11 @@ export class MobileOffersService {
         : rawRejected;
       rejectedRows = rejectedList ?? [];
 
-      // 6. Marcar al trabajador asignado como ocupado
-      await queryRunner.query(
-        `UPDATE users SET is_available = false, updated_at = NOW() WHERE id = $1`,
-        [offer.worker_user_id],
-      );
-
+      // El trabajador conserva su disponibilidad para no desactivar su botón
+      // ni dejarlo en estado vacío de 'OCUPADO'; el trabajo asignado se gestiona
+      // mediante job_requests.status = 'assigned'.
       this.logger.log(
-        `[acceptOffer] Worker ${offer.worker_user_id} marcado como no disponible (trabajo en curso)`,
+        `[acceptOffer] Worker ${offer.worker_user_id} asignado al trabajo (oferta ${offer.id})`,
       );
 
       acceptedOffer = {
