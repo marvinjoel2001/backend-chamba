@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBody,
   ApiOkResponse,
@@ -6,6 +6,7 @@ import {
   ApiProperty,
   ApiTags,
 } from '@nestjs/swagger';
+import { AdminAccessGuard } from '../access/mobile-access.guard';
 import { SendTestPushDto } from './dto/send-test-push.dto';
 import { NotificationsService } from './notifications.service';
 
@@ -31,6 +32,7 @@ class SendTestPushResponseDto {
 }
 
 @ApiTags('Notifications')
+@UseGuards(AdminAccessGuard)
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}

@@ -63,6 +63,7 @@ export class MobileCatalogService {
   }
 
   public async createCategory(input: {
+    createOnly?: boolean;
     id?: string;
     name: string;
     description?: string;
@@ -97,13 +98,13 @@ export class MobileCatalogService {
       INSERT INTO categories (id, name, description, icon, parent_id, is_active)
       VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (id)
-      DO UPDATE SET
+      ${input.createOnly ? 'DO NOTHING' : `DO UPDATE SET
         name = EXCLUDED.name,
         description = EXCLUDED.description,
         icon = EXCLUDED.icon,
         parent_id = EXCLUDED.parent_id,
         is_active = EXCLUDED.is_active,
-        updated_at = NOW()
+        updated_at = NOW()`}
       RETURNING id, name, description, icon, parent_id, is_active, created_at, updated_at
       `,
       [
@@ -116,6 +117,9 @@ export class MobileCatalogService {
       ],
     );
 
+    if (!rows[0]) {
+      rows.push(...await this.dataSource.query('SELECT * FROM categories WHERE id = $1', [id]));
+    }
     return {
       category: {
         id: rows[0].id,

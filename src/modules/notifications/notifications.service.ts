@@ -1,7 +1,9 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { In, Repository } from 'typeorm';
 import { PushService } from '../../infrastructure/push/push.service';
 import { SendTestPushDto } from './dto/send-test-push.dto';
 import { Notification } from './entities/notification.entity';
@@ -14,6 +16,8 @@ export class NotificationsService {
     private readonly pushService: PushService,
     @InjectRepository(Notification)
     private readonly notificationRepository: Repository<Notification>,
+    private readonly dataSource: DataSource,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   isPushEnabled(): boolean {
@@ -91,48 +95,30 @@ export class NotificationsService {
   }
 
   async notifyWorkersForJobWave(params: {
-    users: { userId: string; token: string }[];
+    users: { userId: string; token: string; distanceKm?: string }[];
+    expiresAt?: string;
     jobId: string;
     category: string;
     offeredPrice: string;
     distanceKm: string;
   }): Promise<number> {
-    const title = `📍 Trabajo nuevo cerca: ${params.category}`;
-    const body = `Tienes una solicitud ${params.offeredPrice} a ${params.distanceKm} km. Toca para revisar.`;
-    const type = 'request_new';
-
-    // Guardar notificaciones
-    const uniqueUserIds = [...new Set(params.users.map((u) => u.userId))];
-    const notifications = uniqueUserIds.map((userId) =>
-      this.notificationRepository.create({
-        userId,
-        title,
-        body,
-        type,
-        data: { jobId: params.jobId, deep_link: `/request/${params.jobId}` },
-      }),
-    );
-    if (notifications.length > 0) {
-      await this.notificationRepository.save(notifications);
+    let sent = 0;
+    for (const user of new Map(params.users.map(u => [u.userId, u])).values()) {
+      const hex = createHash('sha256').update('request_new:' + params.jobId + ':' + user.userId).digest('hex').slice(0, 32);
+      const eventId = hex.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
+      const messageId = await this.deliver({ userId: user.userId,
+        title: `📍 Trabajo nuevo cerca: ${params.category}`,
+        body: `Tienes una solicitud ${params.offeredPrice}${user.distanceKm ? ' a ' + user.distanceKm + ' km' : ''}. Toca para revisar.`,
+        data: { type: 'request_new', eventId, jobId: params.jobId, requestId: params.jobId,
+          deep_link: '/request/' + params.jobId, expiresAt: params.expiresAt || new Date(Date.now() + 120000).toISOString() } });
+      if (messageId) sent++;
     }
-
-    const tokens = params.users.map((u) => u.token).filter(Boolean);
-    return this.pushService.sendToTokens({
-      tokens,
-      title,
-      body,
-      data: {
-        type,
-        jobId: params.jobId,
-        click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        deep_link: `/request/${params.jobId}`,
-      },
-    });
+    return sent;
   }
 
   async notifyClientNewOffer(params: {
     userId: string;
-    token: string;
+    token: string | null;
     workerName: string;
     amount: number;
     jobTitle: string;
@@ -142,21 +128,9 @@ export class NotificationsService {
     const body = `En tu solicitud: ${params.jobTitle}`;
     const type = 'offer_new';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -170,7 +144,7 @@ export class NotificationsService {
 
   async notifyWorkerOfferAccepted(params: {
     userId: string;
-    token: string;
+    token: string | null;
     clientName: string;
     jobTitle: string;
     requestId: string;
@@ -179,21 +153,9 @@ export class NotificationsService {
     const body = `${params.clientName} aceptó tu oferta en: ${params.jobTitle}`;
     const type = 'offer_accepted';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -207,12 +169,13 @@ export class NotificationsService {
 
   async notifyNewMessage(params: {
     userId: string;
-    token: string;
+    token: string | null;
     senderName?: string;
     message?: string;
     title?: string;
     body?: string;
     threadId: string;
+    messageId?: string;
   }): Promise<string | null> {
     // Note: We don't save chat messages in the notifications table to avoid spam
     // The chat list handles its own unread counts.
@@ -221,12 +184,13 @@ export class NotificationsService {
     const body =
       rawBody.length > 80 ? rawBody.substring(0, 77) + '...' : rawBody;
 
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
         type: 'message_new',
+        eventId: params.messageId || randomUUID(),
         threadId: params.threadId,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
         deep_link: `/chat/${params.threadId}`,
@@ -236,7 +200,7 @@ export class NotificationsService {
 
   async notifyWorkerArrived(params: {
     userId: string;
-    token: string;
+    token: string | null;
     workerName: string;
     jobTitle: string;
     requestId: string;
@@ -245,21 +209,9 @@ export class NotificationsService {
     const body = `El trabajador llegó a tu ubicación para: ${params.jobTitle}`;
     const type = 'worker_arrived';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -273,7 +225,7 @@ export class NotificationsService {
 
   async notifyJobFinished(params: {
     userId: string;
-    token: string;
+    token: string | null;
     workerName: string;
     jobTitle: string;
     requestId: string;
@@ -282,21 +234,9 @@ export class NotificationsService {
     const body = `${params.workerName} marcó como terminado: ${params.jobTitle}`;
     const type = 'job_finished';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -319,22 +259,9 @@ export class NotificationsService {
     const body = `${params.cancelerName} canceló el trabajo: ${params.jobTitle}`;
     const type = 'job_cancelled';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -350,6 +277,7 @@ export class NotificationsService {
     userId: string;
     token: string | null;
     message: string;
+    disputeId?: string;
   }): Promise<string | null> {
     const title = `🎧 Soporte Chamba`;
     const body =
@@ -358,25 +286,16 @@ export class NotificationsService {
         : params.message;
     const type = 'support_message';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: { deep_link: `/support` },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
         type,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
-        deep_link: `/support`,
+        disputeId: params.disputeId || '',
+        deep_link: '/support',
       },
     });
   }
@@ -394,19 +313,9 @@ export class NotificationsService {
     const body = params.message;
     const type = 'verification_update';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: { deep_link: `/profile` },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -429,22 +338,9 @@ export class NotificationsService {
     const body = `Nuevo presupuesto: Bs ${Math.round(params.newAmount)} en ${params.jobTitle}`;
     const type = 'counter_offer';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -466,22 +362,9 @@ export class NotificationsService {
     const body = `El cliente eligió a otro trabajador para: ${params.jobTitle}`;
     const type = 'offer_rejected';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -505,22 +388,9 @@ export class NotificationsService {
     const body = `Oferta de Bs ${params.amount} en: ${params.jobTitle}`;
     const type = 'agency_offer_sent';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -545,23 +415,9 @@ export class NotificationsService {
     const body = `${params.clientName} te calificó con ${params.stars} estrellas en: ${params.jobTitle}`;
     const type = 'new_review';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          stars: params.stars,
-          deep_link: `/profile`,
-        },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -584,22 +440,9 @@ export class NotificationsService {
     const body = `${params.clientName} confirmó tu llegada. Ya puedes iniciar: ${params.jobTitle}`;
     const type = 'arrival_confirmed';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -624,19 +467,9 @@ export class NotificationsService {
         : params.resolution;
     const type = 'dispute_resolved';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: { disputeId: params.disputeId, deep_link: `/support` },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -658,19 +491,9 @@ export class NotificationsService {
     const body = `Motivo: ${params.reason.length > 60 ? params.reason.substring(0, 60) + '...' : params.reason}`;
     const type = 'dispute_created';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: { disputeId: params.disputeId, deep_link: `/support` },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -692,22 +515,9 @@ export class NotificationsService {
     const body = `Sube tu presupuesto en: ${params.jobTitle} para atraer más trabajadores.`;
     const type = 'improve_offer_reminder';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -729,22 +539,9 @@ export class NotificationsService {
     const body = `Tu solicitud ${params.jobTitle} se ha cancelado por falta de trabajadores disponibles.`;
     const type = 'request_timeout';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -766,22 +563,9 @@ export class NotificationsService {
     const body = `La solicitud "${params.jobTitle}" se cerró antes de elegir tu oferta.`;
     const type = 'request_closed';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -804,22 +588,9 @@ export class NotificationsService {
     const body = `Prepárate para: ${params.jobTitle}. Revisa la dirección y llega a tiempo.`;
     const type = 'job_starting_soon';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -843,22 +614,9 @@ export class NotificationsService {
     const body = `${params.workerName} llegará pronto para: ${params.jobTitle}`;
     const type = 'job_starting_soon';
 
-    await this.notificationRepository.save(
-      this.notificationRepository.create({
-        userId: params.userId,
-        title,
-        body,
-        type,
-        data: {
-          requestId: params.requestId,
-          deep_link: `/request/${params.requestId}`,
-        },
-      }),
-    );
 
-    if (!params.token) return null;
-    return this.pushService.sendToToken({
-      token: params.token,
+    return this.deliver({
+      userId: params.userId,
       title,
       body,
       data: {
@@ -868,6 +626,26 @@ export class NotificationsService {
         deep_link: `/request/${params.requestId}`,
       },
     });
+  }
+
+
+  private async deliver(params: { userId: string; title: string; body: string; data: Record<string, string> }): Promise<string | null> {
+    const eventId = params.data.eventId || randomUUID();
+    const data: Record<string, string> = { ...params.data, eventId, userId: params.userId, title: params.title, body: params.body,
+      click_action: 'FLUTTER_NOTIFICATION_CLICK' };
+    if (data.type !== 'message_new') {
+      await this.notificationRepository.save(this.notificationRepository.create({ id: eventId,
+        userId: params.userId, title: params.title, body: params.body, type: data.type, data }));
+    }
+    this.realtime.emitToUser(params.userId, 'notifications.changed', { eventId });
+    let displayed = new Set<string>();
+    try { displayed = await this.realtime.presentNotification(params.userId, data); }
+    catch (error) { this.logger.warn('Socket presentation failed; using FCM fallback'); }
+    const rows = await this.dataSource.query('SELECT token FROM push_tokens WHERE user_id = $1', [params.userId]);
+    const tokens: string[] = [...new Set<string>(rows.map((row: { token: string }) => row.token))].filter(token => !displayed.has(token));
+    if (!tokens.length) return null;
+    const sent = await this.pushService.sendToTokens({ tokens, title: params.title, body: params.body, data });
+    return sent ? eventId : null;
   }
 
   async getUserNotifications(
@@ -896,10 +674,12 @@ export class NotificationsService {
     });
   }
 
-  async markNotificationsAsRead(userId: string): Promise<void> {
+  async markNotificationsAsRead(userId: string, ids: string[]): Promise<void> {
+    if (!Array.isArray(ids) || !ids.length) return;
     await this.notificationRepository.update(
-      { userId, isRead: false },
+      { userId, id: In(ids.slice(0, 100)), isRead: false },
       { isRead: true },
     );
+    this.realtime.emitToUser(userId, 'notifications.changed', {});
   }
 }

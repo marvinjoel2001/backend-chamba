@@ -34,12 +34,13 @@ describe('MobileOffersService.acceptOffer', () => {
     };
 
     notificationsServiceMock = {
-      notifyWorkerAcceptedOffer: jest.fn().mockResolvedValue(undefined),
+      notifyWorkerOfferAccepted: jest.fn().mockResolvedValue(undefined),
       notifyOfferRejected: jest.fn().mockResolvedValue(undefined),
     };
 
     realtimeGatewayMock = {
       server: { emit: jest.fn() },
+      broadcastRequest: jest.fn(),
       emitToUser: jest.fn(),
     };
 
@@ -166,7 +167,7 @@ describe('MobileOffersService.acceptOffer', () => {
     expect(queryRunnerMock.release).toHaveBeenCalled();
 
     // Validar eventos Realtime después del commit
-    expect(realtimeGatewayMock.server.emit).toHaveBeenCalledWith(
+    expect(realtimeGatewayMock.broadcastRequest).toHaveBeenCalledWith(
       'request.status.updated',
       expect.objectContaining({ requestId: REQUEST_ID, status: 'assigned' }),
     );

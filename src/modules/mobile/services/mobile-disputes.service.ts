@@ -293,12 +293,15 @@ export class MobileDisputesService {
       ],
     );
 
-    this.realtimeGateway.server.emit('dispute.message', {
+    const participants = await this.dataSource.query('SELECT reported_by FROM disputes WHERE id = $1', [params.disputeId]);
+    const event = {
       disputeId: params.disputeId,
       messageId: rows[0].id,
       senderType: params.senderType,
       timestamp: rows[0].created_at,
-    });
+    };
+    this.realtimeGateway.emitToAdmins('dispute.message', event);
+    if (participants[0]) this.realtimeGateway.emitToUser(participants[0].reported_by, 'dispute.message', event);
 
     if (params.senderType === 'admin') {
       const disputeRows = await this.dataSource.query<any[]>(
@@ -316,6 +319,7 @@ export class MobileDisputesService {
             userId,
             token: tokenRows[0]?.push_token || null,
             message: params.content,
+            disputeId: params.disputeId,
           })
           .catch((e) =>
             this.logger.error('Failed to notify support message', e),

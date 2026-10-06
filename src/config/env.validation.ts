@@ -22,6 +22,8 @@ export const envValidationSchema = Joi.object({
   REDIS_DB: Joi.number().default(0),
   REDIS_TLS: Joi.boolean().truthy('true').falsy('false').default(false),
 
+  GOOGLE_WEB_CLIENT_ID: Joi.string().allow('').optional(),
+  JWT_SECRET: Joi.string().min(16).optional(),
   SESSION_SECRET: Joi.string().min(16).required(),
   SESSION_TTL_SECONDS: Joi.number().default(86400),
 

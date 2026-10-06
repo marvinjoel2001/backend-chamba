@@ -243,6 +243,7 @@ export class MobileChatService {
         recipientUserId,
         senderUserId: params.senderUserId,
         message: params.content,
+        messageId: rows[0].id,
         threadId: params.threadId,
         requestId: thread?.request_id,
         isSenderWorker: params.senderUserId === thread?.worker_user_id,
@@ -307,6 +308,7 @@ export class MobileChatService {
     recipientUserId: string;
     senderUserId: string;
     message: string;
+    messageId?: string;
     threadId: string;
     requestId?: string | null;
     isSenderWorker: boolean;
@@ -340,14 +342,14 @@ export class MobileChatService {
       `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
       [params.recipientUserId],
     );
-    if (!tokenRows[0]?.push_token) return;
 
     await this.notificationsService.notifyNewMessage({
       userId: params.recipientUserId,
-      token: tokenRows[0].push_token,
+      token: tokenRows[0]?.push_token || null,
       title,
       body,
       threadId: params.threadId,
+      messageId: params.messageId,
     });
   }
 }

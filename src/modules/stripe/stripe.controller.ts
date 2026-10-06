@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Req, ForbiddenException } from '@nestjs/common';
+import { UserAccessGuard } from '../access/mobile-access.guard';
 import { StripeService } from './stripe.service';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 
@@ -16,13 +17,16 @@ export class StripeController {
   // Sin guard: la app móvil no maneja JWT todavía (mismo modelo que el resto
   // de endpoints /mobile/*). El JwtAuthGuard anterior era el del panel admin
   // y hacía que la app recibiera 401 siempre.
+  @UseGuards(UserAccessGuard)
   @Post('payment-intent')
   @ApiOperation({ summary: 'Create a payment intent' })
   createPaymentIntent(
+    @Req() req: any,
     @Body('amount') amount: number,
     @Body('currency') currency?: string,
     @Body('customerId') customerId?: string,
   ) {
-    return this.stripeService.createPaymentIntent(amount, currency, customerId);
+    if (customerId && customerId !== req.principal.id) throw new ForbiddenException();
+    return this.stripeService.createPaymentIntent(amount, currency, req.principal.id);
   }
 }

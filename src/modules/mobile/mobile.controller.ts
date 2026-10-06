@@ -1,5 +1,7 @@
 import {
   Body,
+  UseGuards,
+  Req,
   Controller,
   Delete,
   Get,
@@ -9,6 +11,8 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { AccessService } from '../access/access.service';
+import { MobileAccessGuard } from '../access/mobile-access.guard';
 import { MobileService } from './mobile.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -21,11 +25,13 @@ const parseNumber = (value?: string): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
+@UseGuards(MobileAccessGuard)
 @Controller()
 export class MobileController {
   constructor(
     private readonly mobileService: MobileService,
     private readonly notificationsService: NotificationsService,
+    private readonly access: AccessService,
   ) {}
 
   @Post('auth/register')
@@ -69,8 +75,10 @@ export class MobileController {
     @Body('lastName') lastName: string | undefined,
     @Body('googleId') googleId: string,
     @Body('type') type: 'worker' | 'client',
+    @Body('registrationToken') registrationToken: string,
   ) {
     return this.mobileService.googleRegister({
+      registrationToken,
       email,
       firstName,
       lastName,
@@ -187,6 +195,7 @@ export class MobileController {
 
   @Post('mobile/categories')
   createCategory(
+    @Req() req: any,
     @Body('id') id: string | undefined,
     @Body('name') name: string,
     @Body('description') description?: string,
@@ -201,7 +210,7 @@ export class MobileController {
       icon,
       parentId,
       active,
-    });
+    }, req.principal.kind !== 'admin');
   }
 
   @Post('mobile/profile/photo')
@@ -248,6 +257,11 @@ export class MobileController {
     });
   }
 
+  @Post('mobile/push/logout')
+  async revokePushToken(@Body('userId') userId: string, @Body('token') token: string) {
+    return this.mobileService.revokePushToken(userId, token);
+  }
+
   @Post('mobile/push/token')
   upsertPushToken(
     @Body('userId') userId: string,
@@ -255,6 +269,11 @@ export class MobileController {
     @Body('platform') platform?: string,
   ) {
     return this.mobileService.upsertPushToken({ userId, token, platform });
+  }
+
+  @Get('mobile/requests/:requestId/notification-context')
+  getNotificationRequest(@Param('requestId') requestId: string, @Req() req: any) {
+    return this.access.notificationRequest(req.principal.id, requestId);
   }
 
   @Get('mobile/request-status')
@@ -618,8 +637,8 @@ export class MobileController {
     if (!userId) {
       return { items: [], hasMore: false };
     }
-    const pageNum = Math.max(1, parseInt(page || '1', 10));
-    const limitNum = Math.min(50, Math.max(1, parseInt(limit || '20', 10)));
+    const pageNum = Math.max(1, Math.floor(parseNumber(page) ?? 1));
+    const limitNum = Math.min(50, Math.max(1, Math.floor(parseNumber(limit) ?? 20)));
     return this.notificationsService.getUserNotifications(
       userId,
       pageNum,
@@ -637,11 +656,11 @@ export class MobileController {
   }
 
   @Patch('mobile/notifications/read')
-  async markNotificationsRead(@Body('userId') userId: string) {
+  async markNotificationsRead(@Body('userId') userId: string, @Body('ids') ids: string[]) {
     if (!userId) {
       return { success: false };
     }
-    await this.notificationsService.markNotificationsAsRead(userId);
+    await this.notificationsService.markNotificationsAsRead(userId, ids);
     return { success: true };
   }
 

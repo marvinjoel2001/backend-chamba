@@ -7,6 +7,8 @@ import {
   OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
+import { AccessService } from '../access/access.service';
+import * as bcrypt from 'bcryptjs';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { StorageService } from '../../infrastructure/storage/storage.service';
@@ -80,6 +82,7 @@ export class MobileService implements OnModuleInit {
     private readonly requestsService: MobileRequestsService,
     private readonly usersService: MobileUsersService,
     private readonly adminService: MobileAdminService,
+    private readonly access: AccessService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -164,10 +167,11 @@ export class MobileService implements OnModuleInit {
         INSERT INTO auth_credentials (user_id, password)
         VALUES ($1, $2)
         `,
-        [created.id, password],
+        [created.id, await bcrypt.hash(password, 12)],
       );
 
       return {
+        token: this.access.issueMobile(created.id, created.type),
         user: {
           id: created.id,
           type: created.type,
@@ -212,7 +216,7 @@ export class MobileService implements OnModuleInit {
              u.is_blocked,
              u.is_agency_worker,
              u.agency_id,
-             u.is_available
+             u.is_available, c.password AS password
       FROM users u
       JOIN auth_credentials c ON c.user_id = u.id
       WHERE (
@@ -222,16 +226,17 @@ export class MobileService implements OnModuleInit {
             AND regexp_replace(COALESCE(u.phone, ''), '[^0-9]+', '', 'g') = $2
           )
         )
-        AND c.password = $3
       LIMIT 1
       `,
-      [normalizedEmail, normalizedPhone, password.trim()],
+      [normalizedEmail, normalizedPhone],
     );
 
     const row = rows[0];
-    if (!row) {
-      throw new UnauthorizedException('Credenciales invalidas');
-    }
+    const validPassword = row?.password && (row.password.startsWith('$2')
+      ? await bcrypt.compare(password.trim(), row.password) : row.password === password.trim());
+    if (!row || !validPassword || row.is_blocked) throw new UnauthorizedException('Credenciales invalidas');
+    if (!row.password.startsWith('$2')) await this.dataSource.query(
+      'UPDATE auth_credentials SET password = $2 WHERE user_id = $1', [row.id, await bcrypt.hash(password.trim(), 12)]);
 
     return {
       user: {
@@ -252,7 +257,7 @@ export class MobileService implements OnModuleInit {
         agencyId: row.agency_id ?? null,
         isAvailable: Boolean(row.is_available),
       },
-      token: 'fake-jwt-token-for-now',
+      token: this.access.issueMobile(row.id, row.type),
     };
   }
 
@@ -278,6 +283,11 @@ export class MobileService implements OnModuleInit {
 
     const data = await response.json();
 
+    const expectedAudience = this.configService.get<string>('GOOGLE_WEB_CLIENT_ID');
+    if (!expectedAudience || data.aud !== expectedAudience || data.email_verified !== 'true'
+      || !['accounts.google.com', 'https://accounts.google.com'].includes(data.iss)) {
+      throw new UnauthorizedException('Token de Google no pertenece a esta aplicación');
+    }
     if (!data.email || !data.sub) {
       throw new UnauthorizedException(
         'Token de Google no contiene email o id de usuario',
@@ -313,10 +323,11 @@ export class MobileService implements OnModuleInit {
     if (!row) {
       return {
         requiresRegistration: true,
-        googleData,
+        googleData: { ...googleData, registrationToken: this.access.issueGoogleRegistration(googleData) },
       };
     }
 
+    if (row.is_blocked) throw new UnauthorizedException('Cuenta bloqueada');
     if (!row.google_id) {
       await this.dataSource.query(
         `UPDATE users SET google_id = $1 WHERE id = $2`,
@@ -341,17 +352,22 @@ export class MobileService implements OnModuleInit {
         isBlocked: row.is_blocked,
         isAvailable: Boolean(row.is_available),
       },
-      token: 'fake-jwt-token-for-now',
+      token: this.access.issueMobile(row.id, row.type),
     };
   }
 
   async googleRegister(params: {
+    registrationToken: string;
     email: string;
     firstName: string;
     lastName?: string;
     googleId: string;
     type: 'worker' | 'client';
   }) {
+    const verified = this.access.verifyGoogleRegistration(params.registrationToken);
+    if (!['client', 'worker'].includes(params.type)) throw new BadRequestException('Tipo inválido');
+    params = { ...params, email: verified.email, googleId: verified.googleId,
+      firstName: verified.firstName, lastName: verified.lastName };
     const existingRows = await this.dataSource.query<any[]>(
       `SELECT id FROM users WHERE LOWER(email) = LOWER($1) OR google_id = $2 LIMIT 1`,
       [params.email, params.googleId],
@@ -405,9 +421,14 @@ export class MobileService implements OnModuleInit {
           isBlocked: row.is_blocked,
           isAvailable: Boolean(row.is_available),
         },
-        token: 'fake-jwt-token-for-now',
+        token: this.access.issueMobile(row.id, row.type),
       };
     });
+  }
+
+  async revokePushToken(userId: string, token: string) {
+    await this.dataSource.query('DELETE FROM push_tokens WHERE user_id = $1 AND token = $2', [userId, token]);
+    return { revoked: true };
   }
 
   async checkIdentifier(identifier: string) {
@@ -691,8 +712,8 @@ export class MobileService implements OnModuleInit {
     icon?: string;
     parentId?: string;
     active?: boolean;
-  }) {
-    return this.catalogService.createCategory(input);
+  }, createOnly = true) {
+    return this.catalogService.createCategory(createOnly ? { name: input.name, createOnly: true } : input);
   }
 
   async updateWorkerSkills(workerUserId: string, skills: string[]) {

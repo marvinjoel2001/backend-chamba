@@ -253,7 +253,7 @@ export class MobileOffersService {
       `,
       [params.requestId],
     );
-    this.realtimeGateway.server.emit('request.status.updated', {
+    this.realtimeGateway.broadcastRequest('request.status.updated', {
       requestId: params.requestId,
       status: 'negotiating',
       timestamp: new Date().toISOString(),
@@ -361,11 +361,10 @@ export class MobileOffersService {
       `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
       [clientUserId],
     );
-    if (!tokenRows[0]?.push_token) return;
 
     await this.notificationsService.notifyClientNewOffer({
       userId: clientUserId,
-      token: tokenRows[0].push_token,
+      token: tokenRows[0]?.push_token || null,
       workerName,
       amount,
       jobTitle,
@@ -549,7 +548,7 @@ export class MobileOffersService {
     // Efectos secundarios: Solo tras commit confirmado
     // ────────────────────────────────────────────────────────────────────────
 
-    this.realtimeGateway.server.emit('request.status.updated', {
+    this.realtimeGateway.broadcastRequest('request.status.updated', {
       requestId: acceptedOffer.request_id,
       status: 'assigned',
       timestamp: new Date().toISOString(),
@@ -608,11 +607,11 @@ export class MobileOffersService {
             [rejected.worker_user_id],
           )
           .then(([row]) => {
-            if (row?.push_token) {
+            {
               this.notificationsService
                 .notifyOfferRejected({
                   userId: rejected.worker_user_id,
-                  token: row.push_token,
+                  token: row?.push_token || null,
                   jobTitle,
                   requestId: acceptedOffer.request_id,
                 })
@@ -655,11 +654,10 @@ export class MobileOffersService {
       `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
       [workerUserId],
     );
-    if (!tokenRows[0]?.push_token) return;
 
     await this.notificationsService.notifyWorkerOfferAccepted({
       userId: workerUserId,
-      token: tokenRows[0].push_token,
+      token: tokenRows[0]?.push_token || null,
       clientName,
       jobTitle,
       requestId,

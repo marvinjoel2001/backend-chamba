@@ -33,13 +33,15 @@ export class WaveDispatchQueueService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly configService: ConfigService) {}
 
   onModuleInit(): void {
-    if (this.configService.get('USE_QUEUE_DISPATCH') !== 'true') {
+    if (![true, 'true'].includes(this.configService.get('USE_QUEUE_DISPATCH', false))) {
       return;
     }
     this.queue = new Queue<WaveJobData>(WAVE_QUEUE_NAME, {
       connection: this.buildConnection(),
       defaultJobOptions: {
         removeOnComplete: 100,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
         removeOnFail: 50,
       },
     });

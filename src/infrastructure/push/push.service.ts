@@ -1,33 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { App, cert, getApps, initializeApp } from 'firebase-admin/app';
-import { AndroidConfig, Messaging, getMessaging } from 'firebase-admin/messaging';
-
-/**
- * La alerta de trabajo nuevo DEBE viajar como data-only puro.
- *
- * Si se incluye un bloque `android.notification`, FCM puede tratar el mensaje
- * como notificación y mostrarlo él mismo: en ese caso el handler de segundo
- * plano de la app nunca corre, no se construye la notificación con
- * `fullScreenIntent` y el usuario recibe un aviso común y silencioso.
- * Con solo `priority: 'high'` el mensaje llega siempre a la app, que arma la
- * alerta en el canal de llamadas con ringtone y pantalla completa.
- */
-function buildAndroidConfig(isCall: boolean): AndroidConfig {
-  if (isCall) {
-    return { priority: 'high' };
-  }
-
-  return {
-    priority: 'high',
-    notification: {
-      priority: 'max',
-      channelId: 'chamba_default_channel',
-      defaultSound: true,
-      defaultVibrateTimings: true,
-    },
-  };
-}
+import { Messaging, getMessaging } from 'firebase-admin/messaging';
+import { DataSource } from 'typeorm';
 
 @Injectable()
 export class PushService {
@@ -35,7 +10,7 @@ export class PushService {
   private readonly app: App | null;
   private readonly messaging: Messaging | null;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(private readonly configService: ConfigService, private readonly db: DataSource) {
     const privateKey = this.normalizePrivateKey(
       this.configService.get<string>('FIREBASE_PRIVATE_KEY'),
     );
@@ -75,116 +50,65 @@ export class PushService {
     return this.messaging !== null;
   }
 
-  async sendToToken(params: {
-    token: string;
-    title: string;
-    body: string;
-    data?: Record<string, string>;
-  }): Promise<string | null> {
-    if (!this.messaging) {
-      return null;
-    }
-
-    const isCall = params.data?.type === 'request_new';
-
-    const data = params.data ? { ...params.data } : {};
-
-    if (isCall) {
-      // La app usa estos campos para reconstruir la alerta local cuando el
-      // mensaje llega data-only a su handler de segundo plano.
-      data.title = params.title;
-      data.body = params.body;
-    }
-
-    return this.messaging.send({
-      token: params.token,
-      notification: isCall
-        ? undefined
-        : {
-            title: params.title,
-            body: params.body,
-          },
-      data: Object.keys(data).length > 0 ? data : undefined,
-      android: buildAndroidConfig(isCall),
-      apns: {
-        headers: {
-          'apns-priority': '10',
-        },
-        payload: {
-          aps: isCall
-            ? {
-                alert: { title: params.title, body: params.body },
-                sound: 'chamba_ringtone.mp3',
-                'interruption-level': 'time-sensitive',
-              }
-            : {
-                sound: 'default',
-              },
-        },
-      },
-    });
+  async sendToToken(params: { token: string; title: string; body: string; data?: Record<string, string> }): Promise<string | null> {
+    const result = await this.deliverTokens({ ...params, tokens: [params.token] });
+    return result.messageIds[0] || null;
   }
 
-  async sendToTokens(params: {
-    tokens: string[];
-    title: string;
-    body: string;
-    data?: Record<string, string>;
-  }): Promise<number> {
-    if (!this.messaging || params.tokens.length === 0) {
-      return 0;
-    }
+  async sendToTokens(params: { tokens: string[]; title: string; body: string; data?: Record<string, string> }): Promise<number> {
+    return (await this.deliverTokens(params)).count;
+  }
 
-    const isCall = params.data?.type === 'request_new';
-
-    const data = params.data ? { ...params.data } : {};
-
-    if (isCall) {
-      // La app usa estos campos para reconstruir la alerta local cuando el
-      // mensaje llega data-only a su handler de segundo plano.
-      data.title = params.title;
-      data.body = params.body;
-    }
-
-    const response = await this.messaging.sendEachForMulticast({
-      tokens: params.tokens,
-      notification: isCall
-        ? undefined
-        : {
-            title: params.title,
-            body: params.body,
-          },
-      data: Object.keys(data).length > 0 ? data : undefined,
-      android: buildAndroidConfig(isCall),
-      apns: {
-        headers: {
-          'apns-priority': '10',
-        },
-        payload: {
-          aps: isCall
-            ? {
-                alert: { title: params.title, body: params.body },
-                sound: 'chamba_ringtone.mp3',
-                'interruption-level': 'time-sensitive',
-              }
-            : {
-                sound: 'default',
-              },
-        },
-      },
-    });
-
-    if (response.failureCount > 0) {
-      response.responses.forEach((resp, idx) => {
-        if (!resp.success) {
-          this.logger.error(
-            `FCM multicast send failed for token ${params.tokens[idx].substring(0, 20)}...: [${resp.error?.code}] - ${resp.error?.message}`,
-          );
+  private async deliverTokens(params: { tokens: string[]; title: string; body: string; data?: Record<string, string> }): Promise<{ count: number; messageIds: string[] }> {
+    const messageIds: string[] = [];
+    if (!this.messaging) return { count: 0, messageIds };
+    const isRequest = params.data?.type === 'request_new';
+    const expiresMs = params.data?.expiresAt ? Date.parse(params.data.expiresAt) : NaN;
+    if (Number.isFinite(expiresMs) && expiresMs <= Date.now()) return { count: 0, messageIds };
+    const ttl = Number.isFinite(expiresMs) ? Math.max(0, Math.min(86400000, expiresMs - Date.now())) : isRequest ? 120000 : 86400000;
+    const data: Record<string, string> = { ...params.data, title: params.title, body: params.body };
+    const requestId = data.requestId || data.jobId;
+    const group = data.threadId ? 'chat:' + data.threadId : requestId ? 'job:' + requestId : data.eventId;
+    const tokens = [...new Set(params.tokens.filter(Boolean))];
+    let sent = 0;
+    for (let offset = 0; offset < tokens.length; offset += 500) {
+      const batch = tokens.slice(offset, offset + 500);
+      // Retry transient failures only. Invalid tokens are removed, never retried.
+      let pending = batch;
+      for (let attempt = 0; attempt < 3 && pending.length; attempt++) {
+        if (attempt) await new Promise(resolve => setTimeout(resolve, 300 * 2 ** attempt));
+        if (Number.isFinite(expiresMs) && expiresMs <= Date.now()) break;
+        let response;
+        try { response = await this.messaging.sendEachForMulticast({ tokens: pending,
+          notification: { title: params.title, body: params.body }, data,
+          android: { priority: 'high', ttl, notification: { channelId: 'chamba_default_channel',
+            sound: 'default', tag: group } },
+          apns: { headers: { 'apns-priority': '10', 'apns-expiration': String(Math.floor((Date.now() + ttl) / 1000)),
+              ...(group ? { 'apns-collapse-id': group.slice(0, 64) } : {}) },
+            payload: { aps: { sound: 'default', ...(data.threadId ? { 'thread-id': data.threadId } : {}) } } },
+        });
+        } catch (error) {
+          const code = (error as { code?: string }).code;
+          this.logger.warn('FCM batch failed: ' + (code || 'transport error'));
+          if (code && !['messaging/server-unavailable', 'messaging/internal-error', 'messaging/quota-exceeded', 'app/network-error'].includes(code)) throw error;
+          if (attempt === 2) throw error;
+          continue;
         }
-      });
+        sent += response.successCount;
+        const retry: string[] = [];
+        for (let i = 0; i < response.responses.length; i++) {
+          const result = response.responses[i];
+          if (result.success) { if (result.messageId) messageIds.push(result.messageId); continue; }
+          const code = result.error?.code;
+          if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(code || '')) {
+            await this.db.query('DELETE FROM push_tokens WHERE token = $1', [pending[i]]);
+          } else if (['messaging/server-unavailable', 'messaging/internal-error', 'messaging/quota-exceeded'].includes(code || '')) retry.push(pending[i]);
+          this.logger.warn('FCM delivery failed: ' + code);
+        }
+        pending = retry;
+      }
     }
-
-    return response.successCount;
+    return { count: sent, messageIds };
   }
 
   getProjectId(): string | null {

@@ -1,3 +1,4 @@
+import { AccessModule } from '../access/access.module';
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -20,6 +21,7 @@ import { MobileRequestsCronService } from './services/mobile-requests-cron.servi
 
 @Module({
   imports: [
+    AccessModule,
     StorageModule,
     NotificationsModule,
     RealtimeModule,

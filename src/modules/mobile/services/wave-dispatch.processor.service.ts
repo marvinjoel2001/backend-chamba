@@ -29,7 +29,7 @@ export class WaveDispatchProcessorService
   ) {}
 
   onModuleInit(): void {
-    if (this.configService.get('USE_QUEUE_DISPATCH') !== 'true') {
+    if (![true, 'true'].includes(this.configService.get('USE_QUEUE_DISPATCH', false))) {
       return;
     }
     this.worker = new Worker<WaveJobData>(
@@ -67,6 +67,11 @@ export class WaveDispatchProcessorService
       return;
     }
 
+    const eligible = await this.dataSource.query(`SELECT id FROM users WHERE id = ANY($1::uuid[]) AND type = 'worker'
+      AND is_available = true AND COALESCE(is_blocked, false) = false`, [params.waveWorkers.map(w => w.workerId)]);
+    const ids = new Set(eligible.map((row: { id: string }) => row.id));
+    params.waveWorkers = params.waveWorkers.filter(worker => ids.has(worker.workerId));
+    if (!params.waveWorkers.length) return;
     for (const worker of params.waveWorkers) {
       this.logger.log(
         `[wave-processor] Notifying worker ${worker.workerId} (${worker.distanceKm.toFixed(1)} km) [pos ${worker.queuePosition}] for request ${params.requestId}`,
@@ -92,9 +97,10 @@ export class WaveDispatchProcessorService
     const users = tokenRows.map((row) => ({
       userId: String(row.user_id),
       token: String(row.token),
+      distanceKm: params.waveWorkers.find(w => w.workerId === row.user_id)?.distanceKm.toFixed(1),
     }));
-    if (users.length === 0) {
-      return;
+    for (const worker of params.waveWorkers) {
+      if (!users.some(u => u.userId === worker.workerId)) users.push({ userId: worker.workerId, token: '', distanceKm: worker.distanceKm.toFixed(1) });
     }
 
     const nearestDistance = Math.min(

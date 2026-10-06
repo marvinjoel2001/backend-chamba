@@ -26,7 +26,7 @@ import { AgencyJwtStrategy } from './strategies/agency-jwt.strategy';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET', 'super-secret-key'),
+        secret: configService.get<string>('JWT_SECRET') || configService.getOrThrow<string>('SESSION_SECRET'),
         signOptions: { expiresIn: '1d' },
       }),
     }),

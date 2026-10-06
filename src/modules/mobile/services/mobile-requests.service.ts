@@ -315,7 +315,7 @@ export class MobileRequestsService {
       input.budget,
     );
 
-    this.realtimeGateway.server.emit('request.published', {
+    this.realtimeGateway.broadcastRequest('request.published', {
       requestId: created.id,
       status: created.status,
       title: created.title,
@@ -854,7 +854,7 @@ export class MobileRequestsService {
         requestId: params.requestId,
       });
       const clientToken = await this.repo.getLatestPushToken(clientUserId);
-      if (clientToken) {
+      {
         await this.notificationsService
           .notifyWorkerArrived({
             userId: clientUserId,
@@ -880,12 +880,13 @@ export class MobileRequestsService {
       `
       UPDATE job_requests
       SET client_confirmed_arrival = true,
-          work_started_at = NOW(),
+          work_started_at = COALESCE(work_started_at, NOW()),
           updated_at = NOW()
       WHERE id = $1
         AND client_user_id = $2
         AND status NOT IN ('cancelled', 'completed')
         AND worker_arrived = true
+        AND client_confirmed_arrival = false
       RETURNING id, worker_arrived, client_confirmed_arrival, work_started_at
       `,
       [params.requestId, params.clientUserId],
@@ -894,6 +895,11 @@ export class MobileRequestsService {
     // arrancar el reloj de un trabajo cancelado, o de una llegada que el worker
     // nunca marcó. La UI ya exige `workerArrived && !clientConfirmed` para
     // habilitar el botón, así que esto solo cierra la puerta a nivel API.
+    if (!rows[0]) {
+      const previous = await this.dataSource.query(`SELECT id FROM job_requests WHERE id = $1 AND client_user_id = $2
+        AND client_confirmed_arrival = true AND status NOT IN ('cancelled', 'completed')`, [params.requestId, params.clientUserId]);
+      if (previous[0]) return { requestId: params.requestId, clientConfirmedArrival: true };
+    }
     if (!rows[0])
       throw new BadRequestException(
         'No se puede confirmar la llegada: el trabajo no está activo o el trabajador aún no marcó su llegada',
@@ -975,7 +981,7 @@ export class MobileRequestsService {
         'El trabajo ya fue cancelado o completado',
       );
     }
-    this.realtimeGateway.server.emit('request.status.updated', {
+    this.realtimeGateway.broadcastRequest('request.status.updated', {
       requestId: params.requestId,
       status: 'completed',
       timestamp: new Date().toISOString(),
@@ -997,19 +1003,18 @@ export class MobileRequestsService {
 
     const infoRows = await this.dataSource.query<any[]>(
       `
-      SELECT jr.title, u.first_name as worker_name, pt.token
+      SELECT jr.title, u.first_name as worker_name
       FROM job_requests jr
       JOIN users u ON u.id = $2
-      LEFT JOIN push_tokens pt ON pt.user_id = jr.client_user_id
       WHERE jr.id = $1
       `,
       [params.requestId, params.workerUserId],
     );
-    if (infoRows[0]?.token) {
+    if (infoRows[0]) {
       await this.notificationsService
         .notifyJobFinished({
           userId: req.client_user_id,
-          token: infoRows[0].token,
+          token: null,
           workerName: infoRows[0].worker_name,
           jobTitle: infoRows[0].title,
           requestId: params.requestId,
@@ -1066,7 +1071,7 @@ export class MobileRequestsService {
 
     // Cerrar ofertas pendientes y avisar a los workers que estaban negociando
     const closedOffers = await this.repo.closePendingOffers(params.requestId);
-    this.realtimeGateway.server.emit('request.status.updated', {
+    this.realtimeGateway.broadcastRequest('request.status.updated', {
       requestId: params.requestId,
       status: 'cancelled',
       timestamp: new Date().toISOString(),
@@ -1376,7 +1381,7 @@ export class MobileRequestsService {
     const waveSize = MobileRequestsService.WORKER_NOTIFICATION_WAVE_SIZE;
     const totalWaves = Math.ceil(targetWorkers.length / waveSize);
     const useQueueDispatch =
-      this.configService.get('USE_QUEUE_DISPATCH') === 'true';
+      [true, 'true'].includes(this.configService.get('USE_QUEUE_DISPATCH', false));
 
     for (let waveIndex = 0; waveIndex < totalWaves; waveIndex += 1) {
       const from = waveIndex * waveSize;
@@ -1469,6 +1474,11 @@ export class MobileRequestsService {
       return;
     }
 
+    const eligible = await this.dataSource.query(`SELECT id FROM users WHERE id = ANY($1::uuid[])
+      AND is_available = true AND COALESCE(is_blocked, false) = false`, [params.waveWorkers.map(w => w.workerId)]);
+    const ids = new Set(eligible.map((row: { id: string }) => row.id));
+    params.waveWorkers = params.waveWorkers.filter(w => ids.has(w.workerId));
+    if (!params.waveWorkers.length) return;
     for (const worker of params.waveWorkers) {
       this.logger.log(
         `[request.new] Notificando worker ${worker.workerId} (${worker.distanceKm.toFixed(1)} km) [posicion ${worker.queuePosition}] solicitud ${params.requestId}`,
@@ -1500,9 +1510,10 @@ export class MobileRequestsService {
     const users = tokenRows.map((row) => ({
       userId: row.user_id,
       token: row.token,
+      distanceKm: params.waveWorkers.find(w => w.workerId === row.user_id)?.distanceKm.toFixed(1),
     }));
-    if (users.length === 0) {
-      return;
+    for (const worker of params.waveWorkers) {
+      if (!users.some(u => u.userId === worker.workerId)) users.push({ userId: worker.workerId, token: '', distanceKm: worker.distanceKm.toFixed(1) });
     }
 
     const nearestDistance = Math.min(

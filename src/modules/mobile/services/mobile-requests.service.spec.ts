@@ -39,7 +39,7 @@ describe('MobileRequestsService.createRequest (modalidades)', () => {
     const configService = {} as any;
     const storageService = {} as any;
     const notificationsService = {} as any;
-    const realtimeGateway = { server: { emit: jest.fn() } } as any;
+    const realtimeGateway = { broadcastRequest: jest.fn(), server: { emit: jest.fn() } } as any;
     const waveQueueService = {} as any;
     const repo = {
       ensureCategoriesExist: jest.fn().mockResolvedValue(undefined),

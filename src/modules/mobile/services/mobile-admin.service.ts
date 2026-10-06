@@ -30,7 +30,10 @@ export class MobileAdminService {
     isCallAlert?: boolean;
   }) {
     if (payload.type === 'toast') {
-      this.realtimeGateway.server.emit('notification.toast', {
+      const recipients = await this.dataSource.query(`SELECT id FROM users WHERE
+        ($1 = 'all' OR ($1 = 'workers' AND type = 'worker') OR ($1 = 'clients' AND type = 'client') OR
+         ($1 = 'custom' AND id = ANY($2::uuid[])))`, [payload.target, payload.userIds || []]);
+      for (const recipient of recipients) this.realtimeGateway.emitToUser(recipient.id, 'notification.toast', {
         target: payload.target,
         title: payload.title,
         body: payload.body,
@@ -979,6 +982,7 @@ export class MobileAdminService {
 
     const closedOffers = await this.repo.closePendingOffers(params.requestId);
     for (const closed of closedOffers) {
+      this.realtimeGateway.emitToUser(closed.workerUserId, 'job.cancelled', { requestId: params.requestId });
       const token = await this.repo.getLatestPushToken(closed.workerUserId);
       this.notificationsService
         .notifyRequestClosed({
@@ -1003,13 +1007,14 @@ export class MobileAdminService {
       );
     }
 
-    this.realtimeGateway.server.emit('request.status.updated', {
+    this.realtimeGateway.broadcastRequest('request.status.updated', {
       requestId: params.requestId,
       status: 'cancelled',
       timestamp: new Date().toISOString(),
     });
 
     if (req.client_user_id) {
+      this.realtimeGateway.emitToUser(req.client_user_id, 'job.cancelled', { requestId: params.requestId });
       const clientTokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
         [req.client_user_id],
@@ -1026,6 +1031,7 @@ export class MobileAdminService {
     }
 
     if (offerRows[0]?.worker_user_id) {
+      this.realtimeGateway.emitToUser(offerRows[0].worker_user_id, 'job.cancelled', { requestId: params.requestId });
       const workerTokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
         [offerRows[0].worker_user_id],

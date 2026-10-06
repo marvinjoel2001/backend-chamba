@@ -283,7 +283,7 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
       cancelerUserId: 'system',
     });
 
-    this.realtimeGateway.server.emit('request.status.updated', {
+    this.realtimeGateway.broadcastRequest('request.status.updated', {
       requestId: req.id,
       status: 'cancelled',
       timestamp: new Date().toISOString(),

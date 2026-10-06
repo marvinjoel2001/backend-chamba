@@ -304,7 +304,11 @@ export class MobileUsersService {
       longitude: Number(rows[0].longitude),
       timestamp: new Date().toISOString(),
     };
-    this.realtimeGateway.server.emit('worker.location.updated', payload);
+    this.realtimeGateway.emitToAdmins('worker.location.updated', payload);
+    const participants = await this.dataSource.query(
+      `SELECT jr.client_user_id FROM job_requests jr JOIN job_offers jo ON jo.request_id = jr.id
+       WHERE jo.worker_user_id = $1 AND jo.status = 'accepted' AND jr.status NOT IN ('cancelled', 'completed')`, [params.workerUserId]);
+    for (const participant of participants) this.realtimeGateway.emitToUser(participant.client_user_id, 'worker.location.updated', payload);
 
     return {
       ...payload,
@@ -591,7 +595,7 @@ export class MobileUsersService {
              jr.category,
              jr.address,
              jr.status AS request_status,
-             jr.payment_method,
+             jr.payment_method, jr.completed_at,
              c.id AS client_id,
              c.first_name AS client_first_name,
              c.last_name AS client_last_name,
@@ -627,6 +631,7 @@ export class MobileUsersService {
         offerStatus: row.offer_status,
         requestStatus: row.request_status,
         acceptedAt: row.accepted_at,
+        completedAt: row.completed_at,
         threadId: row.thread_id ?? null,
         photoUrl: row.photo_url ?? null,
         paymentMethod: row.payment_method ?? 'Efectivo',
