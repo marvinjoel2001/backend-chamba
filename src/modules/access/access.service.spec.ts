@@ -9,6 +9,14 @@ describe('Authenticated mobile boundaries', () => {
   const access = new AccessService(jwt, { get: () => 'test-secret-with-at-least-32-characters' } as any, db as any);
   const userId = 'fe1145aa-5a8f-4f45-8a7e-960a595fa8b0';
   beforeEach(() => db.query.mockReset());
+  it('notification details use the accepted/final amount and the assigned worker', async () => {
+    db.query.mockResolvedValueOnce([{ id: 'job', status: 'completed', budget: '100', amount: '120',
+      worker_id: 'worker', worker_first_name: 'Jorge', client_id: userId, photo_url: 'https://example.com/photo.png' }]);
+    const result = await access.notificationRequest(userId, 'job');
+    expect(result.request.amount).toBe(120);
+    expect(result.request.worker?.firstName).toBe('Jorge');
+    expect(result.request.photoUrl).toBe('https://example.com/photo.png');
+  });
   it('issues a signed mobile token and verifies the user from the database', async () => {
     db.query.mockResolvedValue([{ type: 'worker', is_blocked: false }]);
     await expect(access.authenticate(access.issueMobile(userId, 'worker'))).resolves.toEqual({ id: userId, kind: 'mobile', role: 'worker' });

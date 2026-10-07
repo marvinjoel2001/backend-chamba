@@ -665,6 +665,16 @@ export class MobileService implements OnModuleInit {
     return this.requestsService.completeJob(params);
   }
 
+  async setWorkPaused(params: { requestId: string; clientUserId: string; paused: boolean }) {
+    return this.requestsService.setWorkPaused(params);
+  }
+
+  async uploadRequestPhoto(imageBase64: string) {
+    const images = this.geoHelpers.validateBase64Images([imageBase64], 1);
+    if (!images[0]) throw new BadRequestException('Selecciona una imagen válida');
+    return this.storageService.uploadBase64Image({ base64Data: images[0], folder: 'chamba/requests' });
+  }
+
   async cancelJob(params: { requestId: string; userId: string }) {
     return this.requestsService.cancelJob(params);
   }

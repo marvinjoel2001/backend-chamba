@@ -299,12 +299,12 @@ export class MobileAdminService {
              u.first_name,
              u.last_name,
              COUNT(*)::int AS jobs_completed,
-             COALESCE(SUM(jo.amount), 0)::numeric AS earnings
+             COALESCE(SUM(COALESCE(jr.settled_amount, jo.amount)), 0)::numeric AS earnings
       FROM job_offers jo
       JOIN users u ON u.id = jo.worker_user_id
       JOIN job_requests jr ON jr.id = jo.request_id
       WHERE jo.status = 'accepted'
-        AND jr.created_at >= ${interval}
+        AND jr.status = 'completed' AND jr.completed_at >= ${interval}
       GROUP BY u.id, u.first_name, u.last_name
       ORDER BY earnings DESC
       LIMIT 500

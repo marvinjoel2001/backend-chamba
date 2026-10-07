@@ -78,13 +78,30 @@ export class AccessService {
 
   async notificationRequest(userId: string, requestId: string) {
     const rows = await this.db.query(`SELECT jr.id, jr.title, jr.description, jr.category, jr.address,
-      jr.status, jr.budget, jr.created_at, jr.completed_at FROM job_requests jr WHERE jr.id = $1 AND (
+      jr.status, jr.budget, jr.created_at, jr.completed_at, jr.modality, jo.status AS offer_status,
+      COALESCE(jr.settled_amount, jo.amount, jr.budget) AS amount,
+      w.id AS worker_id, w.first_name AS worker_first_name, w.last_name AS worker_last_name,
+      w.profile_photo_url AS worker_photo, c.id AS client_id, c.first_name AS client_first_name,
+      c.last_name AS client_last_name, c.profile_photo_url AS client_photo, ct.id AS thread_id,
+      (SELECT p.url FROM job_request_photos p WHERE p.request_id = jr.id ORDER BY p.created_at LIMIT 1) AS photo_url
+      FROM job_requests jr
+      JOIN users c ON c.id = jr.client_user_id
+      LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
+      LEFT JOIN users w ON w.id = jo.worker_user_id
+      LEFT JOIN chat_threads ct ON ct.request_id = jr.id AND ct.worker_user_id = w.id AND ct.client_user_id = c.id
+      WHERE jr.id = $1 AND (
       jr.client_user_id = $2 OR EXISTS (SELECT 1 FROM job_offers jo WHERE jo.request_id = jr.id AND jo.worker_user_id = $2)
       OR EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = $2 AND (n.data->>'requestId' = jr.id::text OR n.data->>'jobId' = jr.id::text)))`, [requestId, userId]);
     if (!rows[0]) throw new ForbiddenException('No perteneces a esta solicitud');
     const row = rows[0];
     return { request: { id: row.id, requestId: row.id, title: row.title, description: row.description,
-      category: row.category, address: row.address, requestStatus: row.status, amount: Number(row.budget),
+      category: row.category, address: row.address, requestStatus: row.status, amount: Number(row.amount),
+      modality: row.modality, offerStatus: row.offer_status ?? null,
+      threadId: row.thread_id ?? null, photoUrl: row.photo_url ?? null,
+      worker: row.worker_id ? { id: row.worker_id, firstName: row.worker_first_name,
+        lastName: row.worker_last_name ?? '', profilePhotoUrl: row.worker_photo ?? null } : null,
+      client: { id: row.client_id, firstName: row.client_first_name,
+        lastName: row.client_last_name ?? '', profilePhotoUrl: row.client_photo ?? null },
       createdAt: row.created_at, completedAt: row.completed_at } };
   }
 

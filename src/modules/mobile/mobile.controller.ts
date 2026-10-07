@@ -246,6 +246,11 @@ export class MobileController {
     });
   }
 
+  @Post('mobile/requests/photos/upload')
+  uploadRequestPhoto(@Body('imageBase64') imageBase64: string) {
+    return this.mobileService.uploadRequestPhoto(imageBase64);
+  }
+
   @Post('mobile/requests/photos/delete')
   deleteRequestPhoto(
     @Body('requestPhotoId') requestPhotoId: string,
@@ -500,6 +505,11 @@ export class MobileController {
     @Body('clientUserId') clientUserId: string,
   ) {
     return this.mobileService.clientConfirmArrival({ requestId, clientUserId });
+  }
+
+  @Post('mobile/tracking/clock')
+  setWorkPaused(@Req() req: any, @Body('requestId') requestId: string, @Body('paused') paused: boolean) {
+    return this.mobileService.setWorkPaused({ requestId, clientUserId: req.principal.id, paused });
   }
 
   @Post('mobile/tracking/complete')

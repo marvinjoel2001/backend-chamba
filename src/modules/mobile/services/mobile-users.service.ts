@@ -586,7 +586,7 @@ export class MobileUsersService {
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT jo.id AS offer_id,
-             jo.amount,
+             COALESCE(jr.settled_amount, jo.amount) AS amount,
              jo.status AS offer_status,
              jo.created_at AS accepted_at,
              jr.id AS request_id,
@@ -658,7 +658,7 @@ export class MobileUsersService {
              jr.status AS request_status,
              jr.created_at,
              jo.id AS offer_id,
-             jo.amount,
+             COALESCE(jr.settled_amount, jo.amount) AS amount,
              jo.status AS offer_status,
              w.id AS worker_id,
              w.first_name AS worker_first_name,

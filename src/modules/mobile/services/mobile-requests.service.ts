@@ -16,6 +16,7 @@ import { MobileGeoHelpers } from '../shared/mobile-geo.helpers';
 import { MobileCatalogService } from './mobile-catalog.service';
 import { MobileOffersService } from './mobile-offers.service';
 import { ApiLogsService } from '../../api-logs/api-logs.service';
+import { workClock } from '../shared/work-clock';
 
 type CreateRequestInput = {
   clientUserId: string;
@@ -205,6 +206,20 @@ export class MobileRequestsService {
     }
     if (!Number.isFinite(input.latitude) || !Number.isFinite(input.longitude)) {
       throw new BadRequestException('latitude and longitude are required');
+    }
+    if (Math.abs(input.latitude) > 90 || Math.abs(input.longitude) > 180) {
+      throw new BadRequestException('Coordenadas fuera de rango');
+    }
+    if (input.modality && !['hourly', 'daily', 'fixed'].includes(input.modality)) {
+      throw new BadRequestException('Modalidad inválida');
+    }
+    if (input.modality === 'hourly' && (!Number.isInteger(input.estimatedHours) || input.estimatedHours! <= 0
+      || !Number.isFinite(input.hourlyRate) || input.hourlyRate! <= 0)) {
+      throw new BadRequestException('Horas y tarifa deben ser positivas');
+    }
+    if (input.modality === 'daily' && (!Number.isInteger(input.days) || input.days! <= 0
+      || !Number.isFinite(input.dailyRate) || input.dailyRate! <= 0)) {
+      throw new BadRequestException('Días y tarifa deben ser positivos');
     }
     const photos = this.geoHelpers.validateBase64Images(input.photosBase64, 5);
     const uploadedPhotosInput = this.geoHelpers.validateUploadedImages(
@@ -724,6 +739,9 @@ export class MobileRequestsService {
              jr.client_confirmed_arrival,
              jr.completed_at,
              jr.work_started_at,
+             jr.work_paused_at,
+             jr.work_paused_seconds,
+             jr.settled_amount,
              jr.price_type,
              jr.modality,
              jr.estimated_hours,
@@ -783,11 +801,9 @@ export class MobileRequestsService {
       clientConfirmedArrival: row.client_confirmed_arrival ?? false,
       completedAt: row.completed_at ?? null,
       workStartedAt: row.work_started_at ?? null,
-      workElapsedSeconds: row.work_started_at
-        ? Math.floor(
-            (Date.now() - new Date(row.work_started_at).getTime()) / 1000,
-          )
-        : null,
+      ...workClock(row),
+      settledAmount: row.settled_amount == null ? null : Number(row.settled_amount),
+      serverTime: new Date().toISOString(),
       distanceKm,
       etaMinutes:
         distanceKm == null ? null : Math.max(5, Math.ceil(distanceKm / 0.5)),
@@ -926,16 +942,12 @@ export class MobileRequestsService {
         },
       );
 
-      const workerTokenRows = await this.dataSource.query<any[]>(
-        `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
-        [offerRows[0].worker_user_id],
-      );
       const clientUser = await this.repo.getUserById(params.clientUserId);
       const reqInfo = await this.repo.getRequestById(params.requestId);
-      this.notificationsService
+      await this.notificationsService
         .notifyClientConfirmedArrival({
           userId: offerRows[0].worker_user_id,
-          token: workerTokenRows[0]?.push_token || null,
+          token: null,
           clientName: clientUser.firstName,
           jobTitle: reqInfo.title,
           requestId: params.requestId,
@@ -946,6 +958,26 @@ export class MobileRequestsService {
     }
 
     return { requestId: params.requestId, clientConfirmedArrival: true };
+  }
+
+  public async setWorkPaused(params: { requestId: string; clientUserId: string; paused: boolean }) {
+    if (typeof params.paused !== 'boolean') throw new BadRequestException('paused debe ser booleano');
+    const rows = await this.dataSource.query(`UPDATE job_requests SET
+      work_paused_seconds = work_paused_seconds + CASE
+        WHEN NOT $3 AND work_paused_at IS NOT NULL
+          THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - work_paused_at)))::integer)
+        ELSE 0 END,
+      work_paused_at = CASE WHEN $3 THEN COALESCE(work_paused_at, NOW()) ELSE NULL END,
+      updated_at = NOW()
+      WHERE id = $1 AND client_user_id = $2 AND status = 'assigned'
+        AND client_confirmed_arrival = true AND COALESCE(modality, price_type) = 'hourly'
+      RETURNING id`, [params.requestId, params.clientUserId, params.paused]);
+    if (!rows[0]) throw new BadRequestException('Solo se puede pausar un trabajo por hora activo del cliente');
+    const tracking = await this.getTracking(params.requestId);
+    const payload = { requestId: params.requestId, paused: tracking.workPaused };
+    this.realtimeGateway.emitToUser(params.clientUserId, 'job.clock.updated', payload);
+    this.realtimeGateway.emitToUser(tracking.worker.id, 'job.clock.updated', payload);
+    return tracking;
   }
 
   public async completeJob(params: {
@@ -976,13 +1008,23 @@ export class MobileRequestsService {
     // completarse igual y "resucitar", contando para pagos y estadísticas.
     const completedRows = await this.dataSource.query<any[]>(
       `
-      UPDATE job_requests
-      SET status = 'completed', completed_at = NOW(), updated_at = NOW()
-      WHERE id = $1
-        AND status NOT IN ('cancelled', 'completed')
-      RETURNING id
+      UPDATE job_requests jr
+      SET status = 'completed', completed_at = NOW(), updated_at = NOW(),
+        settled_amount = CASE WHEN COALESCE(jr.modality, jr.price_type) = 'hourly' THEN
+          ROUND((CASE WHEN jr.estimated_hours > 0 THEN jo.amount / jr.estimated_hours
+            ELSE COALESCE(jr.hourly_rate, 0) END) *
+            GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (COALESCE(jr.work_paused_at, NOW()) - jr.work_started_at)))
+              - jr.work_paused_seconds) / 3600, 2)
+          ELSE jo.amount END,
+        work_paused_seconds = jr.work_paused_seconds + CASE WHEN jr.work_paused_at IS NOT NULL
+          THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - jr.work_paused_at)))::integer) ELSE 0 END,
+        work_paused_at = NULL
+      FROM job_offers jo
+      WHERE jr.id = $1 AND jo.request_id = jr.id AND jo.worker_user_id = $2 AND jo.status = 'accepted'
+        AND jr.status = 'assigned'
+      RETURNING jr.id, jr.settled_amount
       `,
-      [params.requestId],
+      [params.requestId, params.workerUserId],
     );
     if (!completedRows[0]) {
       throw new BadRequestException(
@@ -1036,7 +1078,7 @@ export class MobileRequestsService {
       `[completeJob] Trabajo ${params.requestId} completado por worker ${params.workerUserId}`,
     );
 
-    return { requestId: params.requestId, status: 'completed' };
+    return { requestId: params.requestId, status: 'completed', amount: Number(completedRows[0].settled_amount) };
   }
 
   public async cancelJob(params: { requestId: string; userId: string }) {
@@ -1160,12 +1202,12 @@ export class MobileRequestsService {
       `
       WITH jobs AS (
         SELECT COUNT(*)::text AS jobs_today,
-               COALESCE(SUM(jo.amount), 0)::text AS earnings_today
+               COALESCE(SUM(COALESCE(jr.settled_amount, jo.amount)), 0)::text AS earnings_today
         FROM job_offers jo
         JOIN job_requests jr ON jr.id = jo.request_id
         WHERE jo.worker_user_id = $1
           AND jo.status = 'accepted'
-          AND DATE(jr.created_at) = CURRENT_DATE
+          AND jr.status = 'completed' AND DATE(jr.completed_at) = CURRENT_DATE
       ),
       nearby AS (
         SELECT COUNT(*)::text AS nearby_requests
