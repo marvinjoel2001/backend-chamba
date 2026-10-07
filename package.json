@@ -10,6 +10,7 @@
   },
   "scripts": {
     "build": "nest build",
+    "postbuild": "node scripts/check-mobile-module.cjs",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "node dist/main",
     "start:dev": "nest start --watch",

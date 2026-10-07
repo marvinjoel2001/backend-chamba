@@ -28,7 +28,10 @@ the message and attempts to remove its unused upload.
 
 ## Rollout
 
-1. Install backend dependencies with `npm ci` and build.
+1. Install backend dependencies with `npm ci` and run `npm run build`. This
+   performs a non-incremental build and checks dependency injection in the
+   compiled MobileModule without contacting production services. Do not commit
+   `dist`; Railway must build it from the same source revision it deploys.
 2. Apply migration `1791333000000-BackfillAcceptedJobChats` using the existing
    production migration command, then deploy the backend.
 3. Release the updated Flutter app. It expects `context` on thread reads and

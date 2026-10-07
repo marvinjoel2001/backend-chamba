@@ -6,6 +6,7 @@ import { InitialBaselineSchema1717000000000 } from './migrations/1717000000000-I
 import { AddModalityToJobRequests1781633301782 } from './migrations/1781633301782-AddModalityToJobRequests';
 import { AddReminderLevelToJobRequests1782866723182 } from './migrations/1782866723182-AddReminderLevelToJobRequests';
 import { AddStartReminderSentAndTimeConfigSeeds1783500000000 } from './migrations/1783500000000-AddStartReminderSentAndTimeConfigSeeds';
+import { BackfillAcceptedJobChats1791333000000 } from './migrations/1791333000000-BackfillAcceptedJobChats';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AddStartReminderSentAndTimeConfigSeeds1783500000000 } from './migration
             AddModalityToJobRequests1781633301782,
             AddReminderLevelToJobRequests1782866723182,
             AddStartReminderSentAndTimeConfigSeeds1783500000000,
+            BackfillAcceptedJobChats1791333000000,
           ],
           migrationsRun: true,
           migrationsTableName: 'typeorm_migrations',
