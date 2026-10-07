@@ -127,6 +127,27 @@ describe('MobileOffersService.acceptOffer', () => {
     expect(queryRunnerMock.rollbackTransaction).toHaveBeenCalled();
   });
 
+  it('rechaza si el worker ya tiene otro trabajo asignado (1 a la vez)', async () => {
+    const futureDate = new Date(Date.now() + 600000);
+    queryRunnerMock.query
+      .mockResolvedValueOnce([
+        { id: REQUEST_ID, client_user_id: CLIENT_ID, status: 'searching', title: 'Plomería' },
+      ])
+      .mockResolvedValueOnce([
+        { id: OFFER_ID, request_id: REQUEST_ID, worker_user_id: WORKER_ID, status: 'pending', amount: 150, expires_at: futureDate },
+      ])
+      .mockResolvedValueOnce([{ id: WORKER_ID }])
+      // el worker ya tiene un trabajo 'assigned' en otra solicitud
+      .mockResolvedValueOnce([{ '?column?': 1 }]);
+
+    await expect(
+      service.acceptOffer({ offerId: OFFER_ID, clientUserId: CLIENT_ID }),
+    ).rejects.toThrow('ya está asignado a otro trabajo');
+
+    expect(queryRunnerMock.rollbackTransaction).toHaveBeenCalled();
+    expect(queryRunnerMock.commitTransaction).not.toHaveBeenCalled();
+  });
+
   it('ejecuta transacción ACID completa con FOR UPDATE, commitea y emite eventos en tiempo real', async () => {
     const futureDate = new Date(Date.now() + 600000); // 10 min en el futuro
     queryRunnerMock.query
@@ -138,6 +159,10 @@ describe('MobileOffersService.acceptOffer', () => {
       .mockResolvedValueOnce([
         { id: OFFER_ID, request_id: REQUEST_ID, worker_user_id: WORKER_ID, status: 'pending', amount: 150, expires_at: futureDate },
       ])
+      // 2b. SELECT users FOR UPDATE (serializa aceptaciones del mismo worker)
+      .mockResolvedValueOnce([{ id: WORKER_ID }])
+      // 2c. el worker no tiene otro trabajo asignado
+      .mockResolvedValueOnce([])
       // 3. UPDATE job_offers accepted
       .mockResolvedValueOnce([{ id: OFFER_ID }])
       // 4. UPDATE job_requests assigned

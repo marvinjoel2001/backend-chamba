@@ -541,6 +541,14 @@ export class MobileRequestsService {
             AND w.is_available = true
             AND w.is_agency_worker = false
             AND w.current_location IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM job_offers jo3
+              JOIN job_requests jr3 ON jr3.id = jo3.request_id
+              WHERE jo3.worker_user_id = $1
+                AND jo3.status = 'accepted'
+                AND jr3.status = 'assigned'
+            )
             AND ST_DWithin(
               jr.location,
               w.current_location,
@@ -1343,6 +1351,14 @@ export class MobileRequestsService {
       WHERE u.type = 'worker'
         AND u.is_available = true
         AND u.current_location IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM job_offers jo3
+          JOIN job_requests jr3 ON jr3.id = jo3.request_id
+          WHERE jo3.worker_user_id = u.id
+            AND jo3.status = 'accepted'
+            AND jr3.status = 'assigned'
+        )
         AND ST_DWithin(u.current_location, $1::geography, $4::float8 * 1000)
         AND (
           $2::boolean = true

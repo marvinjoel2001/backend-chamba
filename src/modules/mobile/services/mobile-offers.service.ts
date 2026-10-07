@@ -185,6 +185,14 @@ export class MobileOffersService {
       throw new BadRequestException('La solicitud ya no admite nuevas ofertas');
     }
 
+    // Un worker atiende un solo trabajo a la vez: con uno asignado no puede
+    // ofertar a otras solicitudes.
+    if (await this.workerHasActiveJob(params.workerUserId, params.requestId)) {
+      throw new BadRequestException(
+        'Ya tienes un trabajo en curso. Termínalo antes de ofertar a otro.',
+      );
+    }
+
     const currentBudget = Number(request.budget);
     if (params.amount < currentBudget) {
       throw new BadRequestException(
@@ -194,13 +202,19 @@ export class MobileOffersService {
 
     const existingRows = await this.dataSource.query<any[]>(
       `
-      SELECT id
+      SELECT id, status
       FROM job_offers
       WHERE request_id = $1 AND worker_user_id = $2
       LIMIT 1
       `,
       [params.requestId, params.workerUserId],
     );
+
+    // Una oferta aceptada o rechazada por el cliente no se puede revivir
+    // re-ofertando; solo se reabren las pendientes, vencidas o declinadas.
+    if (['accepted', 'rejected'].includes(existingRows[0]?.status)) {
+      throw new BadRequestException('Esta oferta ya fue resuelta por el cliente');
+    }
 
     let offerId = '';
 
@@ -363,6 +377,34 @@ export class MobileOffersService {
     });
   }
 
+  /**
+   * true si el worker ya tiene un trabajo asignado (oferta aceptada sobre una
+   * solicitud en estado 'assigned'). `excludeRequestId` ignora esa solicitud.
+   * `runner` permite ejecutarlo dentro de una transacción.
+   */
+  private async workerHasActiveJob(
+    workerUserId: string,
+    excludeRequestId?: string,
+    runner: { query: (sql: string, params?: any[]) => Promise<any> } = this
+      .dataSource,
+  ): Promise<boolean> {
+    const raw = await runner.query(
+      `
+      SELECT 1
+      FROM job_offers jo
+      JOIN job_requests jr ON jr.id = jo.request_id
+      WHERE jo.worker_user_id = $1
+        AND jo.status = 'accepted'
+        AND jr.status = 'assigned'
+        AND ($2::uuid IS NULL OR jr.id <> $2::uuid)
+      LIMIT 1
+      `,
+      [workerUserId, excludeRequestId ?? null],
+    );
+    const rows = Array.isArray(raw?.[0]) ? raw[0] : raw;
+    return Boolean(rows?.[0]);
+  }
+
   public async acceptOffer(params: { offerId: string; clientUserId: string }) {
     await this.repo.expireStaleOffers();
 
@@ -450,6 +492,24 @@ export class MobileOffersService {
 
       if (offer.expires_at && new Date(offer.expires_at) <= new Date()) {
         throw new BadRequestException('La oferta expiró o ya no está disponible');
+      }
+
+      // Un worker solo puede tener un trabajo asignado. Se bloquea su fila de
+      // usuario para serializar dos aceptaciones simultáneas del mismo worker
+      // en solicitudes distintas.
+      await queryRunner.query(`SELECT id FROM users WHERE id = $1 FOR UPDATE`, [
+        offer.worker_user_id,
+      ]);
+      if (
+        await this.workerHasActiveJob(
+          offer.worker_user_id,
+          request.id,
+          queryRunner,
+        )
+      ) {
+        throw new BadRequestException(
+          'Este trabajador ya está asignado a otro trabajo en curso',
+        );
       }
 
       // 3. Actualizar la oferta a 'accepted'
