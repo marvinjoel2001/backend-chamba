@@ -2,5 +2,7 @@ node_modules/
 dist/
 .npm-cache/
 .env
+.env.local
+.env.qa.private
 serviceAccountKey.json
 serviceAccountKey.json.json

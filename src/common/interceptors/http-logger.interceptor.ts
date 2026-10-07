@@ -28,7 +28,7 @@ export class HttpLoggerInterceptor implements NestInterceptor {
       : (req.headers['user-agent'] ?? null);
 
     const body = this.sanitizeBody(req.body);
-    const query = Object.keys(req.query ?? {}).length ? req.query : undefined;
+    const query = Object.keys(req.query ?? {}).length ? this.sanitizeBody(req.query) : undefined;
 
     this.logger.log(
       `-> ${method} ${url}` +
@@ -90,17 +90,16 @@ export class HttpLoggerInterceptor implements NestInterceptor {
 
   private sanitizeBody(body: unknown): unknown {
     if (!body || typeof body !== 'object') return body;
-    const clone = { ...(body as Record<string, unknown>) };
-    for (const key of ['password', 'token', 'secret', 'apiKey', 'privateKey', 'imageBase64']) {
-      if (key in clone) clone[key] = '***';
-    }
-    return clone;
+    if (Array.isArray(body)) return body.map(value => this.sanitizeBody(value));
+    return Object.fromEntries(Object.entries(body).map(([key, value]) => [key,
+      /password|token|secret|api.?key|private.?key|authorization|imagebase64|photosbase64/i.test(key)
+        ? '***' : this.sanitizeBody(value)]));
   }
 
   private previewBody(body: unknown): string {
     if (body === undefined || body === null) return '(empty)';
     try {
-      const str = JSON.stringify(body);
+      const str = JSON.stringify(this.sanitizeBody(body));
       return str.length > 200 ? str.slice(0, 200) + '...' : str;
     } catch {
       return '(unserializable)';

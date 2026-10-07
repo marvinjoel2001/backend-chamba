@@ -17,13 +17,12 @@ export class StorageService {
   constructor(private readonly configService: ConfigService) {
     this.cloudName =
       this.configService.get<string>('CLOUDINARY_CLOUD_NAME', '')?.trim() ||
-      'chamba';
+      '';
     this.apiKey =
       this.configService.get<string>('CLOUDINARY_API_KEY', '')?.trim() ||
-      '494851424798979';
+      '';
     this.apiSecret =
-      this.configService.get<string>('CLOUDINARY_API_SECRET', '')?.trim() ||
-      'dbIi3bUK2ZHUmY9kLt7Gl5qPcHc';
+      this.configService.get<string>('CLOUDINARY_API_SECRET', '')?.trim() || '';
     this.enabled = Boolean(this.cloudName && this.apiKey && this.apiSecret);
 
     if (!this.enabled) {
@@ -57,6 +56,7 @@ export class StorageService {
       {
         method: 'POST',
         body: formData,
+        signal: AbortSignal.timeout(45000),
       },
     );
 

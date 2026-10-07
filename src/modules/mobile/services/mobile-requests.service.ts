@@ -18,6 +18,11 @@ import { MobileOffersService } from './mobile-offers.service';
 import { ApiLogsService } from '../../api-logs/api-logs.service';
 import { workClock } from '../shared/work-clock';
 
+// TypeORM's PostgreSQL UPDATE returns [rows, affectedCount], unlike SELECT.
+function firstUpdatedRow(result: any[]) {
+  return Array.isArray(result[0]) ? result[0][0] : result[0];
+}
+
 type CreateRequestInput = {
   clientUserId: string;
   title: string;
@@ -251,6 +256,16 @@ export class MobileRequestsService {
 
     await this.repo.getUserById(input.clientUserId);
 
+    // Do not publish an empty request if legacy base64 photo upload fails.
+    const stagedPhotos = [...uploadedPhotosInput];
+    if (stagedPhotos.length === 0) {
+      for (const base64Data of photos) {
+        stagedPhotos.push(await this.storageService.uploadBase64Image({
+          base64Data, folder: 'chamba/requests',
+        }));
+      }
+    }
+
     const rows = await this.dataSource.query<any[]>(
       `
       INSERT INTO job_requests (
@@ -318,13 +333,7 @@ export class MobileRequestsService {
     );
 
     const created = rows[0];
-    const uploadedPhotos =
-      uploadedPhotosInput.length > 0
-        ? await this.persistUploadedRequestPhotos(
-            created.id,
-            uploadedPhotosInput,
-          )
-        : await this.uploadRequestPhotos(created.id, photos);
+    const uploadedPhotos = await this.persistUploadedRequestPhotos(created.id, stagedPhotos);
     const notifiedWorkers = await this.seedOffersForRequest(
       created.id,
       input.budget,
@@ -649,6 +658,8 @@ export class MobileRequestsService {
         distanceKm: row.distance_km == null ? null : Number(row.distance_km),
         client: {
           id: row.client_id,
+          firstName: row.client_first_name,
+          lastName: row.client_last_name ?? '',
           name: `${row.client_first_name} ${row.client_last_name ?? ''}`.trim(),
           profilePhotoUrl: row.client_photo_url ?? null,
           rating: Number(row.client_rating ?? 0),
@@ -809,16 +820,16 @@ export class MobileRequestsService {
         distanceKm == null ? null : Math.max(5, Math.ceil(distanceKm / 0.5)),
       agreedAmount: Number(row.amount),
       destination: {
-        latitude: row.dest_lat ? Number(row.dest_lat) : null,
-        longitude: row.dest_lng ? Number(row.dest_lng) : null,
+        latitude: row.dest_lat != null ? Number(row.dest_lat) : null,
+        longitude: row.dest_lng != null ? Number(row.dest_lng) : null,
       },
       worker: {
         id: row.worker_id,
         firstName: row.worker_first_name,
         lastName: row.worker_last_name ?? '',
         profilePhotoUrl: row.worker_photo ?? null,
-        latitude: row.worker_lat ? Number(row.worker_lat) : null,
-        longitude: row.worker_lng ? Number(row.worker_lng) : null,
+        latitude: row.worker_lat != null ? Number(row.worker_lat) : null,
+        longitude: row.worker_lng != null ? Number(row.worker_lng) : null,
       },
       client: {
         id: row.client_id,
@@ -852,7 +863,7 @@ export class MobileRequestsService {
     // Sin el guard de estado bastaba con que existiera la oferta aceptada — que
     // sobrevive a la cancelación — para marcar "ya llegué" en un trabajo
     // cancelado y dispararle un push al cliente.
-    if (!rows[0])
+    if (!firstUpdatedRow(rows))
       throw new NotFoundException(
         'Request not found, not authorized, or no longer active',
       );
@@ -919,12 +930,12 @@ export class MobileRequestsService {
     // arrancar el reloj de un trabajo cancelado, o de una llegada que el worker
     // nunca marcó. La UI ya exige `workerArrived && !clientConfirmed` para
     // habilitar el botón, así que esto solo cierra la puerta a nivel API.
-    if (!rows[0]) {
+    if (!firstUpdatedRow(rows)) {
       const previous = await this.dataSource.query(`SELECT id FROM job_requests WHERE id = $1 AND client_user_id = $2
         AND client_confirmed_arrival = true AND status NOT IN ('cancelled', 'completed')`, [params.requestId, params.clientUserId]);
       if (previous[0]) return { requestId: params.requestId, clientConfirmedArrival: true };
     }
-    if (!rows[0])
+    if (!firstUpdatedRow(rows))
       throw new BadRequestException(
         'No se puede confirmar la llegada: el trabajo no está activo o el trabajador aún no marcó su llegada',
       );
@@ -972,7 +983,7 @@ export class MobileRequestsService {
       WHERE id = $1 AND client_user_id = $2 AND status = 'assigned'
         AND client_confirmed_arrival = true AND COALESCE(modality, price_type) = 'hourly'
       RETURNING id`, [params.requestId, params.clientUserId, params.paused]);
-    if (!rows[0]) throw new BadRequestException('Solo se puede pausar un trabajo por hora activo del cliente');
+    if (!firstUpdatedRow(rows)) throw new BadRequestException('Solo se puede pausar un trabajo por hora activo del cliente');
     const tracking = await this.getTracking(params.requestId);
     const payload = { requestId: params.requestId, paused: tracking.workPaused };
     this.realtimeGateway.emitToUser(params.clientUserId, 'job.clock.updated', payload);
@@ -1026,7 +1037,8 @@ export class MobileRequestsService {
       `,
       [params.requestId, params.workerUserId],
     );
-    if (!completedRows[0]) {
+    const completed = firstUpdatedRow(completedRows);
+    if (!completed) {
       throw new BadRequestException(
         'El trabajo ya fue cancelado o completado',
       );
@@ -1078,7 +1090,7 @@ export class MobileRequestsService {
       `[completeJob] Trabajo ${params.requestId} completado por worker ${params.workerUserId}`,
     );
 
-    return { requestId: params.requestId, status: 'completed', amount: Number(completedRows[0].settled_amount) };
+    return { requestId: params.requestId, status: 'completed', amount: Number(completed.settled_amount) };
   }
 
   public async cancelJob(params: { requestId: string; userId: string }) {
@@ -1115,7 +1127,7 @@ export class MobileRequestsService {
       `,
       [params.requestId, params.userId],
     );
-    if (!cancelledRows[0]) {
+    if (!firstUpdatedRow(cancelledRows)) {
       throw new BadRequestException('El trabajo ya no se puede cancelar');
     }
 

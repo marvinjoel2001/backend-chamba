@@ -11,6 +11,7 @@ import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { MobileRequestRepository } from '../shared/mobile-request.repository';
 import { MobileCatalogService } from './mobile-catalog.service';
+import { workClock } from '../shared/work-clock';
 
 @Injectable()
 export class MobileUsersService {
@@ -276,7 +277,8 @@ export class MobileUsersService {
   }) {
     if (
       !Number.isFinite(params.latitude) ||
-      !Number.isFinite(params.longitude)
+      !Number.isFinite(params.longitude) ||
+      Math.abs(params.latitude) > 90 || Math.abs(params.longitude) > 180
     ) {
       throw new BadRequestException('latitude and longitude are required');
     }
@@ -294,14 +296,15 @@ export class MobileUsersService {
       [params.workerUserId, params.latitude, params.longitude],
     );
 
-    if (!rows[0]) {
+    const locationRow = (Array.isArray(rows[0]) ? rows[0] : rows)[0];
+    if (!locationRow) {
       throw new NotFoundException('Worker not found');
     }
 
     const payload = {
-      workerId: rows[0].id,
-      latitude: Number(rows[0].latitude),
-      longitude: Number(rows[0].longitude),
+      workerId: locationRow.id,
+      latitude: Number(locationRow.latitude),
+      longitude: Number(locationRow.longitude),
       timestamp: new Date().toISOString(),
     };
     this.realtimeGateway.emitToAdmins('worker.location.updated', payload);
@@ -322,7 +325,8 @@ export class MobileUsersService {
   }) {
     if (
       !Number.isFinite(params.latitude) ||
-      !Number.isFinite(params.longitude)
+      !Number.isFinite(params.longitude) ||
+      Math.abs(params.latitude) > 90 || Math.abs(params.longitude) > 180
     ) {
       throw new BadRequestException('latitude and longitude are required');
     }
@@ -340,14 +344,15 @@ export class MobileUsersService {
       [params.clientUserId, params.latitude, params.longitude],
     );
 
-    if (!rows[0]) {
+    const locationRow = (Array.isArray(rows[0]) ? rows[0] : rows)[0];
+    if (!locationRow) {
       throw new NotFoundException('Client not found');
     }
 
     const payload = {
-      clientId: rows[0].id,
-      latitude: Number(rows[0].latitude),
-      longitude: Number(rows[0].longitude),
+      clientId: locationRow.id,
+      latitude: Number(locationRow.latitude),
+      longitude: Number(locationRow.longitude),
       timestamp: new Date().toISOString(),
     };
     this.realtimeGateway.broadcastClientLocationUpdated(
@@ -596,6 +601,7 @@ export class MobileUsersService {
              jr.address,
              jr.status AS request_status,
              jr.payment_method, jr.completed_at,
+             jr.work_started_at, jr.work_paused_at, jr.work_paused_seconds,
              c.id AS client_id,
              c.first_name AS client_first_name,
              c.last_name AS client_last_name,
@@ -632,6 +638,7 @@ export class MobileUsersService {
         requestStatus: row.request_status,
         acceptedAt: row.accepted_at,
         completedAt: row.completed_at,
+        workElapsedSeconds: row.work_started_at ? workClock(row).workElapsedSeconds : null,
         threadId: row.thread_id ?? null,
         photoUrl: row.photo_url ?? null,
         paymentMethod: row.payment_method ?? 'Efectivo',
@@ -657,6 +664,8 @@ export class MobileUsersService {
              jr.address,
              jr.status AS request_status,
              jr.created_at,
+             jr.completed_at,
+             jr.modality,
              jo.id AS offer_id,
              COALESCE(jr.settled_amount, jo.amount) AS amount,
              jo.status AS offer_status,
@@ -689,11 +698,13 @@ export class MobileUsersService {
         description: row.description,
         category: row.category,
         address: row.address,
-        amount: row.amount ? Number(row.amount) : null,
+        amount: row.amount != null ? Number(row.amount) : null,
         offerId: row.offer_id ?? null,
         offerStatus: row.offer_status ?? null,
         requestStatus: row.request_status,
         createdAt: row.created_at,
+        completedAt: row.completed_at ?? null,
+        modality: row.modality ?? null,
         threadId: row.thread_id ?? null,
         photoUrl: row.photo_url ?? null,
         worker: row.worker_id

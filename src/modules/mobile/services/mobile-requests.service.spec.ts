@@ -109,6 +109,15 @@ describe('MobileRequestsService.createRequest (modalidades)', () => {
     expect(params[PARAM.dailyRate]).toBeNull();
   });
 
+  it('a failed legacy photo upload never publishes a request', async () => {
+    (service as any).geoHelpers.validateBase64Images.mockReturnValue(['data:image/png;base64,QA']);
+    (service as any).storageService.uploadBase64Image = jest.fn().mockRejectedValue(new Error('Upload failed'));
+    await expect(service.createRequest({ ...baseInput, budget:100, priceType:'fixed', modality:'fixed' } as any))
+      .rejects.toThrow('Upload failed');
+    expect(queryMock).not.toHaveBeenCalled();
+    expect((service as any).seedOffersForRequest).not.toHaveBeenCalled();
+  });
+
   it('modalidad por hora persiste horas y tarifa, sin campos de día', async () => {
     await service.createRequest({
       ...baseInput,
