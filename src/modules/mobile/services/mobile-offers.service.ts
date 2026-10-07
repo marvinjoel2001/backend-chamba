@@ -51,6 +51,7 @@ export class MobileOffersService {
              u.profile_photo_url,
              u.average_rating,
              u.completed_jobs,
+             u.verification_status,
              sa.skills,
              a.name AS agency_name,
              CASE
@@ -102,6 +103,7 @@ export class MobileOffersService {
           profilePhotoUrl: row.profile_photo_url ?? null,
           averageRating: Number(row.average_rating ?? 0),
           completedJobs: Number(row.completed_jobs ?? 0),
+          verificationStatus: row.verification_status ?? 'not_verified',
           skills: row.skills ?? [],
           distanceKm: row.distance_km == null ? null : Number(row.distance_km),
         },

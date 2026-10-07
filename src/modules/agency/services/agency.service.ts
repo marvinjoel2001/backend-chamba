@@ -292,7 +292,7 @@ export class AgencyService {
              jr.work_started_at,
              jr.updated_at,
              jo.id AS offer_id,
-             jo.amount,
+             COALESCE(jr.settled_amount, jo.amount) AS amount,
              jo.created_at AS offered_at,
              u.id AS worker_id,
              u.first_name,
@@ -433,7 +433,7 @@ export class AgencyService {
          WHERE jo.offered_by_agency_id = $1
            AND jo.status = 'accepted'
            AND jo.created_at >= date_trunc('month', NOW())) AS offers_accepted_month,
-        (SELECT COALESCE(SUM(jo.amount), 0) FROM job_offers jo
+        (SELECT COALESCE(SUM(COALESCE(jr.settled_amount, jo.amount)), 0) FROM job_offers jo
          JOIN job_requests jr ON jr.id = jo.request_id
          WHERE jo.offered_by_agency_id = $1
            AND jo.status = 'accepted'
@@ -450,7 +450,7 @@ export class AgencyService {
       `
       SELECT jo.id AS offer_id,
              jo.status AS offer_status,
-             jo.amount,
+             COALESCE(jr.settled_amount, jo.amount) AS amount,
              jo.created_at,
              jr.title AS request_title,
              jr.status AS request_status,
@@ -558,7 +558,7 @@ export class AgencyService {
              jr.completed_at,
              jr.updated_at,
              jo.id AS offer_id,
-             jo.amount,
+             COALESCE(jr.settled_amount, jo.amount) AS amount,
              jo.created_at AS offered_at,
              u.id AS worker_id,
              u.first_name,
@@ -574,6 +574,7 @@ export class AgencyService {
       JOIN users c ON c.id = jr.client_user_id
       WHERE jo.offered_by_agency_id = $1
         AND jo.status = 'accepted'
+        AND jr.status <> 'cancelled'
         ${dateFilterSql}
         ${workerFilterSql}
       ORDER BY jo.created_at DESC
@@ -615,9 +616,13 @@ export class AgencyService {
       };
     });
 
-    // Calcular métricas globales de la agencia
+    // Calcular métricas globales de la agencia. Solo los trabajos completados
+    // generan ingresos: uno en curso aún puede cobrarse distinto (por hora).
     const totalRevenue = Number(
-      jobs.reduce((sum, j) => sum + j.amount, 0).toFixed(2),
+      jobs
+        .filter((j) => j.status === 'completed')
+        .reduce((sum, j) => sum + j.amount, 0)
+        .toFixed(2),
     );
     const agencyEarnings = Number(
       ((totalRevenue * commissionRate) / 100).toFixed(2),
@@ -630,7 +635,9 @@ export class AgencyService {
       (j) => j.status === 'assigned' || j.status === 'in_progress',
     ).length;
     const averageTicket =
-      jobs.length > 0 ? Number((totalRevenue / jobs.length).toFixed(2)) : 0;
+      completedJobsCount > 0
+        ? Number((totalRevenue / completedJobsCount).toFixed(2))
+        : 0;
 
     // Consolidar informe agrupado por trabajador
     const workerStatsMap = new Map<string, any>();
@@ -681,16 +688,16 @@ export class AgencyService {
       }
 
       workerStat.totalJobs += 1;
-      workerStat.totalGenerated = Number(
-        (workerStat.totalGenerated + j.amount).toFixed(2),
-      );
-      workerStat.agencyCommission = Number(
-        (workerStat.agencyCommission + j.agencyCommission).toFixed(2),
-      );
-      workerStat.workerPayout = Number(
-        (workerStat.workerPayout + j.workerEarnings).toFixed(2),
-      );
       if (j.status === 'completed') {
+        workerStat.totalGenerated = Number(
+          (workerStat.totalGenerated + j.amount).toFixed(2),
+        );
+        workerStat.agencyCommission = Number(
+          (workerStat.agencyCommission + j.agencyCommission).toFixed(2),
+        );
+        workerStat.workerPayout = Number(
+          (workerStat.workerPayout + j.workerEarnings).toFixed(2),
+        );
         workerStat.completedJobs += 1;
       } else if (j.status === 'assigned' || j.status === 'in_progress') {
         workerStat.inProgressJobs += 1;
@@ -702,8 +709,8 @@ export class AgencyService {
     const workersReport = Array.from(workerStatsMap.values()).map((w) => ({
       ...w,
       averageJobValue:
-        w.totalJobs > 0
-          ? Number((w.totalGenerated / w.totalJobs).toFixed(2))
+        w.completedJobs > 0
+          ? Number((w.totalGenerated / w.completedJobs).toFixed(2))
           : 0,
     }));
 

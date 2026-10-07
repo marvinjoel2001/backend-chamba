@@ -20,9 +20,12 @@ export class AgencyAuthService implements OnApplicationBootstrap {
 
   private async seedDefaultAgency() {
     try {
-      const email = process.env.DEFAULT_AGENCY_EMAIL ?? 'agencia@chamba.com';
-      const password = process.env.DEFAULT_AGENCY_PASSWORD ?? 'agencia123';
-      const name = process.env.DEFAULT_AGENCY_NAME ?? 'Agencia Demo';
+      // Solo se crea una agencia por defecto si se configura explícitamente:
+      // nunca con credenciales conocidas, porque este backend corre en producción.
+      const email = process.env.DEFAULT_AGENCY_EMAIL?.trim();
+      const password = process.env.DEFAULT_AGENCY_PASSWORD;
+      const name = process.env.DEFAULT_AGENCY_NAME ?? 'Agencia';
+      if (!email || !password || password.length < 8) return;
 
       const existing = await this.dataSource.query<any[]>(
         `SELECT id, password_hash FROM agencies WHERE LOWER(contact_email) = LOWER($1) LIMIT 1`,

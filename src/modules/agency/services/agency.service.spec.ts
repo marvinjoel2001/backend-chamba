@@ -187,6 +187,46 @@ describe('AgencyService', () => {
     });
   });
 
+  describe('getReports', () => {
+    const job = (status: string, amount: string, offerId: string) => ({
+      request_id: `req-${offerId}`, title: 'Trabajo', category: 'General', address: 'Calle 1',
+      request_status: status, created_at: new Date(), completed_at: null, updated_at: new Date(),
+      offer_id: offerId, amount, offered_at: new Date(), worker_id: WORKER_ID,
+      first_name: 'Jorge', last_name: 'Peña', profile_photo_url: null, average_rating: '4',
+      worker_phone: null, client_first_name: 'Ana', client_last_name: 'Gómez',
+    });
+
+    it('solo los trabajos completados generan ingresos y comisión', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ id: AGENCY_ID, name: 'Agencia', commission_rate: '10' }])
+        .mockResolvedValueOnce([
+          job('completed', '0.28', 'o1'), // cobro real por hora (liquidado)
+          job('assigned', '40', 'o2'), // en curso: aún no es ingreso
+        ])
+        .mockResolvedValueOnce([]); // getWorkers
+
+      const report = await service.getReports(AGENCY_ID, {});
+
+      expect(report.summary).toMatchObject({
+        totalRevenue: 0.28, completedJobsCount: 1, inProgressJobsCount: 1,
+        totalJobsCount: 2, averageTicket: 0.28,
+      });
+      expect(report.workers[0]).toMatchObject({ totalJobs: 2, completedJobs: 1, totalGenerated: 0.28 });
+    });
+
+    it('excluye los trabajos cancelados de la consulta', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ id: AGENCY_ID, name: 'Agencia', commission_rate: '10' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      await service.getReports(AGENCY_ID, {});
+
+      expect(dataSource.query.mock.calls[1][0]).toContain("jr.status <> 'cancelled'");
+      expect(dataSource.query.mock.calls[1][0]).toContain('settled_amount');
+    });
+  });
+
   describe('getDisputes', () => {
     it('retorna las disputas asociadas a los trabajadores de la agencia', async () => {
       dataSource.query.mockResolvedValueOnce([
