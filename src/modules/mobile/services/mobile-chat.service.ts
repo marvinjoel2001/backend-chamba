@@ -1,5 +1,18 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { StorageService } from '../../../infrastructure/storage/storage.service';
+import { JobChatPhotoService } from './job-chat-photo.service';
+import {
+  CHAT_CONTACT_ALERT,
+  CHAT_HISTORY_STATUSES,
+  CHAT_WRITABLE_STATUSES,
+  containsExternalContact,
+} from '../shared/job-chat-policy';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import { MobileRequestRepository } from '../shared/mobile-request.repository';
@@ -13,7 +26,38 @@ export class MobileChatService {
     private readonly notificationsService: NotificationsService,
     private readonly realtimeGateway: RealtimeGateway,
     public readonly repo: MobileRequestRepository,
+    private readonly photoPolicy: JobChatPhotoService,
+    private readonly storage: StorageService,
   ) {}
+
+  private async getContext(
+    threadId: string,
+    userId: string,
+    db: Pick<DataSource, 'query'> = this.dataSource,
+    lock = false,
+  ) {
+    if (!userId) throw new ForbiddenException('Sesión requerida');
+    const [thread] = await db.query(
+      `
+      SELECT t.id, t.request_id, t.client_user_id, t.worker_user_id,
+        jr.title, jr.description, jr.category, jr.status, jo.amount,
+        u.first_name, u.last_name, u.profile_photo_url
+      FROM chat_threads t
+      JOIN job_requests jr ON jr.id = t.request_id AND jr.client_user_id = t.client_user_id
+      JOIN job_offers jo ON jo.request_id = t.request_id
+        AND jo.worker_user_id = t.worker_user_id AND jo.status = 'accepted'
+      JOIN users u ON u.id = CASE WHEN t.client_user_id = $2 THEN t.worker_user_id ELSE t.client_user_id END
+      WHERE t.id = $1 AND (t.client_user_id = $2 OR t.worker_user_id = $2)
+      ${lock ? 'FOR UPDATE OF jr' : ''}`,
+      [threadId, userId],
+    );
+    if (!thread || !CHAT_HISTORY_STATUSES.includes(thread.status)) {
+      throw new ForbiddenException(
+        'El chat se habilita al aceptar una oferta de este trabajo.',
+      );
+    }
+    return thread;
+  }
 
   public async getMessages(userId: string) {
     await this.repo.getUserById(userId);
@@ -25,7 +69,7 @@ export class MobileChatService {
              jr.title AS request_title,
              jr.description AS request_description,
              jr.status AS request_status,
-             jr.budget AS request_budget,
+             jo.amount AS request_budget,
              jr.category AS request_category,
              t.worker_user_id AS request_worker_id,
              t.client_user_id AS request_client_id,
@@ -33,7 +77,6 @@ export class MobileChatService {
              u.first_name AS counterpart_first_name,
              u.last_name AS counterpart_last_name,
              u.profile_photo_url AS counterpart_photo,
-             u.phone AS counterpart_phone,
              lm.content AS last_message,
              lm.created_at AS last_message_at,
              (
@@ -50,7 +93,9 @@ export class MobileChatService {
       FROM chat_threads t
       JOIN users u
         ON u.id = CASE WHEN t.client_user_id = $1 THEN t.worker_user_id ELSE t.client_user_id END
-      LEFT JOIN job_requests jr ON jr.id = t.request_id
+      JOIN job_requests jr ON jr.id = t.request_id AND jr.client_user_id = t.client_user_id
+      JOIN job_offers jo ON jo.request_id = t.request_id
+        AND jo.worker_user_id = t.worker_user_id AND jo.status = 'accepted'
       LEFT JOIN LATERAL (
         SELECT m.content, m.created_at
         FROM chat_messages m
@@ -58,8 +103,8 @@ export class MobileChatService {
         ORDER BY m.created_at DESC
         LIMIT 1
       ) lm ON true
-      WHERE (t.client_user_id = $1 AND COALESCE(t.client_deleted, false) = false)
-         OR (t.worker_user_id = $1 AND COALESCE(t.worker_deleted, false) = false)
+      WHERE (t.client_user_id = $1 OR t.worker_user_id = $1)
+        AND jr.status IN ('assigned', 'in_progress', 'completed', 'cancelled')
       ORDER BY COALESCE(lm.created_at, t.updated_at) DESC
       `,
       [userId],
@@ -86,12 +131,16 @@ export class MobileChatService {
           firstName: row.counterpart_first_name,
           lastName: row.counterpart_last_name ?? '',
           profilePhotoUrl: row.counterpart_photo ?? null,
-          phone: row.counterpart_phone ?? null,
         },
         lastMessage: row.last_message ?? 'Sin mensajes',
         lastMessageAt: row.last_message_at ?? null,
         unreadCount: row.unread_count ?? 0,
         hasUnreadMessages: (row.unread_count ?? 0) > 0,
+        chatEnabled: true,
+        canSend: CHAT_WRITABLE_STATUSES.includes(row.request_status),
+        type: CHAT_WRITABLE_STATUSES.includes(row.request_status)
+          ? 'active'
+          : 'archived',
       })),
     };
   }
@@ -100,7 +149,7 @@ export class MobileChatService {
   /// Registra el instante de lectura en la columna correspondiente según el
   /// usuario sea el cliente o el trabajador del hilo.
   public async markThreadRead(threadId: string, userId: string) {
-    await this.repo.ensureThreadExists(threadId);
+    await this.getContext(threadId, userId);
     await this.dataSource.query(
       `
       UPDATE chat_threads
@@ -115,9 +164,9 @@ export class MobileChatService {
 
   public async getThreadMessages(
     threadId: string,
-    opts?: { limit?: number; before?: string },
+    opts: { userId: string; limit?: number; before?: string },
   ) {
-    await this.repo.ensureThreadExists(threadId);
+    const thread = await this.getContext(threadId, opts.userId);
 
     const limit = Math.min(200, Math.max(1, Math.floor(opts?.limit ?? 100)));
     const before =
@@ -144,8 +193,33 @@ export class MobileChatService {
     return {
       threadId,
       hasMore,
+      context: {
+        id: threadId,
+        requestId: thread.request_id,
+        request: {
+          id: thread.request_id,
+          title: thread.title,
+          description: thread.description,
+          category: thread.category,
+          status: thread.status,
+          budget: thread.amount,
+          workerId: thread.worker_user_id,
+          clientId: thread.client_user_id,
+        },
+        counterpart: {
+          firstName: thread.first_name,
+          lastName: thread.last_name,
+          profilePhotoUrl: thread.profile_photo_url,
+        },
+        chatEnabled: true,
+        canSend: CHAT_WRITABLE_STATUSES.includes(thread.status),
+        type: CHAT_WRITABLE_STATUSES.includes(thread.status)
+          ? 'active'
+          : 'archived',
+      },
       messages: page.map((row) => ({
         id: row.id,
+        threadId,
         senderUserId: row.sender_user_id,
         content: row.content,
         createdAt: row.created_at,
@@ -154,22 +228,15 @@ export class MobileChatService {
   }
 
   public async archiveThread(params: { threadId: string; userId: string }) {
-    await this.repo.ensureThreadExists(params.threadId);
+    await this.getContext(params.threadId, params.userId);
     return { success: true };
   }
 
   public async deleteThread(params: { threadId: string; userId: string }) {
-    await this.repo.ensureThreadExists(params.threadId);
-    await this.dataSource.query(
-      `
-      UPDATE chat_threads
-      SET client_deleted = CASE WHEN client_user_id = $2 THEN true ELSE client_deleted END,
-          worker_deleted = CASE WHEN worker_user_id = $2 THEN true ELSE worker_deleted END
-      WHERE id = $1
-      `,
-      [params.threadId, params.userId],
+    await this.getContext(params.threadId, params.userId);
+    throw new BadRequestException(
+      'El historial del trabajo se conserva y no puede eliminarse.',
     );
-    return { success: true };
   }
 
   public async sendMessage(params: {
@@ -177,43 +244,92 @@ export class MobileChatService {
     senderUserId: string;
     content: string;
   }) {
-    if (!params.content?.trim()) {
-      throw new BadRequestException('content is required');
+    if (
+      typeof params.content !== 'string' ||
+      !params.content.trim() ||
+      params.content.length > 2000
+    ) {
+      throw new BadRequestException(
+        'Escribe un mensaje de hasta 2000 caracteres.',
+      );
     }
+    if (containsExternalContact(params.content))
+      throw new BadRequestException(CHAT_CONTACT_ALERT);
+    return this.persistMessage({ ...params, content: params.content.trim() });
+  }
 
-    await this.repo.getUserById(params.senderUserId);
-    await this.repo.ensureThreadExists(params.threadId);
+  public async sendPhoto(params: {
+    threadId: string;
+    senderUserId: string;
+    imageBase64: string;
+    caption?: string;
+  }) {
+    const thread = await this.getContext(params.threadId, params.senderUserId);
+    if (!CHAT_WRITABLE_STATUSES.includes(thread.status)) {
+      throw new BadRequestException(
+        'Este trabajo terminó. El chat está en modo solo lectura.',
+      );
+    }
+    const caption = params.caption ?? '';
+    if (typeof caption !== 'string' || caption.length > 2000)
+      throw new BadRequestException('La descripción es demasiado larga.');
+    if (containsExternalContact(caption))
+      throw new BadRequestException(CHAT_CONTACT_ALERT);
+    const image = await this.photoPolicy.validate(params.imageBase64);
+    const upload = await this.storage.uploadBase64Image({
+      base64Data: `data:image/jpeg;base64,${image.toString('base64')}`,
+      folder: `job_chat/${params.threadId}`,
+    });
+    try {
+      return await this.persistMessage({
+        threadId: params.threadId,
+        senderUserId: params.senderUserId,
+        content: `[Foto]\n${upload.url}\n${caption.trim()}`.trim(),
+      });
+    } catch (error) {
+      await this.storage.deleteImage(upload.publicId).catch(() => undefined);
+      throw error;
+    }
+  }
 
-    const rows = await this.dataSource.query<any[]>(
-      `
-      INSERT INTO chat_messages (thread_id, sender_user_id, content)
-      VALUES ($1, $2, $3)
-      RETURNING id, sender_user_id, content, created_at
-      `,
-      [params.threadId, params.senderUserId, params.content.trim()],
+  private async persistMessage(params: {
+    threadId: string;
+    senderUserId: string;
+    content: string;
+  }) {
+    // Lock the request through insertion: completing/cancelling cannot race a send.
+    const { rows, thread } = await this.dataSource.transaction(
+      async (manager) => {
+        const thread = await this.getContext(
+          params.threadId,
+          params.senderUserId,
+          manager,
+          true,
+        );
+        if (!CHAT_WRITABLE_STATUSES.includes(thread.status)) {
+          throw new BadRequestException(
+            'Este trabajo terminó. El chat está en modo solo lectura.',
+          );
+        }
+        const rows = await manager.query(
+          `
+        INSERT INTO chat_messages (thread_id, sender_user_id, content)
+        VALUES ($1, $2, $3) RETURNING id, sender_user_id, content, created_at`,
+          [params.threadId, params.senderUserId, params.content],
+        );
+        await manager.query(
+          `UPDATE chat_threads SET updated_at = NOW() WHERE id = $1`,
+          [params.threadId],
+        );
+        return { rows, thread };
+      },
     );
-
-    await this.dataSource.query(
-      `UPDATE chat_threads SET updated_at = NOW(), client_deleted = false, worker_deleted = false WHERE id = $1`,
-      [params.threadId],
-    );
-
-    const threadRows = await this.dataSource.query<any[]>(
-      `
-      SELECT request_id, client_user_id, worker_user_id
-      FROM chat_threads
-      WHERE id = $1
-      LIMIT 1
-      `,
-      [params.threadId],
-    );
-
-    const thread = threadRows[0];
     const payload = {
       threadId: params.threadId,
       requestId: thread?.request_id ?? null,
       message: {
         id: rows[0].id,
+        threadId: params.threadId,
         senderUserId: rows[0].sender_user_id,
         content: rows[0].content,
         createdAt: rows[0].created_at,
@@ -258,6 +374,7 @@ export class MobileChatService {
     return {
       message: {
         id: rows[0].id,
+        threadId: params.threadId,
         senderUserId: rows[0].sender_user_id,
         content: rows[0].content,
         createdAt: rows[0].created_at,
@@ -265,7 +382,10 @@ export class MobileChatService {
     };
   }
 
-  private formatMessagePreview(rawContent: string): { preview: string; isMedia: boolean } {
+  private formatMessagePreview(rawContent: string): {
+    preview: string;
+    isMedia: boolean;
+  } {
     if (!rawContent) return { preview: 'Te envió un mensaje', isMedia: false };
     const trimmed = rawContent.trim();
 
@@ -274,7 +394,10 @@ export class MobileChatService {
       trimmed.startsWith('[Foto]') ||
       trimmed.startsWith('[Imagen]') ||
       /\.(jpeg|jpg|png|gif|webp)(\?.*)?$/i.test(trimmed) ||
-      (trimmed.startsWith('http') && (trimmed.includes('/image/upload/') || trimmed.includes('cloudinary') || trimmed.includes('/photos/')))
+      (trimmed.startsWith('http') &&
+        (trimmed.includes('/image/upload/') ||
+          trimmed.includes('cloudinary') ||
+          trimmed.includes('/photos/')))
     ) {
       return { preview: '📷 Te envió una imagen', isMedia: true };
     }
@@ -328,7 +451,9 @@ export class MobileChatService {
 
     // Si el remitente es el worker, el receptor (cliente) lee: "Tu trabajador..."
     // Si el remitente es el cliente, el receptor (worker) lee: "Tu cliente..."
-    const senderRoleLabel = params.isSenderWorker ? 'Tu trabajador' : 'Tu cliente';
+    const senderRoleLabel = params.isSenderWorker
+      ? 'Tu trabajador'
+      : 'Tu cliente';
 
     const title = jobTitle
       ? `💬 ${jobTitle}`
@@ -336,7 +461,9 @@ export class MobileChatService {
 
     const body = isMedia
       ? `${senderRoleLabel}: ${preview}`
-      : (jobTitle ? `${senderRoleLabel}: "${preview}"` : preview);
+      : jobTitle
+        ? `${senderRoleLabel}: "${preview}"`
+        : preview;
 
     const tokenRows = await this.dataSource.query<any[]>(
       `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,

@@ -11,6 +11,7 @@ import { MobileRequestRepository } from './shared/mobile-request.repository';
 import { MobileGeoHelpers } from './shared/mobile-geo.helpers';
 import { MobileCatalogService } from './services/mobile-catalog.service';
 import { MobileChatService } from './services/mobile-chat.service';
+import { JobChatPhotoService } from './services/job-chat-photo.service';
 import { MobileDisputesService } from './services/mobile-disputes.service';
 import { MobileOffersService } from './services/mobile-offers.service';
 import { MobileRequestsService } from './services/mobile-requests.service';
@@ -35,6 +36,7 @@ import { MobileRequestsCronService } from './services/mobile-requests-cron.servi
     MobileGeoHelpers,
     MobileCatalogService,
     MobileChatService,
+    JobChatPhotoService,
     MobileDisputesService,
     MobileOffersService,
     MobileRequestsService,

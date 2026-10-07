@@ -91,7 +91,7 @@ export class HttpLoggerInterceptor implements NestInterceptor {
   private sanitizeBody(body: unknown): unknown {
     if (!body || typeof body !== 'object') return body;
     const clone = { ...(body as Record<string, unknown>) };
-    for (const key of ['password', 'token', 'secret', 'apiKey', 'privateKey']) {
+    for (const key of ['password', 'token', 'secret', 'apiKey', 'privateKey', 'imageBase64']) {
       if (key in clone) clone[key] = '***';
     }
     return clone;

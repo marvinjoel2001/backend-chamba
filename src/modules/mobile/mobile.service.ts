@@ -537,7 +537,7 @@ export class MobileService implements OnModuleInit {
 
   async getThreadMessages(
     threadId: string,
-    opts?: { limit?: number; before?: string },
+    opts: { userId: string; limit?: number; before?: string },
   ) {
     return this.chatService.getThreadMessages(threadId, opts);
   }
@@ -583,6 +583,10 @@ export class MobileService implements OnModuleInit {
     content: string;
   }) {
     return this.chatService.sendMessage(params);
+  }
+
+  async sendChatPhoto(params: { threadId: string; senderUserId: string; imageBase64: string; caption?: string }) {
+    return this.chatService.sendPhoto(params);
   }
 
   async getIncomingRequest(workerUserId: string) {

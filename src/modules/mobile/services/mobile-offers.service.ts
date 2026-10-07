@@ -259,15 +259,6 @@ export class MobileOffersService {
       timestamp: new Date().toISOString(),
     });
 
-    await this.repo.ensureThreadAndInitialMessage({
-      requestId: params.requestId,
-      clientUserId: request.client_user_id,
-      workerUserId: params.workerUserId,
-      introMessage:
-        params.message?.trim() ||
-        `Hola, puedo ayudarte por Bs ${Math.round(params.amount)}. Estoy disponible.`,
-    });
-
     const offerPayload = {
       id: offerId,
       requestId: params.requestId,
@@ -534,6 +525,15 @@ export class MobileOffersService {
         amount: Number(offer.amount),
       };
       jobTitle = request.title ?? 'un trabajo';
+
+      // The conversation is created atomically with the accepted offer.
+      await queryRunner.query(
+        `INSERT INTO chat_threads (request_id, client_user_id, worker_user_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (request_id, client_user_id, worker_user_id)
+         DO UPDATE SET updated_at = NOW(), client_deleted = false, worker_deleted = false`,
+        [request.id, params.clientUserId, offer.worker_user_id],
+      );
 
       // Commit atómico
       await queryRunner.commitTransaction();

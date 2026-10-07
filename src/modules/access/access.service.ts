@@ -60,8 +60,12 @@ export class AccessService {
   }
 
   async assertThread(userId: string, threadId: string): Promise<void> {
-    const rows = await this.db.query(`SELECT id FROM chat_threads WHERE id = $1
-      AND (client_user_id = $2 OR worker_user_id = $2)`, [threadId, userId]);
+    const rows = await this.db.query(`SELECT t.id FROM chat_threads t
+      JOIN job_requests jr ON jr.id = t.request_id AND jr.client_user_id = t.client_user_id
+      WHERE t.id = $1 AND (t.client_user_id = $2 OR t.worker_user_id = $2)
+      AND jr.status IN ('assigned', 'in_progress', 'completed', 'cancelled')
+      AND EXISTS (SELECT 1 FROM job_offers jo WHERE jo.request_id = t.request_id
+        AND jo.worker_user_id = t.worker_user_id AND jo.status = 'accepted')`, [threadId, userId]);
     if (!rows[0]) throw new ForbiddenException('No perteneces a esta conversación');
   }
 

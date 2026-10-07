@@ -305,10 +305,12 @@ export class MobileController {
   @Get('mobile/messages/:threadId')
   getThreadMessages(
     @Param('threadId') threadId: string,
+    @Req() req: any,
     @Query('limit') limit?: string,
     @Query('before') before?: string,
   ) {
     return this.mobileService.getThreadMessages(threadId, {
+      userId: req.principal.id,
       limit: parseNumber(limit),
       before,
     });
@@ -317,10 +319,20 @@ export class MobileController {
   @Post('mobile/messages/:threadId')
   sendThreadMessage(
     @Param('threadId') threadId: string,
-    @Body('senderUserId') senderUserId: string,
+    @Req() req: any,
     @Body('content') content: string,
   ) {
-    return this.mobileService.sendMessage({ threadId, senderUserId, content });
+    return this.mobileService.sendMessage({ threadId, senderUserId: req.principal.id, content });
+  }
+
+  @Post('mobile/messages/:threadId/photo')
+  sendThreadPhoto(
+    @Param('threadId') threadId: string,
+    @Req() req: any,
+    @Body('imageBase64') imageBase64: string,
+    @Body('caption') caption?: string,
+  ) {
+    return this.mobileService.sendChatPhoto({ threadId, senderUserId: req.principal.id, imageBase64, caption });
   }
 
   @Post('mobile/messages/:threadId/archive')
