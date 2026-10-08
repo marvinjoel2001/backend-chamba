@@ -16,6 +16,7 @@ import { MobileDisputesService } from './services/mobile-disputes.service';
 import { MobileOffersService } from './services/mobile-offers.service';
 import { MobileRequestsService } from './services/mobile-requests.service';
 import { MobileUsersService } from './services/mobile-users.service';
+import { MobileWorkerPortfolioService } from './services/mobile-worker-portfolio.service';
 import { MobileAdminService } from './services/mobile-admin.service';
 import { WaveDispatchProcessorService } from './services/wave-dispatch.processor.service';
 import { MobileRequestsCronService } from './services/mobile-requests-cron.service';
@@ -41,6 +42,7 @@ import { MobileRequestsCronService } from './services/mobile-requests-cron.servi
     MobileOffersService,
     MobileRequestsService,
     MobileUsersService,
+    MobileWorkerPortfolioService,
     MobileAdminService,
     WaveDispatchProcessorService,
     MobileRequestsCronService,

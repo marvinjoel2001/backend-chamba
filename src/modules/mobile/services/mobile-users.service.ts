@@ -413,13 +413,11 @@ export class MobileUsersService {
 
     const galleryRows = await this.dataSource.query<any[]>(
       `
-      SELECT p.url
-      FROM job_request_photos p
-      JOIN job_offers jo ON jo.request_id = p.request_id
-      WHERE jo.worker_user_id = $1
-        AND jo.status = 'accepted'
-      ORDER BY p.created_at DESC
-      LIMIT 10
+      SELECT id, url, caption, created_at AS "createdAt"
+      FROM worker_portfolio_photos
+      WHERE worker_user_id = $1
+      ORDER BY created_at DESC, id DESC
+      LIMIT 20
       `,
       [workerId],
     );
@@ -445,6 +443,7 @@ export class MobileUsersService {
         bio: null,
         verificationStatus: worker.verification_status ?? 'not_verified',
         gallery: galleryRows.map((row) => row.url),
+        portfolio: galleryRows,
       },
       reviews: reviewRows.map((row) => ({
         stars: Number(row.stars),

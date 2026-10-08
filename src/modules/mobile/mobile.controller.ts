@@ -7,6 +7,7 @@ import {
   Get,
   Param,
   ParseBoolPipe,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -15,6 +16,8 @@ import { AccessService } from '../access/access.service';
 import { MobileAccessGuard } from '../access/mobile-access.guard';
 import { MobileService } from './mobile.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
+import { MobileWorkerPortfolioService } from './services/mobile-worker-portfolio.service';
 
 const parseNumber = (value?: string): number | undefined => {
   if (value === undefined || value === null || value === '') {
@@ -32,6 +35,7 @@ export class MobileController {
     private readonly mobileService: MobileService,
     private readonly notificationsService: NotificationsService,
     private readonly access: AccessService,
+    private readonly portfolioService: MobileWorkerPortfolioService,
   ) {}
 
   @Post('auth/register')
@@ -300,6 +304,24 @@ export class MobileController {
   @Get('mobile/workers/:workerId/profile')
   getWorkerProfile(@Param('workerId') workerId: string) {
     return this.mobileService.getWorkerProfile(workerId);
+  }
+
+  @Get('mobile/worker/portfolio')
+  getWorkerPortfolio(@Req() req: any) {
+    return this.portfolioService.list(req.principal.id);
+  }
+
+  @Post('mobile/worker/portfolio')
+  addWorkerPortfolioPhoto(@Req() req: any, @Body() input: AddPortfolioPhotoDto) {
+    return this.portfolioService.add(req.principal.id, input);
+  }
+
+  @Post('mobile/worker/portfolio/:photoId/delete')
+  removeWorkerPortfolioPhoto(
+    @Req() req: any,
+    @Param('photoId', ParseUUIDPipe) photoId: string,
+  ) {
+    return this.portfolioService.remove(req.principal.id, photoId);
   }
 
   @Get('mobile/messages')
