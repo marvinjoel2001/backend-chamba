@@ -226,6 +226,18 @@ export class MobileRequestsService {
       || !Number.isFinite(input.dailyRate) || input.dailyRate! <= 0)) {
       throw new BadRequestException('Días y tarifa deben ser positivos');
     }
+    // The server derives the advertised total from the selected units/rate.
+    // A stale client budget must not change the amount offered to workers.
+    if (input.modality === 'hourly' || input.modality === 'daily') {
+      const calculated = input.modality === 'hourly'
+        ? input.estimatedHours! * input.hourlyRate!
+        : input.days! * input.dailyRate!;
+      const calculatedBudget = Math.round(calculated * 100) / 100;
+      if (!Number.isFinite(calculatedBudget) || calculatedBudget <= 0) {
+        throw new BadRequestException('El total calculado debe ser positivo');
+      }
+      input = { ...input, budget: calculatedBudget };
+    }
     const photos = this.geoHelpers.validateBase64Images(input.photosBase64, 5);
     const uploadedPhotosInput = this.geoHelpers.validateUploadedImages(
       input.photos,
@@ -1387,15 +1399,9 @@ export class MobileRequestsService {
       normalizedSkills.length === 0 ||
       normalizedSkills.every((s) => s === 'general');
 
-    const requiredModality = String(request.price_type ?? '')
-      .toLowerCase()
-      .includes('hora')
-      ? 'hourly'
-      : String(request.price_type ?? '')
-            .toLowerCase()
-            .includes('dia')
-        ? 'daily'
-        : 'fixed';
+    const requiredModality = {
+      hour: 'hourly', day: 'daily', fixed: 'fixed',
+    }[this.repo.normalizePriceTypeKey(request.price_type)];
 
     const workers = await this.dataSource.query<any[]>(
       `
@@ -1593,7 +1599,7 @@ export class MobileRequestsService {
       users,
       jobId: params.requestId,
       category: params.category,
-      offeredPrice: `Bs ${Math.round(params.budget)}`,
+      offeredPrice: `Bs ${params.budget.toFixed(2)}`,
       distanceKm: nearestDistance.toFixed(1),
     });
   }

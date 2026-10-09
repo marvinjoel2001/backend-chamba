@@ -16,6 +16,7 @@ import {
 import { NotificationsService } from '../../notifications/notifications.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import { MobileRequestRepository } from '../shared/mobile-request.repository';
+import { jobChatEvents } from '../shared/job-chat-events';
 
 @Injectable()
 export class MobileChatService {
@@ -40,7 +41,9 @@ export class MobileChatService {
     const [thread] = await db.query(
       `
       SELECT t.id, t.request_id, t.client_user_id, t.worker_user_id,
-        jr.title, jr.description, jr.category, jr.status, jo.amount,
+        jr.title, jr.description, jr.category, jr.status,
+        COALESCE(jr.settled_amount, jo.amount) AS amount, jo.amount AS agreed_amount,
+        t.created_at AS deal_confirmed_at, jr.work_started_at, jr.completed_at, jr.updated_at,
         u.first_name, u.last_name, u.profile_photo_url
       FROM chat_threads t
       JOIN job_requests jr ON jr.id = t.request_id AND jr.client_user_id = t.client_user_id
@@ -69,7 +72,7 @@ export class MobileChatService {
              jr.title AS request_title,
              jr.description AS request_description,
              jr.status AS request_status,
-             jo.amount AS request_budget,
+             COALESCE(jr.settled_amount, jo.amount) AS request_budget,
              jr.category AS request_category,
              t.worker_user_id AS request_worker_id,
              t.client_user_id AS request_client_id,
@@ -186,8 +189,12 @@ export class MobileChatService {
       [threadId, before, limit + 1],
     );
 
-    const hasMore = rows.length > limit;
-    const page = hasMore ? rows.slice(0, limit) : rows;
+    const combined = [
+      ...rows.map((row) => ({ ...row, threadId, senderUserId: row.sender_user_id, createdAt: row.created_at })),
+      ...jobChatEvents(thread, threadId).filter((event) => !before || Date.parse(event.createdAt) < Date.parse(before)),
+    ].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id.localeCompare(a.id));
+    const hasMore = combined.length > limit;
+    const page = combined.slice(0, limit);
     page.reverse();
 
     return {
@@ -220,9 +227,12 @@ export class MobileChatService {
       messages: page.map((row) => ({
         id: row.id,
         threadId,
-        senderUserId: row.sender_user_id,
+        senderUserId: row.senderUserId,
         content: row.content,
-        createdAt: row.created_at,
+        createdAt: row.createdAt,
+        type: row.type ?? 'text',
+        systemEvent: row.systemEvent,
+        systemData: row.systemData,
       })),
     };
   }

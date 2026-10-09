@@ -131,6 +131,21 @@ describe('Contextual job chat', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(db.query).toHaveBeenCalledTimes(1);
   });
+
+  it('paginates timeline facts with real messages and does not repeat newer events', async () => {
+    db.query.mockResolvedValueOnce([{ ...thread, deal_confirmed_at: '2026-10-09T12:00:00Z',
+      work_started_at: '2026-10-09T12:02:00Z' }]).mockResolvedValueOnce([
+      { id: 'message', sender_user_id: 'client', content: 'Entrada azul', created_at: '2026-10-09T12:01:00Z' },
+    ]);
+    const page = await service.getThreadMessages('thread', { userId: 'client', before: '2026-10-09T12:02:00Z', limit: 1 });
+    expect(page.hasMore).toBe(true);
+    expect(page.messages[0]).toMatchObject({ id: 'message', senderUserId: 'client', type: 'text' });
+    db.query.mockResolvedValueOnce([{ ...thread, deal_confirmed_at: '2026-10-09T12:00:00Z',
+      work_started_at: '2026-10-09T12:02:00Z' }]).mockResolvedValueOnce([]);
+    const older = await service.getThreadMessages('thread', { userId: 'client', before: '2026-10-09T12:01:00Z', limit: 1 });
+    expect(older.messages[0]).toMatchObject({ type: 'system', senderUserId: 'system', systemEvent: 'deal_confirmed' });
+    expect(older.hasMore).toBe(false);
+  });
   it('validates the photo and caption before uploading', async () => {
     await expect(
       service.sendPhoto({

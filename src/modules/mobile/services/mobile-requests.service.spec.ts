@@ -172,6 +172,14 @@ describe('MobileRequestsService.createRequest (modalidades)', () => {
     expect(params[PARAM.dailyRate]).toBeNull();
   });
 
+  it.each([
+    { modality: 'hourly', estimatedHours: 2, hourlyRate: 23.75, expected: 47.5 },
+    { modality: 'daily', days: 3, dailyRate: 120.25, expected: 360.75 },
+  ])('derives $modality budget from units/rate even if the client total is stale', async ({ expected, ...fields }) => {
+    await service.createRequest({ ...baseInput, budget: 1, priceType: fields.modality, ...fields } as any);
+    expect(insertParams()[PARAM.budget]).toBe(expected);
+  });
+
   it('rechaza un presupuesto no positivo antes de tocar la base de datos', async () => {
     await expect(
       service.createRequest({

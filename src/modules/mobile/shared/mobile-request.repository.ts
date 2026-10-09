@@ -393,7 +393,7 @@ export class MobileRequestRepository {
     if (normalized.includes('hora') || normalized.includes('hour')) {
       return 'hour';
     }
-    if (normalized.includes('dia') || normalized.includes('day')) {
+    if (normalized.includes('dia') || normalized.includes('day') || normalized.includes('daily')) {
       return 'day';
     }
     return 'fixed';
