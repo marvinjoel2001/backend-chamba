@@ -48,6 +48,25 @@ describe('Authenticated mobile boundaries', () => {
   function request(path: string, body: any = {}, query: any = {}, params: any = {}) {
     return { route: { path }, method: 'POST', body, query, params, headers: { authorization: 'Bearer ' + access.issueMobile(userId, 'worker') } };
   }
+  it.each(['upsertOffer', 'reactivateOffer'])('blocks %s for an unverified worker', async (name) => {
+    db.query.mockResolvedValueOnce([{ type: 'worker', is_blocked: false }]).mockResolvedValueOnce([]);
+    await expect(new MobileAccessGuard(access).canActivate(context(name, request('mobile/worker/offers')))).rejects.toBeInstanceOf(ForbiddenException);
+  });
+  it.each([true, 'true'])('blocks availability activation (%p) until verification', async (available) => {
+    db.query.mockResolvedValueOnce([{ type: 'worker', is_blocked: false }]).mockResolvedValueOnce([]);
+    await expect(new MobileAccessGuard(access).canActivate(context('setWorkerAvailability', request('mobile/worker/availability', { available })))).rejects.toBeInstanceOf(ForbiddenException);
+  });
+  it('lets an unverified worker explore, complete their profile and go offline', async () => {
+    db.query.mockResolvedValue([{ type: 'worker', is_blocked: false }]);
+    for (const name of ['getExploreData', 'updateWorkerSkills', 'submitWorkerVerification', 'setWorkerAvailability']) {
+      await expect(new MobileAccessGuard(access).canActivate(context(name, request('mobile/worker/profile', { available: false })))).resolves.toBe(true);
+    }
+  });
+  it('allows verified workers to offer jobs', async () => {
+    db.query.mockResolvedValueOnce([{ type: 'worker', is_blocked: false }]).mockResolvedValueOnce([{ id: userId }]);
+    await expect(new MobileAccessGuard(access).canActivate(context('upsertOffer', request('mobile/offers')))).resolves.toBe(true);
+    expect(db.query.mock.calls[1][0]).toContain("verification_status = 'verified'");
+  });
   it('rejects another actor in the request body', async () => {
     db.query.mockResolvedValue([{ type: 'worker' }]);
     await expect(new MobileAccessGuard(access).canActivate(context('upsertOffer', request('mobile/offers/counter', { workerUserId: 'other' })))).rejects.toBeInstanceOf(ForbiddenException);

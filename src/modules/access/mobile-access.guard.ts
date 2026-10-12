@@ -59,6 +59,11 @@ export class MobileAccessGuard implements CanActivate {
     if (['getIncomingRequest', 'upsertOffer', 'discardOffer', 'declineOffer', 'reactivateOffer', 'workerMarkArrived', 'completeJob', 'dismissRequest'].includes(name)
         && principal.role !== 'worker') throw new ForbiddenException();
 
+    if (['upsertOffer', 'reactivateOffer'].includes(name) ||
+        (name === 'setWorkerAvailability' && [true, 'true'].includes(req.body?.available))) {
+      await this.access.assertVerifiedWorker(principal.id);
+    }
+
     if (req.params.threadId) await this.access.assertThread(principal.id, req.params.threadId);
     const requestId = req.query.requestId || req.body?.requestId;
     if (requestId && ['getTracking', 'getRequestStatus', 'getOffers', 'createReview', 'createDispute'].includes(name)) {

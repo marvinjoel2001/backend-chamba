@@ -69,6 +69,13 @@ export class AccessService {
     if (!rows[0]) throw new ForbiddenException('No perteneces a esta conversación');
   }
 
+  async assertVerifiedWorker(userId: string): Promise<void> {
+    const rows = await this.db.query(
+      `SELECT id FROM users WHERE id = $1 AND type = 'worker'
+       AND verification_status = 'verified' AND is_blocked = false`, [userId]);
+    if (!rows[0]) throw new ForbiddenException('Verifica tu identidad para empezar a trabajar');
+  }
+
   async assertRequest(userId: string, requestId: string): Promise<void> {
     const rows = await this.db.query(`SELECT jr.id FROM job_requests jr WHERE jr.id = $1
       AND (jr.client_user_id = $2 OR EXISTS (SELECT 1 FROM job_offers jo

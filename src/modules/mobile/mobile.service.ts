@@ -23,6 +23,8 @@ import { MobileOffersService } from './services/mobile-offers.service';
 import { MobileRequestsService } from './services/mobile-requests.service';
 import { MobileUsersService } from './services/mobile-users.service';
 import { MobileAdminService } from './services/mobile-admin.service';
+import { WorkerLead } from '../worker-leads/entities/worker-lead.entity';
+import { isEmail } from 'class-validator';
 
 type CreateRequestInput = {
   clientUserId: string;
@@ -98,6 +100,7 @@ export class MobileService implements OnModuleInit {
     lastName?: string;
     password: string;
     ciNumber?: string;
+    source?: string;
   }) {
     const type = (input.type ?? 'client').toLowerCase().trim();
     if (type !== 'client' && type !== 'worker') {
@@ -121,6 +124,14 @@ export class MobileService implements OnModuleInit {
 
     const phone = this.geoHelpers.normalizePhone(input.phone);
     const lastName = input.lastName?.trim() || null;
+
+    // Web signup creates the same account used by the mobile app. Save the
+    // contact request in the same transaction so success also guarantees follow-up.
+    const isWebWorker = input.source === 'web' && type === 'worker';
+    if (isWebWorker && (!isEmail(email) || !phone || !/^\d{7,15}$/.test(phone) ||
+        password.length < 8 || Buffer.byteLength(password, 'utf8') > 72)) {
+      throw new BadRequestException('Revisa tu correo, telefono y contraseña');
+    }
 
     return this.dataSource.transaction(async (manager) => {
       const existing = await manager.query<any[]>(
@@ -169,6 +180,17 @@ export class MobileService implements OnModuleInit {
         `,
         [created.id, await bcrypt.hash(password, 12)],
       );
+
+      if (isWebWorker) {
+        await manager.save(WorkerLead, manager.create(WorkerLead, {
+          fullName: [firstName, lastName].filter(Boolean).join(' '),
+          whatsapp: phone!,
+          email,
+          city: 'Por completar',
+          category: 'Por completar',
+          isContacted: false,
+        }));
+      }
 
       return {
         token: this.access.issueMobile(created.id, created.type),

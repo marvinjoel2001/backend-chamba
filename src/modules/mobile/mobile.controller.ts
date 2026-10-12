@@ -47,6 +47,7 @@ export class MobileController {
     @Body('lastName') lastName: string | undefined,
     @Body('password') password: string,
     @Body('ciNumber') ciNumber: string | undefined,
+    @Body('source') source: string | undefined,
   ) {
     return this.mobileService.register({
       type,
@@ -56,6 +57,7 @@ export class MobileController {
       lastName,
       password,
       ciNumber,
+      source,
     });
   }
 
