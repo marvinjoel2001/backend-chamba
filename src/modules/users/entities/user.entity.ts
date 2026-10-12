@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -170,6 +171,14 @@ export class User {
   @ApiProperty({ example: false })
   @Column({ name: 'is_agency_worker', type: 'boolean', default: false })
   isAgencyWorker: boolean;
+
+  // Declarada aquí aunque el login con Google la use por SQL directo: con
+  // DATABASE_SYNC=true TypeORM borra toda columna que la entidad no tenga.
+  @ApiPropertyOptional({ example: '114698644824001104032' })
+  @Index('idx_users_google_id', { unique: true })
+  // select: false → no se expone al devolver la entidad en respuestas.
+  @Column({ name: 'google_id', type: 'text', nullable: true, select: false })
+  googleId?: string;
 
   @ApiProperty({ type: String, example: '2026-03-08T22:42:26.170Z' })
   @CreateDateColumn({ name: 'created_at' })

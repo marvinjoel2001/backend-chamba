@@ -9,6 +9,7 @@ import { AddStartReminderSentAndTimeConfigSeeds1783500000000 } from './migration
 import { BackfillAcceptedJobChats1791333000000 } from './migrations/1791333000000-BackfillAcceptedJobChats';
 import { PersistWorkClockAndSettlement1791400000000 } from './migrations/1791400000000-PersistWorkClockAndSettlement';
 import { EnsureCompleteSchema1791600000000 } from './migrations/1791600000000-EnsureCompleteSchema';
+import { EnsureUsersGoogleId1791700000000 } from './migrations/1791700000000-EnsureUsersGoogleId';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { EnsureCompleteSchema1791600000000 } from './migrations/1791600000000-En
             BackfillAcceptedJobChats1791333000000,
             PersistWorkClockAndSettlement1791400000000,
             EnsureCompleteSchema1791600000000,
+            EnsureUsersGoogleId1791700000000,
           ],
           migrationsRun: true,
           migrationsTableName: 'typeorm_migrations',
