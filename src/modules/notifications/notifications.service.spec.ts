@@ -11,6 +11,22 @@ describe('Notification delivery policy', () => {
     service = new NotificationsService(push, repo, db, realtime);
   });
   const offer = { userId: 'client', token: null, workerName: 'Ana', amount: 100, jobTitle: 'Pintura', requestId: 'job' };
+  it.each(['client', 'worker'])('excludes payments from the list and unread badge for %s', async (userId) => {
+    repo.findAndCount = jest.fn().mockResolvedValue([[{ id: 'job-event' }], 7]);
+    repo.count = jest.fn().mockResolvedValue(4);
+    await expect(service.getUserNotifications(userId, 2, 3)).resolves.toEqual({ items: [{ id: 'job-event' }], hasMore: true });
+    await expect(service.getUnreadCount(userId)).resolves.toBe(4);
+    const excludedTypes = expect.objectContaining({ _type: 'not', _value: expect.objectContaining({ _type: 'in', _value: ['payment', 'payment_received'] }) });
+    expect(repo.findAndCount).toHaveBeenCalledWith(expect.objectContaining({ where: { userId, type: excludedTypes }, skip: 3, take: 3 }));
+    expect(repo.count).toHaveBeenCalledWith({ where: { userId, isRead: false, type: excludedTypes } });
+  });
+  it('counts all pages by type and read state for the authenticated account', async () => {
+    db.query.mockResolvedValue([{ type: 'offer_new', unread: '31', read: '12' }, { type: 'verification_update', unread: 2, read: 1 }]);
+    await expect(service.getNotificationCounts('worker')).resolves.toEqual({ byType: [{ type: 'offer_new', unread: 31, read: 12 }, { type: 'verification_update', unread: 2, read: 1 }] });
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("type NOT IN ('payment', 'payment_received')"), ['worker']);
+    expect(db.query.mock.calls[0][0]).toContain('WHERE user_id = $1');
+    expect(db.query.mock.calls[0][0]).toContain('GROUP BY type');
+  });
   it('marks only the specified notifications owned by the authenticated user', async () => {
     await service.markNotificationsAsRead('client', ['visible-notification']);
     expect(repo.update).toHaveBeenCalledWith(expect.objectContaining({ userId: 'client', isRead: false,

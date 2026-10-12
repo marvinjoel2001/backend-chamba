@@ -701,6 +701,11 @@ export class MobileController {
     return { count };
   }
 
+  @Get('mobile/notifications/counts')
+  async getNotificationCounts(@Query('userId') userId: string) {
+    return userId ? this.notificationsService.getNotificationCounts(userId) : { byType: [] };
+  }
+
   @Patch('mobile/notifications/read')
   async markNotificationsRead(@Body('userId') userId: string, @Body('ids') ids: string[]) {
     if (!userId) {

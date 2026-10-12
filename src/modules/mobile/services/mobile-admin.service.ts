@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
@@ -22,13 +23,17 @@ export class MobileAdminService {
 
   public async broadcastNotification(payload: {
     target: 'all' | 'workers' | 'clients' | 'custom';
-    type: 'push' | 'toast';
+    /** `announcement`: aviso del equipo que queda en la bandeja del usuario. */
+    type: 'push' | 'toast' | 'announcement';
     title: string;
     body: string;
     toastType?: 'info' | 'success' | 'error';
     userIds?: string[];
     isCallAlert?: boolean;
   }) {
+    if (payload.type === 'announcement') {
+      return this.sendAnnouncement(payload);
+    }
     if (payload.type === 'toast') {
       const recipients = await this.dataSource.query(`SELECT id FROM users WHERE
         ($1 = 'all' OR ($1 = 'workers' AND type = 'worker') OR ($1 = 'clients' AND type = 'client') OR
@@ -78,6 +83,80 @@ export class MobileAdminService {
 
       return { success: true, method: 'push', count };
     }
+  }
+
+  /**
+   * Aviso especial del equipo de Chamba (p. ej. "Ya hay nuevos empleos en tu
+   * zona"). A diferencia del push de prueba, se guarda en la bandeja de cada
+   * destinatario —tenga o no push activado— para que lo vea en la pestaña
+   * Notificaciones, y además se envía por push a sus dispositivos.
+   */
+  private async sendAnnouncement(payload: {
+    target: 'all' | 'workers' | 'clients' | 'custom';
+    title: string;
+    body: string;
+    userIds?: string[];
+  }) {
+    const title = payload.title?.trim() ?? '';
+    const body = payload.body?.trim() ?? '';
+    if (!title || !body) {
+      throw new BadRequestException('El título y el mensaje son obligatorios.');
+    }
+    if (title.length > 80) {
+      throw new BadRequestException('El título admite hasta 80 caracteres.');
+    }
+    if (body.length > 500) {
+      throw new BadRequestException('El mensaje admite hasta 500 caracteres.');
+    }
+    if (!['all', 'workers', 'clients', 'custom'].includes(payload.target)) {
+      throw new BadRequestException('Audiencia no válida.');
+    }
+    const userIds = Array.isArray(payload.userIds) ? payload.userIds : [];
+    if (payload.target === 'custom' && userIds.length === 0) {
+      throw new BadRequestException('Selecciona al menos un usuario.');
+    }
+
+    const campaignId = randomUUID();
+    const data = { type: 'announcement', campaignId, title, body };
+
+    // Una fila por destinatario en un solo INSERT; las cuentas bloqueadas no
+    // reciben avisos.
+    const recipients = await this.dataSource.query<{ id: string }[]>(
+      `INSERT INTO notifications (user_id, title, body, type, data)
+       SELECT u.id, $3, $4, 'announcement', $5::jsonb
+       FROM users u
+       WHERE COALESCE(u.is_blocked, false) = false
+         AND ($1 = 'all'
+           OR ($1 = 'workers' AND u.type = 'worker')
+           OR ($1 = 'clients' AND u.type = 'client')
+           OR ($1 = 'custom' AND u.id = ANY($2::uuid[])))
+       RETURNING user_id AS id`,
+      [payload.target, userIds, title, body, JSON.stringify(data)],
+    );
+    const ids = recipients.map((r) => r.id);
+    for (const id of ids) {
+      this.realtimeGateway.emitToUser(id, 'notifications.changed', {
+        eventId: campaignId,
+      });
+    }
+    if (ids.length === 0) {
+      return { success: true, method: 'announcement', saved: 0, count: 0 };
+    }
+
+    const rows = await this.dataSource.query<{ token: string }[]>(
+      `SELECT DISTINCT token FROM push_tokens
+       WHERE user_id = ANY($1::uuid[]) AND token IS NOT NULL`,
+      [ids],
+    );
+    const count = await this.notificationsService.broadcastPush({
+      tokens: rows.map((r) => r.token),
+      title,
+      body,
+    });
+    this.logger.log(
+      `Aviso ${campaignId} (${payload.target}): ${ids.length} en bandeja, ${count} push.`,
+    );
+    return { success: true, method: 'announcement', saved: ids.length, count };
   }
 
   /**

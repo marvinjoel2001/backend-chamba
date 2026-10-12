@@ -3,7 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { In, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { PushService } from '../../infrastructure/push/push.service';
 import { SendTestPushDto } from './dto/send-test-push.dto';
 import { Notification } from './entities/notification.entity';
@@ -656,7 +656,7 @@ export class NotificationsService {
     const skip = (page - 1) * limit;
 
     const [items, total] = await this.notificationRepository.findAndCount({
-      where: { userId },
+      where: { userId, type: Not(In(['payment', 'payment_received'])) },
       order: { createdAt: 'DESC' },
       take: limit,
       skip,
@@ -670,8 +670,21 @@ export class NotificationsService {
 
   async getUnreadCount(userId: string): Promise<number> {
     return this.notificationRepository.count({
-      where: { userId, isRead: false },
+      where: { userId, isRead: false, type: Not(In(['payment', 'payment_received'])) },
     });
+  }
+
+  async getNotificationCounts(userId: string) {
+    const rows = await this.dataSource.query(
+      `SELECT type,
+              COUNT(*) FILTER (WHERE is_read = false)::int AS unread,
+              COUNT(*) FILTER (WHERE is_read = true)::int AS read
+       FROM notifications
+       WHERE user_id = $1 AND type NOT IN ('payment', 'payment_received')
+       GROUP BY type`, [userId]);
+    return { byType: rows.map((row: { type: string; unread: number; read: number }) => ({
+      type: row.type, unread: Number(row.unread), read: Number(row.read),
+    })) };
   }
 
   async markNotificationsAsRead(userId: string, ids: string[]): Promise<void> {
