@@ -17,6 +17,12 @@ describe('Authenticated mobile boundaries', () => {
     expect(result.request.worker?.firstName).toBe('Jorge');
     expect(result.request.photoUrl).toBe('https://example.com/photo.png');
   });
+  it('keeps original hourly/daily terms and location separate from the accepted amount for a retry draft', async () => {
+    db.query.mockResolvedValueOnce([{ id: 'job', status: 'cancelled', budget: '200', amount: '240',
+      modality: 'daily', days: 2, daily_rate: '100', latitude: '-17.8', longitude: '-63.18', client_id: userId }]);
+    const { request } = await access.notificationRequest(userId, 'job');
+    expect(request).toMatchObject({ budget: 200, amount: 240, days: 2, dailyRate: 100, latitude: -17.8, longitude: -63.18 });
+  });
   it('issues a signed mobile token and verifies the user from the database', async () => {
     db.query.mockResolvedValue([{ type: 'worker', is_blocked: false }]);
     await expect(access.authenticate(access.issueMobile(userId, 'worker'))).resolves.toEqual({ id: userId, kind: 'mobile', role: 'worker' });
