@@ -752,43 +752,45 @@ export class MobileOffersService {
     requestId: string;
     workerUserId: string;
   }) {
-    const request = await this.repo.getRequestById(params.requestId);
-
-    const existingOffers = await this.dataSource.query<any[]>(
-      `
-      SELECT id
-      FROM job_offers
-      WHERE request_id = $1
-        AND worker_user_id = $2
-        AND status IN ('pending', 'active')
-      `,
-      [params.requestId, params.workerUserId],
-    );
-
-    if (existingOffers.length > 0) {
-      await this.dataSource.query(
-        `
-        UPDATE job_offers
-        SET status = 'declined', expires_at = NULL
-        WHERE request_id = $1
-          AND worker_user_id = $2
-          AND status IN ('pending', 'active')
-        `,
-        [params.requestId, params.workerUserId],
+    const runner = this.dataSource.createQueryRunner();
+    let request: { client_user_id: string; budget: number; status: string };
+    try {
+      await runner.connect();
+      await runner.startTransaction();
+      // acceptOffer locks this same row first. A rejection must wait for an
+      // acceptance and then re-check state, rather than erasing the winner.
+      const rows = await runner.query(
+        `SELECT client_user_id, budget, status FROM job_requests
+         WHERE id = $1 FOR UPDATE`,
+        [params.requestId],
       );
-    }
-
-    if (existingOffers.length === 0) {
-      const budget = Number(request.budget ?? 0);
-      await this.dataSource.query(
+      request = rows[0];
+      if (!request) throw new NotFoundException('Solicitud no encontrada');
+      if (!['searching', 'negotiating'].includes(request.status)) {
+        throw new BadRequestException(
+          'La solicitud ya no admite rechazar ofertas. Para un trabajo contratado, usa cancelar trabajo.',
+        );
+      }
+      const changed = await runner.query(
         `
         INSERT INTO job_offers (request_id, worker_user_id, amount, status, expires_at)
         VALUES ($1, $2, $3, 'declined', NULL)
         ON CONFLICT (request_id, worker_user_id) DO UPDATE
           SET status = 'declined', expires_at = NULL
+          WHERE job_offers.status IN ('pending', 'active', 'expired', 'declined')
+        RETURNING id
         `,
-        [params.requestId, params.workerUserId, budget],
+        [params.requestId, params.workerUserId, Number(request.budget ?? 0)],
       );
+      if (!changed.length) {
+        throw new BadRequestException('Esta oferta ya no se puede rechazar');
+      }
+      await runner.commitTransaction();
+    } catch (error) {
+      if (runner.isTransactionActive) await runner.rollbackTransaction();
+      throw error;
+    } finally {
+      await runner.release();
     }
 
     const payload = {
