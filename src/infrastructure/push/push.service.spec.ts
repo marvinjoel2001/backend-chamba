@@ -33,10 +33,21 @@ describe('FCM transport', () => {
     expect(await service.sendToTokens({ ...message, data: { type: 'request_new' } })).toBe(2);
     expect(messaging.sendEachForMulticast.mock.calls[1][0].android.ttl).toBe(120000);
   });
-  it('a cancellation replaces the outstanding invitation for the same job', async () => {
+  it('sends new-job alerts data-only so the app rings like a call', async () => {
     messaging.sendEachForMulticast.mockResolvedValue({ successCount: 1, responses: [{ success: true }] });
     await service.sendToTokens({ ...message, data: { type: 'request_new', jobId: 'job' } });
+    const sent = messaging.sendEachForMulticast.mock.calls[0][0];
+    // Con `notification` Android la mostraría como aviso común y el handler de la app no correría.
+    expect(sent.notification).toBeUndefined();
+    expect(sent.android).toEqual({ priority: 'high', ttl: 120000 });
+    expect(sent.data).toMatchObject({ type: 'request_new', jobId: 'job', title: 'Chamba', body: 'Oferta' });
+    expect(sent.apns.payload.aps).toMatchObject({ sound: 'chamba_ringtone.mp3', 'interruption-level': 'time-sensitive' });
+  });
+  it('other events keep the system notification grouped by job', async () => {
+    messaging.sendEachForMulticast.mockResolvedValue({ successCount: 1, responses: [{ success: true }] });
     await service.sendToTokens({ ...message, data: { type: 'job_cancelled', requestId: 'job' } });
-    expect(messaging.sendEachForMulticast.mock.calls.map((c: any) => c[0].android.notification.tag)).toEqual(['job:job', 'job:job']);
+    const sent = messaging.sendEachForMulticast.mock.calls[0][0];
+    expect(sent.notification).toEqual({ title: 'Chamba', body: 'Oferta' });
+    expect(sent.android.notification).toMatchObject({ channelId: 'chamba_default_channel', tag: 'job:job' });
   });
 });

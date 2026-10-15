@@ -80,12 +80,18 @@ export class PushService {
         if (Number.isFinite(expiresMs) && expiresMs <= Date.now()) break;
         let response;
         try { response = await this.messaging.sendEachForMulticast({ tokens: pending,
-          notification: { title: params.title, body: params.body }, data,
-          android: { priority: 'high', ttl, notification: { channelId: 'chamba_default_channel',
-            sound: 'default', tag: group } },
+          // El trabajo nuevo viaja data-only en Android: si lleva `notification`,
+          // el sistema la muestra solo como aviso común y el handler de segundo
+          // plano de la app nunca corre (sin ringtone, vibración ni pantalla completa).
+          // La app arma la alerta tipo llamada en `chamba_call_channel_v4`.
+          ...(isRequest ? {} : { notification: { title: params.title, body: params.body } }), data,
+          android: isRequest ? { priority: 'high', ttl } : { priority: 'high', ttl,
+            notification: { channelId: 'chamba_default_channel', sound: 'default', tag: group } },
           apns: { headers: { 'apns-priority': '10', 'apns-expiration': String(Math.floor((Date.now() + ttl) / 1000)),
               ...(group ? { 'apns-collapse-id': group.slice(0, 64) } : {}) },
-            payload: { aps: { sound: 'default', ...(data.threadId ? { 'thread-id': data.threadId } : {}) } } },
+            payload: { aps: isRequest
+              ? { alert: { title: params.title, body: params.body }, sound: 'chamba_ringtone.mp3', 'interruption-level': 'time-sensitive' }
+              : { sound: 'default', ...(data.threadId ? { 'thread-id': data.threadId } : {}) } } },
         });
         } catch (error) {
           const code = (error as { code?: string }).code;
