@@ -183,7 +183,7 @@ export class MobileService implements OnModuleInit {
       );
 
       if (isWebWorker) {
-        await manager.save(WorkerLead, manager.create(WorkerLead, {
+        const lead = await manager.save(WorkerLead, manager.create(WorkerLead, {
           fullName: [firstName, lastName].filter(Boolean).join(' '),
           whatsapp: phone!,
           email,
@@ -191,6 +191,7 @@ export class MobileService implements OnModuleInit {
           category: 'Por completar',
           isContacted: false,
         }));
+        this.realtimeGateway?.emitToAdmins?.('lead.new', lead);
       }
 
       return {

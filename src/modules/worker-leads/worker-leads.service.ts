@@ -3,17 +3,21 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { WorkerLead } from './entities/worker-lead.entity';
 import { CreateWorkerLeadDto } from './dto/create-worker-lead.dto';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 @Injectable()
 export class WorkerLeadsService {
   constructor(
     @InjectRepository(WorkerLead)
     private readonly workerLeadRepository: Repository<WorkerLead>,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   async create(createDto: CreateWorkerLeadDto): Promise<WorkerLead> {
     const lead = this.workerLeadRepository.create(createDto);
-    return this.workerLeadRepository.save(lead);
+    const saved = await this.workerLeadRepository.save(lead);
+    this.realtimeGateway.emitToAdmins('lead.new', saved);
+    return saved;
   }
 
   async findAll(): Promise<WorkerLead[]> {
@@ -31,6 +35,8 @@ export class WorkerLeadsService {
     }
 
     lead.isContacted = true;
-    return this.workerLeadRepository.save(lead);
+    const saved = await this.workerLeadRepository.save(lead);
+    this.realtimeGateway.emitToAdmins('lead.contacted', saved);
+    return saved;
   }
 }

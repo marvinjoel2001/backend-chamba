@@ -34,6 +34,7 @@ describe('Worker web signup', () => {
       query: jest.fn(async () => account ? [{ ...account, password: credentials }] : []) };
     const args: any[] = Array(15).fill({});
     args[1] = db;
+    args[4] = { emitToAdmins: jest.fn() };
     args[6] = { normalizePhone: (value: string) => value.replace(/\D/g, '').slice(-8) };
     args[14] = { issueMobile: () => 'signed-token' };
     service = new MobileService(...args as ConstructorParameters<typeof MobileService>);
@@ -49,6 +50,10 @@ describe('Worker web signup', () => {
     expect(manager.save).toHaveBeenCalledWith(WorkerLead, expect.objectContaining({
       email: 'juana@example.com', whatsapp: '70000000', fullName: input.firstName, isContacted: false,
     }));
+    expect((service as any).realtimeGateway.emitToAdmins).toHaveBeenCalledWith(
+      'lead.new',
+      expect.objectContaining({ email: 'juana@example.com' }),
+    );
     const login = await service.login(input.email, input.password);
     expect(login.user.id).toBe(result.user.id);
     expect(login.token).toBe('signed-token');
