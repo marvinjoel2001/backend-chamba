@@ -3,12 +3,14 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import { MobileRequestRepository } from '../shared/mobile-request.repository';
+import { PaymentsService } from '../../payments/payments.service';
 
 @Injectable()
 export class MobileOffersService {
@@ -19,6 +21,7 @@ export class MobileOffersService {
     private readonly notificationsService: NotificationsService,
     private readonly realtimeGateway: RealtimeGateway,
     public readonly repo: MobileRequestRepository,
+    @Optional() private readonly payments?: PaymentsService,
   ) {}
 
   public async getOffers(params: {
@@ -513,6 +516,14 @@ export class MobileOffersService {
           'Este trabajador ya está asignado a otro trabajo en curso',
         );
       }
+
+      // Si el método de pago de la solicitud cobra en la app (QR, tarjeta…),
+      // la oferta solo se acepta con el pago hecho por ese monto.
+      await this.payments?.assertOfferPaid(queryRunner, {
+        requestId: request.id,
+        offerId: offer.id,
+        amount: Number(offer.amount),
+      });
 
       // 3. Actualizar la oferta a 'accepted'
       const rawAccepted = await queryRunner.query(

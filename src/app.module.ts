@@ -16,6 +16,7 @@ import { QueuesModule } from './modules/queues/queues.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { UsersModule } from './modules/users/users.module';
 import { PaymentMethodsModule } from './modules/payment-methods/payment-methods.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { WorkerLeadsModule } from './modules/worker-leads/worker-leads.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AdminUsersModule } from './modules/admin-users/admin-users.module';
@@ -52,6 +53,7 @@ const envFilePath =
     MobileModule,
     PlaceholdersModule,
     PaymentMethodsModule,
+    PaymentsModule,
     WorkerLeadsModule,
     AdminUsersModule,
     AuthModule,

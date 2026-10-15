@@ -5,6 +5,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { QueuesModule } from '../queues/queues.module';
 import { ApiLogsModule } from '../api-logs/api-logs.module';
+import { PaymentsModule } from '../payments/payments.module';
 import { MobileController } from './mobile.controller';
 import { MobileService } from './mobile.service';
 import { MobileRequestRepository } from './shared/mobile-request.repository';
@@ -18,6 +19,7 @@ import { MobileRequestsService } from './services/mobile-requests.service';
 import { MobileUsersService } from './services/mobile-users.service';
 import { MobileWorkerPortfolioService } from './services/mobile-worker-portfolio.service';
 import { MobileAdminService } from './services/mobile-admin.service';
+import { MobileAccountService } from './services/mobile-account.service';
 import { WaveDispatchProcessorService } from './services/wave-dispatch.processor.service';
 import { MobileRequestsCronService } from './services/mobile-requests-cron.service';
 
@@ -29,6 +31,7 @@ import { MobileRequestsCronService } from './services/mobile-requests-cron.servi
     RealtimeModule,
     QueuesModule,
     ApiLogsModule,
+    PaymentsModule,
   ],
   controllers: [MobileController],
   providers: [
@@ -46,6 +49,7 @@ import { MobileRequestsCronService } from './services/mobile-requests-cron.servi
     MobileAdminService,
     WaveDispatchProcessorService,
     MobileRequestsCronService,
+    MobileAccountService,
   ],
   exports: [MobileService, MobileOffersService],
 })

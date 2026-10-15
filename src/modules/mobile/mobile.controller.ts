@@ -18,6 +18,7 @@ import { MobileService } from './mobile.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
 import { MobileWorkerPortfolioService } from './services/mobile-worker-portfolio.service';
+import { MobileAccountService } from './services/mobile-account.service';
 
 const parseNumber = (value?: string): number | undefined => {
   if (value === undefined || value === null || value === '') {
@@ -36,7 +37,25 @@ export class MobileController {
     private readonly notificationsService: NotificationsService,
     private readonly access: AccessService,
     private readonly portfolioService: MobileWorkerPortfolioService,
+    private readonly accountService: MobileAccountService,
   ) {}
+
+  // ── Eliminación de cuenta (espera de 30 días). El usuario sale del token,
+  //    nunca del body, para que nadie pueda programar el borrado de otra cuenta.
+  @Get('mobile/account/deletion')
+  getAccountDeletion(@Req() req: any) {
+    return this.accountService.getDeletionStatus(req.principal.id);
+  }
+
+  @Post('mobile/account/deletion')
+  requestAccountDeletion(@Req() req: any, @Body('email') email: string) {
+    return this.accountService.requestDeletion(req.principal.id, email);
+  }
+
+  @Post('mobile/account/deletion/cancel')
+  cancelAccountDeletion(@Req() req: any) {
+    return this.accountService.cancelDeletion(req.principal.id);
+  }
 
   @Post('auth/register')
   register(
@@ -155,6 +174,7 @@ export class MobileController {
       publicId?: string;
     }>,
     @Body('paymentMethod') paymentMethod?: string,
+    @Body('paymentMethodCode') paymentMethodCode?: string,
     @Body('modality') modality?: string,
     @Body('estimatedHours') estimatedHours?: number,
     @Body('hourlyRate') hourlyRate?: number,
@@ -180,6 +200,7 @@ export class MobileController {
       scheduledAt,
       photosBase64,
       paymentMethod,
+      paymentMethodCode,
       modality,
       estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
       hourlyRate: hourlyRate ? Number(hourlyRate) : undefined,

@@ -45,6 +45,7 @@ type CreateRequestInput = {
     publicId: string;
   }>;
   paymentMethod?: string;
+  paymentMethodCode?: string;
   modality?: string;
   estimatedHours?: number;
   hourlyRate?: number;
@@ -298,7 +299,8 @@ export class MobileRequestsService {
         hourly_rate,
         days,
         daily_rate,
-        start_date
+        start_date,
+        payment_method_code
       )
       VALUES (
         $1,
@@ -318,7 +320,8 @@ export class MobileRequestsService {
         $15,
         $16,
         $17,
-        $18
+        $18,
+        $19
       )
       RETURNING id, status, title, budget, address, ai_categories, created_at, payment_method, modality, estimated_hours, hourly_rate, days, daily_rate, start_date
       `,
@@ -341,6 +344,7 @@ export class MobileRequestsService {
         input.days || null,
         input.dailyRate || null,
         input.startDate || null,
+        input.paymentMethodCode?.trim().slice(0, 50) || null,
       ],
     );
 

@@ -180,6 +180,19 @@ export class User {
   @Column({ name: 'google_id', type: 'text', nullable: true, select: false })
   googleId?: string;
 
+  // Eliminación de cuenta en dos tiempos (ver MobileAccountService).
+  @ApiPropertyOptional({ type: String })
+  @Column({ name: 'deletion_requested_at', type: 'timestamptz', nullable: true })
+  deletionRequestedAt?: Date | null;
+
+  @ApiPropertyOptional({ type: String })
+  @Column({ name: 'deletion_scheduled_for', type: 'timestamptz', nullable: true })
+  deletionScheduledFor?: Date | null;
+
+  @ApiPropertyOptional({ type: String })
+  @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt?: Date | null;
+
   @ApiProperty({ type: String, example: '2026-03-08T22:42:26.170Z' })
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

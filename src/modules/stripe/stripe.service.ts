@@ -114,7 +114,17 @@ export class StripeService {
       ephemeralKey: ephemeralKey?.secret ?? null,
       customer: customer ?? null,
       publishableKey: config.publishableKey,
+      currency: resolvedCurrency,
     };
+  }
+
+  /** Estado real de un PaymentIntent (para confirmar el pago en el backend). */
+  async getPaymentIntentStatus(paymentIntentId: string): Promise<string | null> {
+    const config = await this.getConfig();
+    if (!config.secretKey || !paymentIntentId) return null;
+    const stripe = new Stripe(config.secretKey);
+    const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    return intent.status;
   }
 
   async getPublishableKey() {

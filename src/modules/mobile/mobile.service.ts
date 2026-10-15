@@ -48,6 +48,7 @@ type CreateRequestInput = {
     publicId: string;
   }>;
   paymentMethod?: string;
+  paymentMethodCode?: string;
   modality?: string;
   estimatedHours?: number;
   hourlyRate?: number;

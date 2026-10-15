@@ -10,6 +10,8 @@ import { BackfillAcceptedJobChats1791333000000 } from './migrations/179133300000
 import { PersistWorkClockAndSettlement1791400000000 } from './migrations/1791400000000-PersistWorkClockAndSettlement';
 import { EnsureCompleteSchema1791600000000 } from './migrations/1791600000000-EnsureCompleteSchema';
 import { EnsureUsersGoogleId1791700000000 } from './migrations/1791700000000-EnsureUsersGoogleId';
+import { AddAccountDeletion1791800000000 } from './migrations/1791800000000-AddAccountDeletion';
+import { AddPayments1791900000000 } from './migrations/1791900000000-AddPayments';
 
 @Module({
   imports: [
@@ -49,6 +51,8 @@ import { EnsureUsersGoogleId1791700000000 } from './migrations/1791700000000-Ens
             PersistWorkClockAndSettlement1791400000000,
             EnsureCompleteSchema1791600000000,
             EnsureUsersGoogleId1791700000000,
+            AddAccountDeletion1791800000000,
+            AddPayments1791900000000,
           ],
           migrationsRun: true,
           migrationsTableName: 'typeorm_migrations',
