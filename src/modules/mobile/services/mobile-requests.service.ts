@@ -1063,12 +1063,9 @@ export class MobileRequestsService {
       `
       UPDATE job_requests jr
       SET status = 'completed', completed_at = NOW(), updated_at = NOW(),
-        settled_amount = CASE WHEN COALESCE(jr.modality, jr.price_type) = 'hourly' THEN
-          ROUND((CASE WHEN jr.estimated_hours > 0 THEN jo.amount / jr.estimated_hours
-            ELSE COALESCE(jr.hourly_rate, 0) END) *
-            GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (COALESCE(jr.work_paused_at, NOW()) - jr.work_started_at)))
-              - jr.work_paused_seconds) / 3600, 2)
-          ELSE jo.amount END,
+        -- Se cobra lo acordado y pagado al aceptar: en "por hora" es tarifa ×
+        -- horas estimadas (ya incluido en la oferta), no el tiempo cronometrado.
+        settled_amount = jo.amount,
         work_paused_seconds = jr.work_paused_seconds + CASE WHEN jr.work_paused_at IS NOT NULL
           THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - jr.work_paused_at)))::integer) ELSE 0 END,
         work_paused_at = NULL
@@ -1318,7 +1315,7 @@ export class MobileRequestsService {
       params.stars < 1 ||
       params.stars > 5
     ) {
-      throw new BadRequestException('stars must be between 1 and 5');
+      throw new BadRequestException('La calificación debe ser de 1 a 5 estrellas');
     }
 
     await this.repo.getUserById(params.workerUserId);
@@ -1326,12 +1323,12 @@ export class MobileRequestsService {
     const req = await this.repo.getRequestById(params.requestId);
 
     if (req.status !== 'completed') {
-      throw new BadRequestException('Request is not completed yet');
+      throw new BadRequestException('El trabajo todavía no terminó');
     }
 
     if (req.client_user_id !== params.clientUserId) {
       throw new BadRequestException(
-        'Client user ID does not match the request',
+        'Solo el cliente de este trabajo puede calificarlo',
       );
     }
 

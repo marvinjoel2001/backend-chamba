@@ -1,4 +1,7 @@
-/** A completed or paused clock has a fixed end. Amounts are rounded once, at settlement. */
+/**
+ * El reloj solo informa el tiempo trabajado. El monto no depende de él: se
+ * paga al aceptar lo acordado (en "por hora", tarifa × horas estimadas).
+ */
 export function workClock(row: Record<string, any>, now = new Date()) {
   const started = row.work_started_at ? new Date(row.work_started_at).getTime() : null;
   const end = new Date(row.completed_at ?? row.work_paused_at ?? now).getTime();
@@ -12,7 +15,6 @@ export function workClock(row: Record<string, any>, now = new Date()) {
     workElapsedSeconds: elapsedSeconds,
     workPaused: row.work_paused_at != null,
     effectiveHourlyRate: hourly ? rate : null,
-    currentAmount: row.settled_amount != null ? Number(row.settled_amount)
-      : hourly ? Math.round(rate * elapsedSeconds / 3600 * 100) / 100 : agreed,
+    currentAmount: row.settled_amount != null ? Number(row.settled_amount) : agreed,
   };
 }

@@ -673,7 +673,8 @@ export class MobileUsersService {
              w.last_name AS worker_last_name,
              w.profile_photo_url AS worker_photo,
              ct.id AS thread_id,
-             (SELECT p.url FROM job_request_photos p WHERE p.request_id = jr.id ORDER BY p.created_at ASC LIMIT 1) as photo_url
+             (SELECT p.url FROM job_request_photos p WHERE p.request_id = jr.id ORDER BY p.created_at ASC LIMIT 1) as photo_url,
+             EXISTS (SELECT 1 FROM worker_reviews r WHERE r.request_id = jr.id) AS reviewed
       FROM job_requests jr
       LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status IN ('accepted', 'rejected')
       LEFT JOIN users w ON w.id = jo.worker_user_id
@@ -706,6 +707,8 @@ export class MobileUsersService {
         modality: row.modality ?? null,
         threadId: row.thread_id ?? null,
         photoUrl: row.photo_url ?? null,
+        // Ya calificado: la app no vuelve a ofrecer "Calificar trabajo".
+        reviewed: row.reviewed === true,
         worker: row.worker_id
           ? {
               id: row.worker_id,

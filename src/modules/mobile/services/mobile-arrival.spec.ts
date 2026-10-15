@@ -56,4 +56,17 @@ describe('Arrival confirmation is idempotent', () => {
       requestId: 'job', status: 'completed', amount: 1.43,
     });
   });
+  it('charges the agreed offer, never the clocked time (hourly is paid up front)', async () => {
+    const query = jest.fn()
+      .mockResolvedValueOnce([{ id: 'job', client_confirmed_arrival: true, client_user_id: 'client' }])
+      .mockResolvedValueOnce([[{ id: 'job', settled_amount: '120' }], 1])
+      .mockResolvedValue([]);
+    const service = new MobileRequestsService({ query } as any, {} as any, {} as any, {} as any,
+      { broadcastRequest: jest.fn(), emitToUser: jest.fn() } as any, {} as any, {} as any, {} as any,
+      {} as any, {} as any, {} as any);
+    await service.completeJob({ requestId: 'job', workerUserId: 'worker' });
+    const settle = query.mock.calls[1][0] as string;
+    expect(settle).toContain('settled_amount = jo.amount,');
+    expect(settle).not.toContain('work_started_at');
+  });
 });
