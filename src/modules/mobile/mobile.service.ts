@@ -621,6 +621,14 @@ export class MobileService implements OnModuleInit {
     return this.requestsService.blockUser(blockerUserId, blockedUserId);
   }
 
+  async listBlockedUsers(blockerUserId: string) {
+    return this.requestsService.listBlockedUsers(blockerUserId);
+  }
+
+  async unblockUser(blockerUserId: string, blockedUserId: string) {
+    return this.requestsService.unblockUser(blockerUserId, blockedUserId);
+  }
+
   async reportRequest(
     requestId: string,
     reporterUserId: string,

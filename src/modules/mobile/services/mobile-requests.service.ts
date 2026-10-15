@@ -716,6 +716,32 @@ export class MobileRequestsService {
     return { success: true };
   }
 
+  /** Personas que [blockerUserId] bloqueó, la más reciente primero. */
+  public async listBlockedUsers(blockerUserId: string) {
+    const rows = await this.dataSource.query(
+      `SELECT u.id, u.first_name, u.last_name, u.profile_photo_url, b.created_at
+         FROM user_blocks b
+         JOIN users u ON u.id = b.blocked_user_id
+        WHERE b.blocker_user_id = $1
+        ORDER BY b.created_at DESC`,
+      [blockerUserId],
+    );
+    return rows.map((row: Record<string, any>) => ({
+      userId: row.id,
+      fullName: [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || 'Usuario',
+      profilePhotoUrl: row.profile_photo_url ?? null,
+      blockedAt: row.created_at,
+    }));
+  }
+
+  public async unblockUser(blockerUserId: string, blockedUserId: string) {
+    await this.dataSource.query(
+      `DELETE FROM user_blocks WHERE blocker_user_id = $1 AND blocked_user_id = $2`,
+      [blockerUserId, blockedUserId],
+    );
+    return { success: true };
+  }
+
   public async reportRequest(
     requestId: string,
     reporterUserId: string,
@@ -1554,8 +1580,11 @@ export class MobileRequestsService {
       return;
     }
 
+    // Fuera también quien bloqueó a este cliente: no debe sonarle su solicitud.
     const eligible = await this.dataSource.query(`SELECT id FROM users WHERE id = ANY($1::uuid[])
-      AND is_available = true AND COALESCE(is_blocked, false) = false`, [params.waveWorkers.map(w => w.workerId)]);
+      AND is_available = true AND COALESCE(is_blocked, false) = false
+      AND NOT EXISTS (SELECT 1 FROM user_blocks b JOIN job_requests jr ON jr.client_user_id = b.blocked_user_id
+        WHERE jr.id = $2 AND b.blocker_user_id = users.id)`, [params.waveWorkers.map(w => w.workerId), params.requestId]);
     const ids = new Set(eligible.map((row: { id: string }) => row.id));
     params.waveWorkers = params.waveWorkers.filter(w => ids.has(w.workerId));
     if (!params.waveWorkers.length) return;

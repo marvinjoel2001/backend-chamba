@@ -454,6 +454,19 @@ export class MobileController {
     return this.mobileService.blockUser(userId, blockedUserId);
   }
 
+  @Get('mobile/users/:userId/blocks')
+  listBlockedUsers(@Param('userId') userId: string) {
+    return this.mobileService.listBlockedUsers(userId);
+  }
+
+  @Delete('mobile/users/:userId/blocks/:blockedUserId')
+  unblockUser(
+    @Param('userId') userId: string,
+    @Param('blockedUserId') blockedUserId: string,
+  ) {
+    return this.mobileService.unblockUser(userId, blockedUserId);
+  }
+
   @Post('mobile/requests/:requestId/report')
   reportRequest(
     @Param('requestId') requestId: string,
