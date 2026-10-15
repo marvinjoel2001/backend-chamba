@@ -7,12 +7,15 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminAgenciesService } from '../services/admin-agencies.service';
 import { CreateAgencyDto, UpdateAgencyDto } from '../dto/create-agency.dto';
+import { AgencySettlementDto } from '../dto/agency-operations.dto';
+import { AgencyOperationsService } from '../services/agency-operations.service';
 
 // CRUD de agencias para el panel admin (usa el JWT de admin_users,
 // no el de agencias).
@@ -21,7 +24,10 @@ import { CreateAgencyDto, UpdateAgencyDto } from '../dto/create-agency.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('admin/agencies')
 export class AdminAgenciesController {
-  constructor(private readonly adminAgenciesService: AdminAgenciesService) {}
+  constructor(
+    private readonly adminAgenciesService: AdminAgenciesService,
+    private readonly operations: AgencyOperationsService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Listar agencias con métricas' })
@@ -45,6 +51,22 @@ export class AdminAgenciesController {
     @Body() dto: UpdateAgencyDto,
   ) {
     return this.adminAgenciesService.update(agencyId, dto);
+  }
+
+  @Get(':agencyId/account')
+  @ApiOperation({ summary: 'Cuenta de la agencia con Chamba' })
+  account(@Param('agencyId', ParseUUIDPipe) agencyId: string) {
+    return this.operations.getChambaAccount(agencyId);
+  }
+
+  @Post(':agencyId/settlements')
+  @ApiOperation({ summary: 'Registrar un pago entre Chamba y la agencia' })
+  settle(
+    @Req() req: any,
+    @Param('agencyId', ParseUUIDPipe) agencyId: string,
+    @Body() dto: AgencySettlementDto,
+  ) {
+    return this.operations.createSettlement(agencyId, req.user?.id ?? req.user?.sub ?? null, dto);
   }
 
   @Delete(':agencyId')

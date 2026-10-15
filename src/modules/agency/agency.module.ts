@@ -9,6 +9,8 @@ import { AgencyController } from './controllers/agency.controller';
 import { AdminAgenciesController } from './controllers/admin-agencies.controller';
 import { AgencyAuthService } from './services/agency-auth.service';
 import { AgencyService } from './services/agency.service';
+import { AgencyOperationsService } from './services/agency-operations.service';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { AdminAgenciesService } from './services/admin-agencies.service';
 import { AgencyJwtStrategy } from './strategies/agency-jwt.strategy';
 
@@ -21,6 +23,7 @@ import { AgencyJwtStrategy } from './strategies/agency-jwt.strategy';
   imports: [
     MobileModule,
     NotificationsModule,
+    RealtimeModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -39,6 +42,7 @@ import { AgencyJwtStrategy } from './strategies/agency-jwt.strategy';
   providers: [
     AgencyAuthService,
     AgencyService,
+    AgencyOperationsService,
     AdminAgenciesService,
     AgencyJwtStrategy,
   ],

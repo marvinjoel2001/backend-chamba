@@ -4,11 +4,13 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { MobileOffersService } from '../../mobile/services/mobile-offers.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { SendOfferDto } from '../dto/send-offer.dto';
+import { AgencyOperationsService } from './agency-operations.service';
 
 @Injectable()
 export class AgencyService {
@@ -18,6 +20,7 @@ export class AgencyService {
     private readonly dataSource: DataSource,
     private readonly mobileOffersService: MobileOffersService,
     private readonly notificationsService: NotificationsService,
+    @Optional() private readonly operations?: AgencyOperationsService,
   ) {}
 
   // ── Trabajadores ────────────────────────────────────────────────
@@ -54,10 +57,13 @@ export class AgencyService {
              sa.skills,
              COALESCE(aj.active_count, 0) AS active_jobs_count,
              ST_Y(u.current_location::geometry) AS latitude,
-             ST_X(u.current_location::geometry) AS longitude
+             ST_X(u.current_location::geometry) AS longitude,
+             t.commission_rate AS own_commission_rate,
+             EXISTS (SELECT 1 FROM auth_credentials ac WHERE ac.user_id = u.id) AS has_password
       FROM users u
       LEFT JOIN skill_agg sa ON sa.user_id = u.id
       LEFT JOIN active_jobs aj ON aj.worker_user_id = u.id
+      LEFT JOIN agency_worker_terms t ON t.worker_user_id = u.id AND t.agency_id = u.agency_id
       WHERE u.agency_id = $1
         AND u.is_agency_worker = true
         AND u.type = 'worker'
@@ -92,6 +98,10 @@ export class AgencyService {
       activeJobsCount: Number(row.active_jobs_count ?? 0),
       latitude: row.latitude == null ? null : Number(row.latitude),
       longitude: row.longitude == null ? null : Number(row.longitude),
+      /** Comisión propia; null = usa la general de la agencia. */
+      commissionRate:
+        row.own_commission_rate == null ? null : Number(row.own_commission_rate),
+      hasPassword: row.has_password !== false,
     }));
   }
 
@@ -441,7 +451,7 @@ export class AgencyService {
            AND jr.completed_at >= date_trunc('month', NOW())) AS revenue_month,
         (SELECT COALESCE(AVG(NULLIF(u.average_rating, 0)), 0) FROM users u
          WHERE u.agency_id = $1 AND u.is_agency_worker = true AND u.type = 'worker') AS avg_rating,
-        (SELECT a.commission_rate FROM agencies a WHERE a.id = $1) AS commission_rate
+        (SELECT a.worker_commission_rate FROM agencies a WHERE a.id = $1) AS commission_rate
       `,
       [agencyId],
     );
@@ -520,11 +530,16 @@ export class AgencyService {
     filters: { period?: string; workerId?: string } = {},
   ) {
     const [agencyRow] = await this.dataSource.query<any[]>(
-      `SELECT id, name, commission_rate FROM agencies WHERE id = $1 LIMIT 1`,
+      // commission_rate aquí = lo que la agencia se queda de sus trabajadores.
+      `SELECT id, name, worker_commission_rate AS commission_rate FROM agencies WHERE id = $1 LIMIT 1`,
       [agencyId],
     );
 
     const commissionRate = Number(agencyRow?.commission_rate ?? 0);
+
+    // Los trabajos terminados usan la comisión congelada al terminar (la
+    // misma que Pagos), no la vigente.
+    await this.operations?.syncLedger(agencyId);
 
     // Filtro de fecha según el periodo solicitado
     let dateFilterSql = '';
@@ -567,11 +582,13 @@ export class AgencyService {
              u.average_rating,
              u.phone AS worker_phone,
              c.first_name AS client_first_name,
-             c.last_name AS client_last_name
+             c.last_name AS client_last_name,
+             l.worker_rate AS frozen_rate
       FROM job_offers jo
       JOIN job_requests jr ON jr.id = jo.request_id
       JOIN users u ON u.id = jo.worker_user_id
       JOIN users c ON c.id = jr.client_user_id
+      LEFT JOIN agency_job_ledger l ON l.request_id = jr.id
       WHERE jo.offered_by_agency_id = $1
         AND jo.status = 'accepted'
         AND jr.status <> 'cancelled'
@@ -585,11 +602,20 @@ export class AgencyService {
     // Obtener todos los trabajadores vinculados a la agencia para que aparezcan en el informe
     const agencyWorkers = await this.getWorkers(agencyId);
 
+    // Cada trabajador puede tener su propia comisión.
+    const ownRate = new Map(
+      agencyWorkers.map((w) => [w.id, w.commissionRate ?? null]),
+    );
+
     // Mapear cada trabajo individual
     const jobs = rows.map((r) => {
       const amount = Number(r.amount);
+      const jobRate =
+        r.frozen_rate != null
+          ? Number(r.frozen_rate)
+          : (ownRate.get(r.worker_id) ?? commissionRate);
       const agencyCommission = Number(
-        ((amount * commissionRate) / 100).toFixed(2),
+        ((amount * jobRate) / 100).toFixed(2),
       );
       const workerEarnings = Number((amount - agencyCommission).toFixed(2));
       return {
@@ -600,7 +626,7 @@ export class AgencyService {
         address: r.address,
         status: r.request_status,
         amount,
-        commissionRate,
+        commissionRate: jobRate,
         agencyCommission,
         workerEarnings,
         offeredAt: r.offered_at,
@@ -625,7 +651,10 @@ export class AgencyService {
         .toFixed(2),
     );
     const agencyEarnings = Number(
-      ((totalRevenue * commissionRate) / 100).toFixed(2),
+      jobs
+        .filter((j) => j.status === 'completed')
+        .reduce((sum, j) => sum + j.agencyCommission, 0)
+        .toFixed(2),
     );
     const workersPayout = Number((totalRevenue - agencyEarnings).toFixed(2));
     const completedJobsCount = jobs.filter(

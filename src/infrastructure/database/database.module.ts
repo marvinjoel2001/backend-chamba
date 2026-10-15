@@ -12,6 +12,7 @@ import { EnsureCompleteSchema1791600000000 } from './migrations/1791600000000-En
 import { EnsureUsersGoogleId1791700000000 } from './migrations/1791700000000-EnsureUsersGoogleId';
 import { AddAccountDeletion1791800000000 } from './migrations/1791800000000-AddAccountDeletion';
 import { AddPayments1791900000000 } from './migrations/1791900000000-AddPayments';
+import { AgencyOperations1792000000000 } from './migrations/1792000000000-AgencyOperations';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { AddPayments1791900000000 } from './migrations/1791900000000-AddPayments
             EnsureUsersGoogleId1791700000000,
             AddAccountDeletion1791800000000,
             AddPayments1791900000000,
+            AgencyOperations1792000000000,
           ],
           migrationsRun: true,
           migrationsTableName: 'typeorm_migrations',

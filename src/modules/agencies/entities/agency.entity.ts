@@ -33,6 +33,11 @@ export class Agency {
   @Column({ name: 'commission_rate', type: 'float', default: 0 })
   commissionRate: number;
 
+  /** Lo que la agencia se queda de cada trabajo de sus trabajadores (%). */
+  @ApiProperty({ example: 20 })
+  @Column({ name: 'worker_commission_rate', type: 'float', default: 0 })
+  workerCommissionRate: number;
+
   @Column({ name: 'password_hash', nullable: true, select: false })
   passwordHash?: string;
 
