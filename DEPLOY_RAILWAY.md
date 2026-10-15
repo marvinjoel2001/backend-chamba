@@ -1,9 +1,10 @@
 # Backend en Railway
 
-El servicio usa `railway.json` en la raíz de este repositorio.
+El servicio usa `railway.json` y `nixpacks.toml` en la raíz del repositorio.
 
-- Build: `npm ci --include=dev && npm run build`
-- Start: `node dist/main`
+- Install (`nixpacks.toml`): `npm ci --include=dev`
+- Build (`railway.json`): `npm run build`
+- Start (`railway.json`): `node dist/main`
 
 `@nestjs/cli`, TypeScript y `@nestjs/testing` son dependencias de desarrollo:
 se necesitan para compilar y para la verificación `postbuild`. Si la instalación
@@ -12,34 +13,63 @@ omite esas dependencias, `npm run build` falla con `nest: not found`.
 `NPM_CONFIG_PRODUCTION=true` o `NPM_CONFIG_OMIT=dev`. La instalación usa las
 versiones exactas de `package-lock.json`; no necesita Nest instalado globalmente.
 
-La instalación explícita forma parte del comando de build para no depender de
-cómo se haya configurado la fase de instalación automática del servicio. Esto
-puede repetir esa fase, pero garantiza que las herramientas estén disponibles al
-compilar. No ejecutar `npm prune --omit=dev` antes de `npm run build`: también
-eliminaría las dependencias usadas por `postbuild`.
+## Evitar EBUSY al compilar
 
-Si el servicio no está usando este archivo de configuración, configura su ruta
-como `/railway.json` y el directorio raíz como el de `backend-chamba`. Comprueba
-en los detalles del despliegue que el comando efectivo de build coincide con el
-anterior. Si se configura manualmente, usar exactamente ese mismo comando.
+Nixpacks monta `/app/node_modules/.cache` como caché durante build. `npm ci`
+borra `node_modules` antes de instalar, así que ejecutarlo en esa fase falla con
+`EBUSY: resource busy or locked, rmdir '/app/node_modules/.cache'`.
+Debe ejecutarse una sola vez, en **install**, antes de montar esa caché.
+No combinar instalación y compilación en el comando de build.
 
-Para publicar la corrección, subir el commit y desplegar ese commit en Railway.
-Un despliegue anterior no incorpora el cambio al reintentar su misma revisión.
-Mantener las variables de producción existentes; esta corrección no cambia el
-comando de arranque ni ejecuta migraciones adicionales.
+Tampoco ejecutar `npm prune --omit=dev` antes de compilar: elimina las
+dependencias usadas por `postbuild`.
 
-Referencias: [npm ci](https://docs.npmjs.com/cli/v11/commands/npm-ci/),
-[configuración como código de Railway](https://docs.railway.com/config-as-code).
+## Comprobar la configuración del servicio
 
-## Validación de la corrección (2026-10-15)
+1. Usar Nixpacks como builder y `/railway.json` como archivo de configuración.
+2. El directorio raíz debe contener `package.json`, `package-lock.json`,
+   `railway.json` y `nixpacks.toml` de este backend.
+3. Si existe `NIXPACKS_INSTALL_CMD` en las variables del servicio, eliminarlo o
+   cambiarlo a `npm ci --include=dev`: las variables tienen prioridad sobre TOML.
+4. Si existe `NIXPACKS_BUILD_CMD` o un comando de build manual, usar
+   `npm run build`. No incluir un segundo `npm ci`.
+5. Desplegar el commit más reciente; reintentar una revisión anterior no
+   incorpora esta corrección. En el plan/log deben aparecer las fases indicadas
+   arriba, con una sola instalación.
 
-En Windows con Node 22.23.1 y npm 10.9.8, instalación limpia con
-`NODE_ENV=production`, `NPM_CONFIG_PRODUCTION=true` y `NPM_CONFIG_OMIT=dev`:
+El aviso Docker `UndefinedVar: '$NIXPACKS_PATH'` del log proporcionado no detuvo
+la construcción: el proceso continuó hasta el error EBUSY. El Dockerfile
+generado por Nixpacks añadía su ruta de ejecutables antes de declarar la
+variable. `nixpacks.toml` ahora la inicializa vacía; Nixpacks añade después
+`/app/node_modules/.bin`. No hace falta crear esa variable manualmente en
+Railway ni modificar credenciales. Los avisos de peer dependencies de
+`class-validator` tampoco fueron el fallo que interrumpió ese despliegue.
 
-- `npm ci --include=dev`: OK; Nest CLI, TypeScript y Nest Testing instalados.
-- `npm run build`: OK; existe `dist/main.js` y pasa la verificación de módulos
-  compilados de Nest (`postbuild`).
-- `npm test -- --runInBand`: 212 pruebas y 24 suites pasan.
+Esta corrección conserva el comando de arranque y no añade migraciones.
 
-Esta comprobación valida el código y las dependencias; el resultado del
-despliegue en Railway debe confirmarse en sus logs después de publicarlo.
+## Validación
+
+La primera corrección se comprobó en Windows (Node 22.23.1, npm 10.9.8):
+instalación limpia con las tres opciones de producción indicadas arriba, build,
+verificación de módulos compilados y 212 pruebas / 24 suites correctas. Esa
+validación no reproducía el montaje de caché de Nixpacks y por eso no detectó
+EBUSY. La revisión actual separa install/build para respetar ese montaje.
+
+Validación de la revisión: plan y Dockerfile generados con Nixpacks 1.41.0 en
+WSL (mismo nixpkgsArchive que en el log remoto). Install contiene una sola
+ejecución de `npm ci --include=dev`, con caché solo en `/root/.npm`; build
+monta `/app/node_modules/.cache` y ejecuta únicamente `npm run build`.
+La variable `NIXPACKS_PATH` se declara antes de usarse. La compilación local y
+la verificación de módulos compilados vuelven a pasar.
+
+Evidencia local: `../build/railway-qa-20261015/validated-plan.json` y
+`../build/railway-qa-20261015/generated/.nixpacks/Dockerfile` (generado desde
+un fixture con manifiestos/configuración, sin credenciales). No se ejecutó
+la imagen completa porque Docker no está arrancado en este equipo.
+
+El resultado remoto debe confirmarse en los logs del nuevo despliegue.
+
+Referencias:
+- [Fases y prioridad de configuración de Nixpacks](https://nixpacks.com/docs/configuration/file).
+- [npm ci](https://docs.npmjs.com/cli/v11/commands/npm-ci/).
+- [Aviso UndefinedVar de Docker](https://docs.docker.com/reference/build-checks/undefined-var/).

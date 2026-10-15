@@ -1,0 +1,8 @@
+[variables]
+# Nixpacks prepends its bin path later; declare the variable before that use.
+NIXPACKS_PATH = ""
+
+# Install build tools before the build phase mounts node_modules/.cache.
+# npm ci deletes node_modules and must not run with that cache mounted.
+[phases.install]
+cmds = ["npm ci --include=dev"]
