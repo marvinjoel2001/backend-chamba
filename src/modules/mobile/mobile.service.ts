@@ -93,6 +93,22 @@ export class MobileService implements OnModuleInit {
     await this.seedData();
   }
 
+  async getMyVerification(userId: string) {
+    // Read the database rather than an admin/user cache. Never accept a user
+    // identifier from the client for this endpoint.
+    const user = await this.repo.getUserById(userId);
+    return {
+      user: {
+        id: user.id,
+        verificationStatus: user.verificationStatus,
+        idPhotoUrl: user.idPhotoUrl,
+        facePhotoUrl: user.facePhotoUrl,
+        idPhotoVerified: user.idPhotoVerified,
+        facePhotoVerified: user.facePhotoVerified,
+      },
+    };
+  }
+
   async register(input: {
     type?: string;
     email: string;

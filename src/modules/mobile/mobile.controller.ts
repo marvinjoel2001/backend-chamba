@@ -40,6 +40,11 @@ export class MobileController {
     private readonly accountService: MobileAccountService,
   ) {}
 
+  @Get('mobile/profile/verification')
+  getMyVerification(@Req() req: any) {
+    return this.mobileService.getMyVerification(req.principal.id);
+  }
+
   // ── Eliminación de cuenta (espera de 30 días). El usuario sale del token,
   //    nunca del body, para que nadie pueda programar el borrado de otra cuenta.
   @Get('mobile/account/deletion')
