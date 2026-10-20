@@ -60,7 +60,8 @@ export class WaveDispatchProcessorService
       [params.requestId],
     );
     const currentStatus = String(requestRows[0]?.status ?? '');
-    if (currentStatus !== 'searching') {
+    // Igual que dispatchWorkerNotificationWave: sigue mientras se negocia.
+    if (!['searching', 'negotiating'].includes(currentStatus)) {
       this.logger.log(
         `[wave-processor] Wave ${params.waveIndex} cancelled for ${params.requestId}: status=${currentStatus}`,
       );
@@ -70,6 +71,7 @@ export class WaveDispatchProcessorService
     // Fuera también quien bloqueó a este cliente: no debe sonarle su solicitud.
     const eligible = await this.dataSource.query(`SELECT id FROM users WHERE id = ANY($1::uuid[]) AND type = 'worker'
       AND is_available = true AND COALESCE(is_blocked, false) = false
+      AND COALESCE(is_agency_worker, false) = false
       AND NOT EXISTS (SELECT 1 FROM user_blocks b JOIN job_requests jr ON jr.client_user_id = b.blocked_user_id
         WHERE jr.id = $2 AND b.blocker_user_id = users.id)`, [params.waveWorkers.map(w => w.workerId), params.requestId]);
     const ids = new Set(eligible.map((row: { id: string }) => row.id));

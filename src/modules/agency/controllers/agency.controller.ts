@@ -58,12 +58,15 @@ export class AgencyController {
   }
 
   @Post('workers/link')
-  @ApiOperation({ summary: 'Vincular un trabajador existente por email' })
+  @ApiOperation({
+    summary:
+      'Vincular un trabajador existente: sin code le envía un código; con el code, lo vincula',
+  })
   linkWorker(
     @CurrentAgency() agency: AgencyPrincipal,
     @Body() dto: LinkWorkerDto,
   ) {
-    return this.agencyService.linkWorker(agency.agencyId, dto.email);
+    return this.agencyService.linkWorker(agency.agencyId, dto.email, dto.code);
   }
 
   @Delete('workers/:workerUserId')

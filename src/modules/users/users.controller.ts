@@ -13,7 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-// import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'; // Comentado hasta que exista
+import { AdminAccessGuard } from '../access/mobile-access.guard';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -33,6 +33,8 @@ import { User } from './entities/user.entity';
 import { UsersService } from './users.service';
 
 @ApiTags('Users')
+// Todo /users es de la consola de administración: la app móvil usa /mobile/*.
+@UseGuards(AdminAccessGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -136,7 +138,6 @@ export class UsersController {
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOkResponse({ type: User })
   @ApiNotFoundResponse({ description: 'Usuario no encontrado' })
-  // @UseGuards(JwtAuthGuard) // Descomentar cuando JwtAuthGuard esté disponible
   @UseInterceptors(FileInterceptor('idPhoto'))
   @Post(':id/verification-photos')
   uploadVerificationPhotos(

@@ -113,6 +113,24 @@ export class AgencyOperationsService {
   }
 
   /**
+   * Para saldar cuentas basta con que el trabajador sea de la agencia o haya
+   * tenido trabajos/pagos con ella: desvincularlo no borra lo que se le debe.
+   */
+  private async assertWorkerWithAccount(agencyId: string, workerUserId: string) {
+    const worker = rowsOf(
+      await this.dataSource.query(
+        `SELECT u.id FROM users u
+         WHERE u.id = $1 AND u.type = 'worker'
+           AND ((u.agency_id = $2 AND u.is_agency_worker = true)
+             OR EXISTS (SELECT 1 FROM agency_job_ledger l WHERE l.agency_id = $2 AND l.worker_user_id = u.id)
+             OR EXISTS (SELECT 1 FROM agency_payouts p WHERE p.agency_id = $2 AND p.worker_user_id = u.id))`,
+        [workerUserId, agencyId],
+      ),
+    )[0];
+    if (!worker) throw new NotFoundException('El trabajador no pertenece a tu agencia');
+  }
+
+  /**
    * La agencia da de alta a su trabajador: la cuenta queda vinculada a la
    * agencia (no recibe trabajos de Chamba) y la contraseña se muestra una vez.
    */
@@ -346,9 +364,9 @@ export class AgencyOperationsService {
               COALESCE(jr.settled_amount, jo.amount),
               COALESCE(t.commission_rate, a.worker_commission_rate, 0),
               COALESCE(a.commission_rate, 0),
-              (EXISTS (SELECT 1 FROM payments p WHERE p.request_id = jr.id AND p.status = 'paid')
-               OR LOWER(COALESCE(jr.payment_method_code, '')) = 'card'
-               OR LOWER(COALESCE(jr.payment_method, '')) = 'tarjeta'),
+              -- Digital = Chamba recibió el dinero (pago confirmado). Una "Tarjeta"
+              -- sin pago confirmado (p. ej. Stripe apagado) se cobró en efectivo.
+              EXISTS (SELECT 1 FROM payments p WHERE p.request_id = jr.id AND p.status = 'paid'),
               jr.completed_at
        FROM job_offers jo
        JOIN job_requests jr ON jr.id = jo.request_id
@@ -357,7 +375,10 @@ export class AgencyOperationsService {
        WHERE jo.offered_by_agency_id = $1
          AND jo.status = 'accepted'
          AND jr.status = 'completed'
-       ON CONFLICT (request_id) DO NOTHING`,
+       -- Las comisiones quedan congeladas, pero un QR que el admin confirma
+       -- después de registrar el trabajo pasa de efectivo a digital.
+       ON CONFLICT (request_id) DO UPDATE SET is_digital = true
+         WHERE agency_job_ledger.is_digital = false AND EXCLUDED.is_digital = true`,
       [agencyId],
     );
   }
@@ -489,7 +510,7 @@ export class AgencyOperationsService {
     agencyId: string,
     dto: { workerId: string; amount: number; kind?: string; note?: string; paidAt?: string },
   ) {
-    await this.assertOwnWorker(agencyId, dto.workerId);
+    await this.assertWorkerWithAccount(agencyId, dto.workerId);
     const amount = round2(Number(dto.amount));
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new BadRequestException('El monto debe ser mayor a 0.');

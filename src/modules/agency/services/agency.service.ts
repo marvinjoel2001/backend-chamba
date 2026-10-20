@@ -6,11 +6,17 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
+import { createHash, randomInt } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { MobileOffersService } from '../../mobile/services/mobile-offers.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { SendOfferDto } from '../dto/send-offer.dto';
 import { AgencyOperationsService } from './agency-operations.service';
+
+/** Vigencia e intentos del código que confirma un vínculo agencia–trabajador. */
+const LINK_INVITE_MINUTES = 15;
+const LINK_INVITE_MAX_ATTEMPTS = 5;
+const hashInviteCode = (code: string) => createHash('sha256').update(code).digest('hex');
 
 @Injectable()
 export class AgencyService {
@@ -105,7 +111,13 @@ export class AgencyService {
     }));
   }
 
-  public async linkWorker(agencyId: string, email: string) {
+  /**
+   * Vincular una cuenta existente necesita el consentimiento del trabajador:
+   * sin `code` se le envía un código por notificación (queda en su bandeja de
+   * la app) y se devuelve `{ pending: true }`; con el código que él le pasa a
+   * la agencia, se vincula.
+   */
+  public async linkWorker(agencyId: string, email: string, code?: string) {
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT id, type, agency_id, is_agency_worker, first_name, last_name, email
@@ -125,17 +137,32 @@ export class AgencyService {
     if (user.agency_id && user.agency_id !== agencyId) {
       throw new ConflictException('El trabajador ya pertenece a otra agencia');
     }
+    if (user.agency_id === agencyId && user.is_agency_worker === true) {
+      const workers = await this.getWorkers(agencyId);
+      return workers.find((worker) => worker.id === user.id) ?? null;
+    }
 
-    await this.dataSource.query(
+    if (!code?.trim()) {
+      await this.sendLinkInvite(agencyId, user.id);
+      return { pending: true, expiresInMinutes: LINK_INVITE_MINUTES };
+    }
+    await this.consumeLinkInvite(agencyId, user.id, code.trim());
+
+    const linked = await this.dataSource.query<any>(
       `
       UPDATE users
       SET agency_id = $1,
           is_agency_worker = true,
           updated_at = NOW()
-      WHERE id = $2
+      WHERE id = $2 AND (agency_id IS NULL OR agency_id = $1)
+      RETURNING id
       `,
       [agencyId, user.id],
     );
+    const linkedRows = Array.isArray(linked?.[0]) ? linked[0] : linked;
+    if (!linkedRows?.[0]) {
+      throw new ConflictException('El trabajador ya pertenece a otra agencia');
+    }
 
     this.logger.log(
       `[linkWorker] Agencia ${agencyId} vinculó al trabajador ${user.id}`,
@@ -143,6 +170,59 @@ export class AgencyService {
 
     const workers = await this.getWorkers(agencyId);
     return workers.find((worker) => worker.id === user.id) ?? null;
+  }
+
+  private async sendLinkInvite(agencyId: string, workerUserId: string) {
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    await this.dataSource.query(
+      `
+      INSERT INTO agency_worker_invites (agency_id, worker_user_id, code_hash, attempts, expires_at)
+      VALUES ($1, $2, $3, 0, NOW() + ($4::int * INTERVAL '1 minute'))
+      ON CONFLICT (agency_id, worker_user_id)
+      DO UPDATE SET code_hash = EXCLUDED.code_hash, attempts = 0,
+                    expires_at = EXCLUDED.expires_at, created_at = NOW()
+      `,
+      [agencyId, workerUserId, hashInviteCode(code), LINK_INVITE_MINUTES],
+    );
+    const [agency] = await this.dataSource.query<any[]>(
+      `SELECT name FROM agencies WHERE id = $1`,
+      [agencyId],
+    );
+    await this.notificationsService.notifyAgencyLinkInvite({
+      userId: workerUserId,
+      agencyName: agency?.name ?? 'Una agencia',
+      code,
+      minutes: LINK_INVITE_MINUTES,
+    });
+    this.logger.log(
+      `[linkWorker] Agencia ${agencyId} pidió vincular al trabajador ${workerUserId}`,
+    );
+  }
+
+  private async consumeLinkInvite(agencyId: string, workerUserId: string, code: string) {
+    const [invite] = await this.dataSource.query<any[]>(
+      `
+      SELECT code_hash, attempts, expires_at > NOW() AS alive
+      FROM agency_worker_invites
+      WHERE agency_id = $1 AND worker_user_id = $2
+      `,
+      [agencyId, workerUserId],
+    );
+    if (!invite || invite.alive !== true || Number(invite.attempts) >= LINK_INVITE_MAX_ATTEMPTS) {
+      throw new BadRequestException('El código venció. Envía uno nuevo al trabajador.');
+    }
+    if (invite.code_hash !== hashInviteCode(code)) {
+      await this.dataSource.query(
+        `UPDATE agency_worker_invites SET attempts = attempts + 1
+         WHERE agency_id = $1 AND worker_user_id = $2`,
+        [agencyId, workerUserId],
+      );
+      throw new BadRequestException('El código no es correcto.');
+    }
+    await this.dataSource.query(
+      `DELETE FROM agency_worker_invites WHERE agency_id = $1 AND worker_user_id = $2`,
+      [agencyId, workerUserId],
+    );
   }
 
   public async unlinkWorker(agencyId: string, workerUserId: string) {
@@ -541,18 +621,19 @@ export class AgencyService {
     // misma que Pagos), no la vigente.
     await this.operations?.syncLedger(agencyId);
 
-    // Filtro de fecha según el periodo solicitado
+    // Filtro de fecha según el periodo solicitado. Un trabajo terminado cuenta
+    // en el mes en que se completó (como el panel y Pagos); uno en curso, por
+    // la fecha de su oferta.
+    const dateCol = 'COALESCE(jr.completed_at, jo.created_at)';
     let dateFilterSql = '';
     if (filters.period === 'month') {
-      dateFilterSql = "AND jo.created_at >= date_trunc('month', NOW())";
+      dateFilterSql = `AND ${dateCol} >= date_trunc('month', NOW())`;
     } else if (filters.period === 'last_month') {
-      dateFilterSql =
-        "AND jo.created_at >= date_trunc('month', NOW() - INTERVAL '1 month') AND jo.created_at < date_trunc('month', NOW())";
+      dateFilterSql = `AND ${dateCol} >= date_trunc('month', NOW() - INTERVAL '1 month') AND ${dateCol} < date_trunc('month', NOW())`;
     } else if (filters.period === 'quarter') {
-      dateFilterSql =
-        "AND jo.created_at >= date_trunc('month', NOW() - INTERVAL '3 months')";
+      dateFilterSql = `AND ${dateCol} >= date_trunc('month', NOW() - INTERVAL '3 months')`;
     } else if (filters.period === 'year') {
-      dateFilterSql = "AND jo.created_at >= date_trunc('year', NOW())";
+      dateFilterSql = `AND ${dateCol} >= date_trunc('year', NOW())`;
     }
 
     let workerFilterSql = '';

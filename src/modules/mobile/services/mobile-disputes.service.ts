@@ -3,6 +3,13 @@ import { DataSource } from 'typeorm';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
 
+/**
+ * Quién habla "por Chamba" en el chat de soporte. 'ai' queda reservado para
+ * el asistente de IA que se conectará después: sus mensajes se tratan igual
+ * que los del admin (avisan a las partes y cuentan como no leídos).
+ */
+const STAFF_SENDER_TYPES = ['admin', 'ai'];
+
 @Injectable()
 export class MobileDisputesService {
   private readonly logger = new Logger(MobileDisputesService.name);
@@ -118,6 +125,13 @@ export class MobileDisputesService {
         .catch((e) => this.logger.error('Failed to notify dispute created', e));
     }
 
+    this.realtimeGateway.emitToAdmins('dispute.new', {
+      disputeId: rows[0].id,
+      requestId: params.requestId || null,
+      reason: params.reason.trim(),
+      timestamp: rows[0].created_at,
+    });
+
     return {
       dispute: {
         id: rows[0].id,
@@ -153,12 +167,8 @@ export class MobileDisputesService {
       ],
     );
 
-    const disputeRows = await this.dataSource.query<any[]>(
-      `SELECT reported_by FROM disputes WHERE id = $1 LIMIT 1`,
-      [params.disputeId],
-    );
-    if (disputeRows[0]?.reported_by) {
-      const userId = disputeRows[0].reported_by;
+    // Se avisa a las dos partes: el reportado también participa del chat.
+    for (const userId of await this.participantsOf(params.disputeId)) {
       const tokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
         [userId],
@@ -174,6 +184,11 @@ export class MobileDisputesService {
           this.logger.error('Failed to notify dispute resolved', e),
         );
     }
+
+    this.realtimeGateway.emitToAdmins('dispute.resolved', {
+      disputeId: params.disputeId,
+      timestamp: new Date().toISOString(),
+    });
 
     return { disputeId: params.disputeId, status: 'resolved' };
   }
@@ -236,12 +251,12 @@ export class MobileDisputesService {
                SELECT COUNT(*)::int
                FROM dispute_messages dm
                WHERE dm.dispute_id = d.id
-                 AND dm.sender_type = 'admin'
+                 AND dm.sender_id IS DISTINCT FROM $1
                  AND (d.user_last_read_at IS NULL OR dm.created_at > d.user_last_read_at)
              ) AS unread_count
       FROM disputes d
       LEFT JOIN job_requests jr ON jr.id = d.request_id
-      WHERE d.reported_by = $1
+      WHERE (d.reported_by = $1 OR d.reported_user = $1)
         AND (d.status = 'open' OR (d.status = 'resolved' AND d.resolved_at >= NOW() - INTERVAL '3 days'))
       ORDER BY d.created_at DESC
       LIMIT 100
@@ -293,7 +308,7 @@ export class MobileDisputesService {
       ],
     );
 
-    const participants = await this.dataSource.query('SELECT reported_by FROM disputes WHERE id = $1', [params.disputeId]);
+    const participants = await this.participantsOf(params.disputeId);
     const event = {
       disputeId: params.disputeId,
       messageId: rows[0].id,
@@ -301,15 +316,12 @@ export class MobileDisputesService {
       timestamp: rows[0].created_at,
     };
     this.realtimeGateway.emitToAdmins('dispute.message', event);
-    if (participants[0]) this.realtimeGateway.emitToUser(participants[0].reported_by, 'dispute.message', event);
+    for (const userId of participants) {
+      this.realtimeGateway.emitToUser(userId, 'dispute.message', event);
+    }
 
-    if (params.senderType === 'admin') {
-      const disputeRows = await this.dataSource.query<any[]>(
-        `SELECT reported_by FROM disputes WHERE id = $1 LIMIT 1`,
-        [params.disputeId],
-      );
-      const userId = disputeRows[0]?.reported_by;
-      if (userId) {
+    if (STAFF_SENDER_TYPES.includes(params.senderType)) {
+      for (const userId of participants) {
         const tokenRows = await this.dataSource.query<any[]>(
           `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
           [userId],
@@ -402,5 +414,16 @@ export class MobileDisputesService {
       made: madeRows.map(mapRow),
       received: receivedRows.map(mapRow),
     };
+  }
+
+  /** Usuarios que participan del chat de una queja: quien reportó y el reportado. */
+  private async participantsOf(disputeId: string): Promise<string[]> {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT reported_by, reported_user FROM disputes WHERE id = $1 LIMIT 1`,
+      [disputeId],
+    );
+    return [rows[0]?.reported_by, rows[0]?.reported_user].filter(
+      (id, index, list): id is string => !!id && list.indexOf(id) === index,
+    );
   }
 }

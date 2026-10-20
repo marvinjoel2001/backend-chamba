@@ -43,6 +43,9 @@ export class MobileAccessGuard implements CanActivate {
       return true;
     }
     if (principal.kind === 'admin' && name === 'createCategory') return true;
+    // Lecturas que la consola de admin hace sobre un usuario concreto (el id va en la query/ruta).
+    if (principal.kind === 'admin'
+        && ['getWorkerHistory', 'getWorkerProfile', 'getWorkerSkills', 'getClientHistory'].includes(name)) return true;
     if (principal.kind !== 'mobile') throw new ForbiddenException();
     if (name === 'createCategory' && principal.role !== 'worker') throw new ForbiddenException();
 

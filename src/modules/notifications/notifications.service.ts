@@ -385,7 +385,9 @@ export class NotificationsService {
     requestId: string;
   }): Promise<string | null> {
     const title = `🏢 ${params.agencyName} te postuló a un trabajo`;
-    const body = `Oferta de Bs ${params.amount} en: ${params.jobTitle}`;
+    // La agencia negocia por el trabajador: él no ve la oferta en "Solicitudes"
+    // hasta que el cliente la acepta, así que el aviso lo dice.
+    const body = `Oferta de Bs ${params.amount} en: ${params.jobTitle}. Te avisamos si el cliente la acepta.`;
     const type = 'agency_offer_sent';
 
 
@@ -399,6 +401,21 @@ export class NotificationsService {
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
         deep_link: `/request/${params.requestId}`,
       },
+    });
+  }
+
+  /** El trabajador confirma un vínculo con una agencia pasándole este código. */
+  async notifyAgencyLinkInvite(params: {
+    userId: string;
+    agencyName: string;
+    code: string;
+    minutes: number;
+  }): Promise<string | null> {
+    return this.deliver({
+      userId: params.userId,
+      title: `🏢 ${params.agencyName} quiere sumarte a su flota`,
+      body: `Si aceptas, dale este código: ${params.code} (vence en ${params.minutes} min). Si no, ignora este aviso. Ya en la flota, solo recibirás trabajos de esa agencia.`,
+      data: { type: 'agency_link_invite' },
     });
   }
 

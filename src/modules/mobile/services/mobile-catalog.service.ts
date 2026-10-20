@@ -194,11 +194,18 @@ export class MobileCatalogService {
     };
   }
 
+  /**
+   * Borra la categoría (desactivarla es "Inactiva"). Oficios y solicitudes
+   * guardan el nombre como texto, así que no se rompen; sus subcategorías
+   * quedan sueltas (FK ON DELETE SET NULL).
+   */
   public async deleteCategory(categoryId: string) {
-    await this.dataSource.query(
-      `UPDATE categories SET is_active = false, updated_at = NOW() WHERE id = $1`,
+    const rows = await this.dataSource.query<any[]>(
+      `DELETE FROM categories WHERE id = $1 RETURNING id`,
       [categoryId],
     );
+    const deleted = Array.isArray(rows?.[0]) ? rows[0] : rows;
+    if (!deleted?.[0]) throw new NotFoundException('Category not found');
     return { deleted: true, categoryId };
   }
 
