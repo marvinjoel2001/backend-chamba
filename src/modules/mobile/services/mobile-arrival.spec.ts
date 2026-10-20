@@ -36,7 +36,8 @@ describe('Arrival confirmation is idempotent', () => {
     expect(realtime.emitToUser).not.toHaveBeenCalled();
   });
   it('rejects completing a finished job and emits no repeated notification', async () => {
-    const query = jest.fn().mockResolvedValueOnce([{ id: 'job', client_confirmed_arrival: true }]).mockResolvedValueOnce([[], 0]);
+    const query = jest.fn().mockResolvedValueOnce([{ id: 'job', client_confirmed_arrival: true }])
+      .mockResolvedValueOnce([{ value_json: { percent: 10 } }]).mockResolvedValueOnce([[], 0]);
     const realtime = { broadcastRequest: jest.fn(), emitToUser: jest.fn() };
     const service = new MobileRequestsService({ query } as any, {} as any, {} as any, {} as any,
       realtime as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
@@ -46,6 +47,7 @@ describe('Arrival confirmation is idempotent', () => {
   it('returns the settled amount from PostgreSQL UPDATE instead of NaN', async () => {
     const query = jest.fn()
       .mockResolvedValueOnce([{ id: 'job', client_confirmed_arrival: true, client_user_id: 'client' }])
+      .mockResolvedValueOnce([{ value_json: { percent: 10 } }])
       .mockResolvedValueOnce([[{ id: 'job', settled_amount: '1.43' }], 1])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
@@ -59,14 +61,31 @@ describe('Arrival confirmation is idempotent', () => {
   it('charges the agreed offer, never the clocked time (hourly is paid up front)', async () => {
     const query = jest.fn()
       .mockResolvedValueOnce([{ id: 'job', client_confirmed_arrival: true, client_user_id: 'client' }])
+      .mockResolvedValueOnce([{ value_json: { percent: 12 } }])
       .mockResolvedValueOnce([[{ id: 'job', settled_amount: '120' }], 1])
       .mockResolvedValue([]);
     const service = new MobileRequestsService({ query } as any, {} as any, {} as any, {} as any,
       { broadcastRequest: jest.fn(), emitToUser: jest.fn() } as any, {} as any, {} as any, {} as any,
       {} as any, {} as any, {} as any);
     await service.completeJob({ requestId: 'job', workerUserId: 'worker' });
-    const settle = query.mock.calls[1][0] as string;
+    const settle = query.mock.calls[2][0] as string;
     expect(settle).toContain('settled_amount = jo.amount,');
     expect(settle).not.toContain('work_started_at');
+    // La comisión del admin se congela solo en trabajos independientes.
+    expect(settle).toContain('platform_fee = CASE WHEN jo.offered_by_agency_id IS NULL');
+    expect(query.mock.calls[2][1]).toEqual(['job', 'worker', 12]);
+  });
+  it('does not force the worker back online after completing', async () => {
+    const query = jest.fn()
+      .mockResolvedValueOnce([{ id: 'job', client_confirmed_arrival: true, client_user_id: 'client' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([[{ id: 'job', settled_amount: '50' }], 1])
+      .mockResolvedValue([]);
+    const service = new MobileRequestsService({ query } as any, {} as any, {} as any, {} as any,
+      { broadcastRequest: jest.fn(), emitToUser: jest.fn() } as any, {} as any, {} as any, {} as any,
+      {} as any, {} as any, {} as any);
+    await service.completeJob({ requestId: 'job', workerUserId: 'worker' });
+    expect(query.mock.calls[2][1]).toEqual(['job', 'worker', 10]);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('is_available = true'))).toBe(false);
   });
 });

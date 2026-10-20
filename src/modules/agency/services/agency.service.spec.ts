@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { AgencyService } from './agency.service';
 import { MobileOffersService } from '../../mobile/services/mobile-offers.service';
@@ -9,7 +10,7 @@ describe('AgencyService', () => {
   let service: AgencyService;
   let dataSource: { query: jest.Mock };
   let mobileOffersService: { upsertOffer: jest.Mock };
-  let notificationsService: { notifyWorkerAgencyOffer: jest.Mock };
+  let notificationsService: { notifyWorkerAgencyOffer: jest.Mock; notifyAgencyLinkInvite: jest.Mock };
 
   const AGENCY_ID = 'a0000000-0000-0000-0000-000000000001';
   const WORKER_ID = 'b0000000-0000-0000-0000-000000000002';
@@ -18,7 +19,7 @@ describe('AgencyService', () => {
   beforeEach(async () => {
     dataSource = { query: jest.fn() };
     mobileOffersService = { upsertOffer: jest.fn() };
-    notificationsService = { notifyWorkerAgencyOffer: jest.fn() };
+    notificationsService = { notifyWorkerAgencyOffer: jest.fn(), notifyAgencyLinkInvite: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -108,6 +109,66 @@ describe('AgencyService', () => {
       await expect(
         service.sendOffer(AGENCY_ID, REQUEST_ID, dto),
       ).resolves.toEqual({ ok: true });
+    });
+  });
+
+  describe('linkWorker (consentimiento con código)', () => {
+    const worker = { id: WORKER_ID, type: 'worker', agency_id: null, is_agency_worker: false };
+    const hash = (code: string) => createHash('sha256').update(code).digest('hex');
+
+    it('sin código no vincula: envía un código al trabajador', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ name: 'Agencia Sol' }]);
+
+      await expect(service.linkWorker(AGENCY_ID, 'w@chamba.app')).resolves.toEqual({
+        pending: true,
+        expiresInMinutes: 15,
+      });
+      const sql = dataSource.query.mock.calls.map(([q]) => String(q));
+      expect(sql.some((q) => q.includes('UPDATE users'))).toBe(false);
+      const sent = notificationsService.notifyAgencyLinkInvite.mock.calls[0][0];
+      expect(sent).toMatchObject({ userId: WORKER_ID, agencyName: 'Agencia Sol' });
+      expect(sent.code).toMatch(/^\d{6}$/);
+      // Se guarda el hash, nunca el código.
+      expect(dataSource.query.mock.calls[1][1]).toContain(hash(sent.code));
+    });
+
+    it('un código incorrecto suma un intento y no vincula', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([{ code_hash: hash('111111'), attempts: 0, alive: true }])
+        .mockResolvedValueOnce([]);
+
+      await expect(service.linkWorker(AGENCY_ID, 'w@chamba.app', '222222')).rejects.toThrow('no es correcto');
+      expect(String(dataSource.query.mock.calls[2][0])).toContain('attempts = attempts + 1');
+    });
+
+    it('un código vencido o con demasiados intentos se rechaza', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([{ code_hash: hash('111111'), attempts: 5, alive: true }]);
+
+      await expect(service.linkWorker(AGENCY_ID, 'w@chamba.app', '111111')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('con el código correcto vincula al trabajador', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([worker])
+        .mockResolvedValueOnce([{ code_hash: hash('111111'), attempts: 1, alive: true }])
+        .mockResolvedValueOnce([]) // borra la invitación
+        .mockResolvedValueOnce([{ id: WORKER_ID }]) // UPDATE users
+        .mockResolvedValue([]); // getWorkers
+
+      await service.linkWorker(AGENCY_ID, 'w@chamba.app', '111111');
+      const update = dataSource.query.mock.calls.find(([q]) => String(q).includes('UPDATE users'))!;
+      expect(String(update[0])).toContain('agency_id IS NULL OR agency_id = $1');
+    });
+
+    it('no toma a un trabajador de otra agencia', async () => {
+      dataSource.query.mockResolvedValueOnce([{ ...worker, agency_id: 'otra' }]);
+      await expect(service.linkWorker(AGENCY_ID, 'w@chamba.app')).rejects.toBeInstanceOf(ConflictException);
     });
   });
 

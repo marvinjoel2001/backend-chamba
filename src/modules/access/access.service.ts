@@ -92,7 +92,8 @@ export class AccessService {
       w.id AS worker_id, w.first_name AS worker_first_name, w.last_name AS worker_last_name,
       w.profile_photo_url AS worker_photo, c.id AS client_id, c.first_name AS client_first_name,
       c.last_name AS client_last_name, c.profile_photo_url AS client_photo, ct.id AS thread_id,
-      (SELECT p.url FROM job_request_photos p WHERE p.request_id = jr.id ORDER BY p.created_at LIMIT 1) AS photo_url
+      (SELECT p.url FROM job_request_photos p WHERE p.request_id = jr.id ORDER BY p.created_at LIMIT 1) AS photo_url,
+      EXISTS (SELECT 1 FROM worker_reviews r WHERE r.request_id = jr.id) AS reviewed
       FROM job_requests jr
       JOIN users c ON c.id = jr.client_user_id
       LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
@@ -115,6 +116,8 @@ export class AccessService {
       latitude: row.latitude == null ? null : Number(row.latitude),
       longitude: row.longitude == null ? null : Number(row.longitude),
       threadId: row.thread_id ?? null, photoUrl: row.photo_url ?? null,
+      // La app abre "Calificar" desde el push de trabajo terminado si aún no se calificó.
+      reviewed: row.reviewed === true,
       worker: row.worker_id ? { id: row.worker_id, firstName: row.worker_first_name,
         lastName: row.worker_last_name ?? '', profilePhotoUrl: row.worker_photo ?? null } : null,
       client: { id: row.client_id, firstName: row.client_first_name,
@@ -123,7 +126,8 @@ export class AccessService {
   }
 
   async assertDispute(userId: string, disputeId: string): Promise<void> {
-    const rows = await this.db.query(`SELECT id FROM disputes WHERE id = $1 AND reported_by = $2`, [disputeId, userId]);
+    // Las dos partes de la queja entran al chat de soporte; al reportado se le avisa para que responda.
+    const rows = await this.db.query(`SELECT id FROM disputes WHERE id = $1 AND (reported_by = $2 OR reported_user = $2)`, [disputeId, userId]);
     if (!rows[0]) throw new ForbiddenException('No perteneces a esta conversación de soporte');
   }
 }

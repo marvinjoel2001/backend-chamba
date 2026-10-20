@@ -192,7 +192,8 @@ describe('PaymentsService', () => {
       card: { clientSecret: 'pi_123_secret_abc', customer: 'cus_1', publishableKey: 'pk_test' },
       canReportPaid: false,
     });
-    expect(stripe.createPaymentIntent).toHaveBeenCalledWith(150, undefined, 'c1');
+    // Los montos de Chamba están en bolivianos: Stripe cobra en BOB.
+    expect(stripe.createPaymentIntent).toHaveBeenCalledWith(150, 'bob', 'c1');
     expect(db.payments[0].external_id).toBe('pi_123');
 
     const refreshed = await service.getForClient('c1', view.id!);

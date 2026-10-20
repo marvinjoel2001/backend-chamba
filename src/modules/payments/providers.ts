@@ -1,5 +1,5 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { StripeService } from '../stripe/stripe.service';
+import { CHAMBA_STRIPE_CURRENCY, StripeService } from '../stripe/stripe.service';
 import {
   PaymentProvider,
   PaymentStatus,
@@ -53,9 +53,10 @@ export class StripeCardProvider implements PaymentProvider {
   constructor(private readonly stripe: StripeService) {}
 
   async createCheckout(ctx: ProviderContext): Promise<ProviderCheckout> {
+    // El monto del pago está en la moneda de la oferta (BOB).
     const intent = await this.stripe.createPaymentIntent(
       ctx.amount,
-      undefined,
+      ctx.currency || CHAMBA_STRIPE_CURRENCY,
       ctx.clientUserId,
     );
     const clientSecret = intent.paymentIntent;

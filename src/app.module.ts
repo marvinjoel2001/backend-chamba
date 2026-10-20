@@ -22,6 +22,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AdminUsersModule } from './modules/admin-users/admin-users.module';
 import { AgencyModule } from './modules/agency/agency.module';
 import { StripeModule } from './modules/stripe/stripe.module';
+import { WebContactModule } from './modules/web-contact/web-contact.module';
 
 const envFilePath =
   process.env.NODE_ENV === 'production'
@@ -54,6 +55,7 @@ const envFilePath =
     PlaceholdersModule,
     PaymentMethodsModule,
     PaymentsModule,
+    WebContactModule,
     WorkerLeadsModule,
     AdminUsersModule,
     AuthModule,

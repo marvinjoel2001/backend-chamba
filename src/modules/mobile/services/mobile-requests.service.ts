@@ -558,6 +558,8 @@ export class MobileRequestsService {
              jo.amount AS offer_amount,
              jo.status AS offer_status,
              jo.expires_at AS offer_expires_at,
+             -- El cliente subió su presupuesto después de esta oferta.
+             (jr.budget_raised_at IS NOT NULL AND jr.budget_raised_at > jo.created_at) AS offer_client_raised,
              CASE
                WHEN jo.status = 'pending' AND jo.expires_at IS NOT NULL
                  THEN EXTRACT(EPOCH FROM (jo.expires_at - NOW()))
@@ -688,6 +690,7 @@ export class MobileRequestsService {
               amount: Number(row.offer_amount ?? 0),
               status: row.offer_status ?? 'pending',
               expiresAt: row.offer_expires_at ?? null,
+              clientRaisedBudget: row.offer_client_raised === true,
               secondsRemaining:
                 row.offer_seconds_left == null
                   ? null
@@ -1056,6 +1059,8 @@ export class MobileRequestsService {
       );
     }
 
+    const commissionPercent = await this.getPlatformCommissionPercent();
+
     // La oferta aceptada sobrevive a la cancelación (closePendingOffers solo
     // cierra las 'pending'), así que sin este guard un trabajo cancelado podía
     // completarse igual y "resucitar", contando para pagos y estadísticas.
@@ -1066,6 +1071,11 @@ export class MobileRequestsService {
         -- Se cobra lo acordado y pagado al aceptar: en "por hora" es tarifa ×
         -- horas estimadas (ya incluido en la oferta), no el tiempo cronometrado.
         settled_amount = jo.amount,
+        -- Comisión de Chamba congelada al terminar (la que el admin tiene hoy).
+        -- Trabajos de agencia: la cobra el libro de la agencia, no se duplica.
+        platform_commission_rate = CASE WHEN jo.offered_by_agency_id IS NULL THEN $3::float8 END,
+        platform_fee = CASE WHEN jo.offered_by_agency_id IS NULL
+          THEN ROUND((jo.amount * $3::float8 / 100)::numeric, 2) END,
         work_paused_seconds = jr.work_paused_seconds + CASE WHEN jr.work_paused_at IS NOT NULL
           THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - jr.work_paused_at)))::integer) ELSE 0 END,
         work_paused_at = NULL
@@ -1074,7 +1084,7 @@ export class MobileRequestsService {
         AND jr.status = 'assigned'
       RETURNING jr.id, jr.settled_amount
       `,
-      [params.requestId, params.workerUserId],
+      [params.requestId, params.workerUserId, commissionPercent],
     );
     const completed = firstUpdatedRow(completedRows);
     if (!completed) {
@@ -1087,13 +1097,9 @@ export class MobileRequestsService {
       status: 'completed',
       timestamp: new Date().toISOString(),
     });
-    await this.dataSource.query(
-      `UPDATE users SET is_available = true, updated_at = NOW() WHERE id = $1`,
-      [params.workerUserId],
-    );
-    this.logger.log(
-      `[completeJob] Worker ${params.workerUserId} restaurado como disponible`,
-    );
+    // No se toca is_available: el trabajo en curso ya lo saca de las olas
+    // (NOT EXISTS ... 'assigned') y forzarlo a true reconectaba a quien se
+    // había desconectado a mano.
 
     this.realtimeGateway.emitToUser(params.workerUserId, 'job.completed', {
       requestId: params.requestId,
@@ -1177,15 +1183,7 @@ export class MobileRequestsService {
       status: 'cancelled',
       timestamp: new Date().toISOString(),
     });
-    if (req.worker_user_id) {
-      await this.dataSource.query(
-        `UPDATE users SET is_available = true, updated_at = NOW() WHERE id = $1`,
-        [req.worker_user_id],
-      );
-      this.logger.log(
-        `[cancelJob] Worker ${req.worker_user_id} restaurado como disponible`,
-      );
-    }
+    // is_available queda como el trabajador lo dejó (ver completeJob).
 
     if (req.client_user_id) {
       this.realtimeGateway.emitToUser(req.client_user_id, 'job.cancelled', {
@@ -1332,6 +1330,19 @@ export class MobileRequestsService {
       );
     }
 
+    // Solo se califica a quien hizo el trabajo (su oferta fue la aceptada).
+    const assigned = await this.dataSource.query<any[]>(
+      `SELECT 1 FROM job_offers
+       WHERE request_id = $1 AND worker_user_id = $2 AND status = 'accepted'
+       LIMIT 1`,
+      [params.requestId, params.workerUserId],
+    );
+    if (!assigned.length) {
+      throw new BadRequestException(
+        'Solo puedes calificar al trabajador que hizo este trabajo',
+      );
+    }
+
     const insertResult = await this.dataSource.query(
       `
       INSERT INTO worker_reviews (request_id, worker_user_id, client_user_id, stars, comment)
@@ -1437,6 +1448,8 @@ export class MobileRequestsService {
       FROM users u
       WHERE u.type = 'worker'
         AND u.is_available = true
+        -- Los de agencia no pueden ofertar P2P (su agencia oferta por ellos).
+        AND COALESCE(u.is_agency_worker, false) = false
         AND u.current_location IS NOT NULL
         AND NOT EXISTS (
           SELECT 1
@@ -1570,7 +1583,9 @@ export class MobileRequestsService {
       [params.requestId],
     );
     const currentStatus = String(requestRows[0]?.status ?? '');
-    if (currentStatus !== 'searching') {
+    // La primera oferta pasa la solicitud a 'negotiating': las olas siguen
+    // para que el cliente reciba más ofertas; se cortan al asignar o cerrar.
+    if (!['searching', 'negotiating'].includes(currentStatus)) {
       this.logger.log(
         `[request.new] Ola cancelada para ${params.requestId}: estado actual ${currentStatus}`,
       );
@@ -1580,6 +1595,7 @@ export class MobileRequestsService {
     // Fuera también quien bloqueó a este cliente: no debe sonarle su solicitud.
     const eligible = await this.dataSource.query(`SELECT id FROM users WHERE id = ANY($1::uuid[])
       AND is_available = true AND COALESCE(is_blocked, false) = false
+      AND COALESCE(is_agency_worker, false) = false
       AND NOT EXISTS (SELECT 1 FROM user_blocks b JOIN job_requests jr ON jr.client_user_id = b.blocked_user_id
         WHERE jr.id = $2 AND b.blocker_user_id = users.id)`, [params.waveWorkers.map(w => w.workerId), params.requestId]);
     const ids = new Set(eligible.map((row: { id: string }) => row.id));
@@ -1931,6 +1947,17 @@ Reglas obligatorias:
       };
     }
     return defaultVal;
+  }
+
+  /** Porcentaje que el admin fija en Comisión (mismo default que getCommissionConfig). */
+  private async getPlatformCommissionPercent(): Promise<number> {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT value_json FROM app_config WHERE key = 'platform_commission' LIMIT 1`,
+    );
+    const raw = rows[0]?.value_json;
+    const val = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const percent = Number(val?.percent ?? 10);
+    return Number.isFinite(percent) ? Math.min(50, Math.max(0, percent)) : 10;
   }
 
   private async uploadRequestPhotos(requestId: string, images: string[]) {

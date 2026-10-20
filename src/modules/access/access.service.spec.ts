@@ -85,6 +85,27 @@ describe('Authenticated mobile boundaries', () => {
     db.query.mockResolvedValue([{ type: 'worker' }]);
     await expect(new MobileAccessGuard(access).canActivate(context('sendDisputeMessage', request('mobile/disputes/x/messages', { senderId: userId, senderType: 'admin' })))).rejects.toBeInstanceOf(ForbiddenException);
   });
+  it('lets the admin console read a worker history and profile', async () => {
+    db.query.mockResolvedValue([{ id: 'admin-1' }]);
+    const adminToken = jwt.sign({ sub: 'admin-1', username: 'root' }, { secret: 'test-secret-with-at-least-32-characters' });
+    for (const [name, path] of [['getWorkerHistory', 'mobile/worker/history'], ['getWorkerProfile', 'mobile/workers/:workerId/profile']]) {
+      const req = { route: { path }, method: 'GET', body: {}, query: { workerUserId: 'w1' }, params: {}, headers: { authorization: 'Bearer ' + adminToken } };
+      await expect(new MobileAccessGuard(access).canActivate(context(name, req))).resolves.toBe(true);
+      expect(req.query.workerUserId).toBe('w1');
+    }
+  });
+  it('still keeps the admin out of mobile actions', async () => {
+    db.query.mockResolvedValue([{ id: 'admin-1' }]);
+    const adminToken = jwt.sign({ sub: 'admin-1', username: 'root' }, { secret: 'test-secret-with-at-least-32-characters' });
+    const req = { route: { path: 'mobile/offers' }, method: 'POST', body: {}, query: {}, params: {}, headers: { authorization: 'Bearer ' + adminToken } };
+    await expect(new MobileAccessGuard(access).canActivate(context('upsertOffer', req))).rejects.toBeInstanceOf(ForbiddenException);
+  });
+  it('opens the support chat to both sides of a dispute', async () => {
+    db.query.mockResolvedValueOnce([{ id: 'd1' }]).mockResolvedValueOnce([]);
+    await expect(access.assertDispute(userId, 'd1')).resolves.toBeUndefined();
+    expect(db.query.mock.calls[0][0]).toContain('reported_user = $2');
+    await expect(access.assertDispute(userId, 'd2')).rejects.toBeInstanceOf(ForbiddenException);
+  });
   it('denies messages from an unrelated thread at the HTTP boundary', async () => {
     db.query.mockResolvedValueOnce([{ type: 'worker' }]).mockResolvedValueOnce([]);
     await expect(new MobileAccessGuard(access).canActivate(context('getThreadMessages', request('mobile/messages/:threadId', {}, {}, { threadId: 'other' })))).rejects.toBeInstanceOf(ForbiddenException);

@@ -203,6 +203,13 @@ export class MobileUsersService {
         message: 'Recibimos tus fotos. Nuestro equipo las esta revisando.',
       },
     );
+    // Entra a la bandeja del admin (si ya estaba pendiente, solo cambió fotos).
+    if (user.verificationStatus !== 'pending') {
+      this.realtimeGateway.emitToAdmins('verification.new', {
+        userId: params.workerUserId,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     return {
       submitted: true,
@@ -676,7 +683,9 @@ export class MobileUsersService {
              (SELECT p.url FROM job_request_photos p WHERE p.request_id = jr.id ORDER BY p.created_at ASC LIMIT 1) as photo_url,
              EXISTS (SELECT 1 FROM worker_reviews r WHERE r.request_id = jr.id) AS reviewed
       FROM job_requests jr
-      LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status IN ('accepted', 'rejected')
+      -- Solo la oferta aceptada: las rechazadas duplicaban el trabajo una vez
+      -- por oferta y mostraban como autor a trabajadores que no lo hicieron.
+      LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
       LEFT JOIN users w ON w.id = jo.worker_user_id
       LEFT JOIN chat_threads ct
         ON ct.request_id = jr.id

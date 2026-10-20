@@ -185,7 +185,9 @@ describe('AgencyOperationsService', () => {
       expect(account.jobs.find((j: any) => j.requestId === 'r2')!.effect).toBe(90);
       // El libro se sincroniza antes de leer (montos congelados).
       expect(query.mock.calls[0][0]).toContain('INSERT INTO agency_job_ledger');
-      expect(query.mock.calls[0][0]).toContain('ON CONFLICT (request_id) DO NOTHING');
+      // Solo se corrige efectivo → digital (QR confirmado después); las comisiones no se tocan.
+      expect(query.mock.calls[0][0]).toContain('ON CONFLICT (request_id) DO UPDATE SET is_digital = true');
+      expect(query.mock.calls[0][0]).not.toContain('worker_rate = EXCLUDED');
     });
 
     it('pagos a trabajadores: solo propios y montos positivos', async () => {

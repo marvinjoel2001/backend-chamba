@@ -893,7 +893,8 @@ export class MobileOffersService {
     }
 
     await this.dataSource.query(
-      `UPDATE job_requests SET budget = $2${extraSet}, status = 'negotiating', updated_at = NOW() WHERE id = $1`,
+      `UPDATE job_requests SET budget = $2${extraSet}, status = 'negotiating',
+         budget_raised_at = NOW(), updated_at = NOW() WHERE id = $1`,
       updateParams,
     );
 

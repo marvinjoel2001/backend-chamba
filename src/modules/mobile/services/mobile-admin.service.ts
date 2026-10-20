@@ -378,7 +378,15 @@ export class MobileAdminService {
              u.first_name,
              u.last_name,
              COUNT(*)::int AS jobs_completed,
-             COALESCE(SUM(COALESCE(jr.settled_amount, jo.amount)), 0)::numeric AS earnings
+             COALESCE(SUM(COALESCE(jr.settled_amount, jo.amount)), 0)::numeric AS earnings,
+             -- Comisión congelada al completar (solo trabajos independientes).
+             COALESCE(SUM(jr.platform_fee), 0)::numeric AS platform_fees,
+             -- Lo que el cliente le pagó a Chamba (QR/tarjeta confirmado) en
+             -- trabajos independientes: Chamba se lo debe al trabajador.
+             COALESCE(SUM(COALESCE(jr.settled_amount, jo.amount)) FILTER (
+               WHERE jo.offered_by_agency_id IS NULL AND EXISTS (
+                 SELECT 1 FROM payments p WHERE p.request_id = jr.id AND p.status = 'paid')
+             ), 0)::numeric AS digital_collected
       FROM job_offers jo
       JOIN users u ON u.id = jo.worker_user_id
       JOIN job_requests jr ON jr.id = jo.request_id
@@ -390,24 +398,39 @@ export class MobileAdminService {
       `,
     );
 
-    const totals = rows.reduce(
-      (acc, row) => {
-        acc.totalEarnings += Number(row.earnings ?? 0);
-        acc.totalJobs += Number(row.jobs_completed ?? 0);
-        return acc;
-      },
-      { totalEarnings: 0, totalJobs: 0 },
-    );
-
-    return {
-      period,
-      totals,
-      workers: rows.map((row) => ({
+    const round2 = (value: number) => Math.round(value * 100) / 100;
+    const workers = rows.map((row) => {
+      const platformFees = Number(row.platform_fees ?? 0);
+      const digitalCollected = Number(row.digital_collected ?? 0);
+      return {
         id: row.id,
         name: `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim(),
         jobsCompleted: Number(row.jobs_completed ?? 0),
         earnings: Number(row.earnings ?? 0),
-      })),
+        platformFees,
+        digitalCollected,
+        // > 0: Chamba le debe al trabajador (cobró digital menos comisión).
+        // < 0: el trabajador cobró en efectivo y le debe la comisión a Chamba.
+        balance: round2(digitalCollected - platformFees),
+      };
+    });
+
+    const totals = workers.reduce(
+      (acc, worker) => {
+        acc.totalEarnings += worker.earnings;
+        acc.totalJobs += worker.jobsCompleted;
+        acc.totalCommission = round2(acc.totalCommission + worker.platformFees);
+        return acc;
+      },
+      { totalEarnings: 0, totalJobs: 0, totalCommission: 0 },
+    );
+    const { commissionPercent } = await this.getCommissionConfig();
+
+    return {
+      period,
+      commissionPercent,
+      totals,
+      workers,
     };
   }
 
@@ -997,7 +1020,8 @@ export class MobileAdminService {
     return {
       active: val?.active === true,
       publishableKey: val?.publishableKey ?? '',
-      currency: val?.currency ?? 'usd',
+      // Stripe siempre cobra en bolivianos (ver CHAMBA_STRIPE_CURRENCY).
+      currency: 'bob',
       secretKeySet: secretKey.length > 0,
       secretKeyLast4: secretKey.length > 4 ? secretKey.slice(-4) : '',
     };
@@ -1024,7 +1048,7 @@ export class MobileAdminService {
       // Si no envían secretKey se conserva la anterior (permite togglear
       // active sin re-pegar la llave).
       secretKey: params.secretKey || previous?.secretKey || '',
-      currency: (params.currency || previous?.currency || 'usd').toLowerCase(),
+      currency: 'bob',
     };
 
     await this.dataSource.query(
@@ -1079,12 +1103,7 @@ export class MobileAdminService {
       `SELECT worker_user_id FROM job_offers WHERE request_id = $1 AND status = 'accepted' LIMIT 1`,
       [params.requestId],
     );
-    if (offerRows[0]?.worker_user_id) {
-      await this.dataSource.query(
-        `UPDATE users SET is_available = true, updated_at = NOW() WHERE id = $1`,
-        [offerRows[0].worker_user_id],
-      );
-    }
+    // is_available queda como el trabajador lo dejó (ver completeJob).
 
     this.realtimeGateway.broadcastRequest('request.status.updated', {
       requestId: params.requestId,

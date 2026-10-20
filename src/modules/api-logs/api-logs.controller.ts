@@ -1,8 +1,10 @@
-import { Controller, Get, Query, Delete } from '@nestjs/common';
+import { Controller, Get, Query, Delete, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { AdminAccessGuard } from '../access/mobile-access.guard';
 import { ApiLogsService } from './api-logs.service';
 
 @ApiTags('Admin API Logs')
+@UseGuards(AdminAccessGuard)
 @Controller('mobile/admin/logs')
 export class ApiLogsController {
   constructor(private readonly apiLogsService: ApiLogsService) {}

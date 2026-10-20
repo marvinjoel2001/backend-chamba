@@ -2,6 +2,13 @@ import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import Stripe from 'stripe';
 
+/**
+ * Todos los montos de Chamba (presupuestos, ofertas, pagos) están en
+ * bolivianos. Stripe cobra en esa misma moneda; una moneda guardada en la
+ * config (antes se guardaba 'usd' por defecto) cobraría Bs 150 como USD 150.
+ */
+export const CHAMBA_STRIPE_CURRENCY = 'bob';
+
 @Injectable()
 export class StripeService {
   constructor(private readonly dataSource: DataSource) {}
@@ -24,14 +31,14 @@ export class StripeService {
         active: val?.active === true,
         secretKey: val?.secretKey ?? '',
         publishableKey: val?.publishableKey ?? '',
-        currency: (val?.currency ?? 'usd').toLowerCase(),
+        currency: CHAMBA_STRIPE_CURRENCY,
       };
     }
     return {
       active: false,
       secretKey: '',
       publishableKey: '',
-      currency: 'usd',
+      currency: CHAMBA_STRIPE_CURRENCY,
     };
   }
 

@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEmail, IsOptional, Matches } from 'class-validator';
 
 export class LinkWorkerDto {
   @ApiProperty({
@@ -8,4 +8,13 @@ export class LinkWorkerDto {
   })
   @IsEmail()
   email: string;
+
+  @ApiPropertyOptional({
+    example: '482913',
+    description:
+      'Código que el trabajador recibió por notificación. Sin él, se le envía uno nuevo.',
+  })
+  @IsOptional()
+  @Matches(/^\d{6}$/, { message: 'El código tiene 6 dígitos' })
+  code?: string;
 }

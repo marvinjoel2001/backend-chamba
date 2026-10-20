@@ -13,6 +13,10 @@ import { EnsureUsersGoogleId1791700000000 } from './migrations/1791700000000-Ens
 import { AddAccountDeletion1791800000000 } from './migrations/1791800000000-AddAccountDeletion';
 import { AddPayments1791900000000 } from './migrations/1791900000000-AddPayments';
 import { AgencyOperations1792000000000 } from './migrations/1792000000000-AgencyOperations';
+import { PlatformCommission1792100000000 } from './migrations/1792100000000-PlatformCommission';
+import { AgencyWorkerInvites1792200000000 } from './migrations/1792200000000-AgencyWorkerInvites';
+import { BudgetRaisedAt1792300000000 } from './migrations/1792300000000-BudgetRaisedAt';
+import { WebContactMessages1792400000000 } from './migrations/1792400000000-WebContactMessages';
 
 @Module({
   imports: [
@@ -55,6 +59,10 @@ import { AgencyOperations1792000000000 } from './migrations/1792000000000-Agency
             AddAccountDeletion1791800000000,
             AddPayments1791900000000,
             AgencyOperations1792000000000,
+            PlatformCommission1792100000000,
+            AgencyWorkerInvites1792200000000,
+            BudgetRaisedAt1792300000000,
+            WebContactMessages1792400000000,
           ],
           migrationsRun: true,
           migrationsTableName: 'typeorm_migrations',

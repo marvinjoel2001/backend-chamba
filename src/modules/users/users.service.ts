@@ -6,7 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import * as bcrypt from 'bcryptjs';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -68,7 +69,9 @@ export class UsersService {
       return cachedUsers;
     }
 
+    // Los eliminados desde el admin (o por borrado de cuenta) no se listan.
     const users = await this.usersRepository.find({
+      where: { deletedAt: IsNull() },
       order: { createdAt: 'DESC' },
     });
 
@@ -124,7 +127,7 @@ export class UsersService {
       }
     }
 
-    // La contraseña no vive en la tabla users (entidad), se guarda en auth_credentials.
+    // La contraseña no vive en la tabla users (entidad), se guarda hasheada en auth_credentials.
     const { password, ...userFields } = updateUserDto;
 
     const merged = this.usersRepository.merge(user, userFields);
@@ -137,7 +140,7 @@ export class UsersService {
         VALUES ($1, $2)
         ON CONFLICT (user_id) DO UPDATE SET password = EXCLUDED.password
         `,
-        [id, password],
+        [id, await bcrypt.hash(password.trim(), 12)],
       );
     }
 
@@ -151,6 +154,7 @@ export class UsersService {
     return this.usersRepository
       .createQueryBuilder('user')
       .where('user.type = :type', { type: UserType.WORKER })
+      .andWhere('user.deletedAt IS NULL')
       .andWhere('user.verificationStatus = :status', {
         status: VerificationStatus.PENDING,
       })
@@ -178,6 +182,7 @@ export class UsersService {
     if (user.type !== UserType.WORKER) {
       throw new BadRequestException('Only workers can be reviewed');
     }
+    const wasPending = user.verificationStatus === VerificationStatus.PENDING;
 
     if (!user.idPhotoUrl && !user.facePhotoUrl) {
       throw new BadRequestException(
@@ -210,6 +215,14 @@ export class UsersService {
     await this.redisService.del(`${USER_CACHE_PREFIX}${userId}`);
 
     this.emitVerificationUpdate(updated);
+    // El contador de pendientes del admin baja solo cuando sale de la bandeja.
+    if (wasPending && updated.verificationStatus !== VerificationStatus.PENDING) {
+      this.realtimeGateway.emitToAdmins('verification.reviewed', {
+        userId: updated.id,
+        verificationStatus: updated.verificationStatus,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     // Push notification al worker
     const message = this.buildVerificationMessage(updated);
@@ -354,10 +367,19 @@ export class UsersService {
     return 'Necesitamos que vuelvas a subir tus fotos para completar tu verificacion.';
   }
 
+  /**
+   * Eliminar desde el admin: la cuenta deja de listarse, no puede entrar
+   * (bloqueada) y deja de recibir avisos. Los datos y su historial quedan
+   * (no se anonimiza como en el borrado de cuenta que pide el usuario).
+   */
   async softDelete(id: string) {
     const user = await this.findOne(id);
-    user.isAvailable = false;
-    await this.usersRepository.save(user);
+    await this.usersRepository.update(id, {
+      isAvailable: false,
+      isBlocked: true,
+      deletedAt: new Date(),
+    });
+    await this.dataSource.query(`DELETE FROM push_tokens WHERE user_id = $1`, [id]);
     await this.redisService.del(USERS_ALL_CACHE_KEY);
     await this.redisService.del(USER_CACHE_PREFIX + id);
     return { deleted: true, id: user.id };
