@@ -18,6 +18,7 @@ import { AgencyWorkerInvites1792200000000 } from './migrations/1792200000000-Age
 import { BudgetRaisedAt1792300000000 } from './migrations/1792300000000-BudgetRaisedAt';
 import { WebContactMessages1792400000000 } from './migrations/1792400000000-WebContactMessages';
 import { BotSimulation1793652000000 } from './migrations/1793652000000-BotSimulation';
+import { VerifiedPhones1793656000000 } from './migrations/1793656000000-VerifiedPhones';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { BotSimulation1793652000000 } from './migrations/1793652000000-BotSimula
             BudgetRaisedAt1792300000000,
             WebContactMessages1792400000000,
             BotSimulation1793652000000,
+            VerifiedPhones1793656000000,
           ],
           migrationsRun: true,
           migrationsTableName: 'typeorm_migrations',

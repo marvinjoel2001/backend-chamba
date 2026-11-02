@@ -45,6 +45,7 @@ export const envValidationSchema = Joi.object({
   NVIDIA_MODEL: Joi.string().allow('').optional(),
 
   FIREBASE_PROJECT_ID: Joi.string().allow('').optional(),
+  PHONE_VERIFICATION_REQUIRED: Joi.boolean().truthy('true').falsy('false').default(false),
   FIREBASE_CLIENT_EMAIL: Joi.string().allow('').optional(),
   FIREBASE_PRIVATE_KEY: Joi.string().allow('').optional(),
 

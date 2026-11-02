@@ -32,11 +32,15 @@ describe('Worker web signup', () => {
     };
     db = { transaction: jest.fn((fn) => fn(manager)),
       query: jest.fn(async () => account ? [{ ...account, password: credentials }] : []) };
-    const args: any[] = Array(15).fill({});
+    const args: any[] = Array(16).fill({});
     args[1] = db;
     args[4] = { emitToAdmins: jest.fn() };
     args[6] = { normalizePhone: (value: string) => value.replace(/\D/g, '').slice(-8) };
     args[14] = { issueMobile: () => 'signed-token' };
+    args[15] = { verify: jest.fn(async (value) => {
+      if (!value.phone) throw new BadRequestException('Teléfono obligatorio');
+      return { e164: '+59170000000', uid: 'verified-firebase-user' };
+    }) };
     service = new MobileService(...args as ConstructorParameters<typeof MobileService>);
   });
 

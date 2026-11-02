@@ -25,6 +25,7 @@ import { MobileUsersService } from './services/mobile-users.service';
 import { MobileAdminService } from './services/mobile-admin.service';
 import { WorkerLead } from '../worker-leads/entities/worker-lead.entity';
 import { isEmail } from 'class-validator';
+import { PhoneVerificationService } from './services/phone-verification.service';
 
 type CreateRequestInput = {
   clientUserId: string;
@@ -86,6 +87,7 @@ export class MobileService implements OnModuleInit {
     private readonly usersService: MobileUsersService,
     private readonly adminService: MobileAdminService,
     private readonly access: AccessService,
+    private readonly phoneVerification: PhoneVerificationService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -102,6 +104,8 @@ export class MobileService implements OnModuleInit {
     password: string;
     ciNumber?: string;
     source?: string;
+    countryCode?: string;
+    phoneIdToken?: string;
   }) {
     const type = (input.type ?? 'client').toLowerCase().trim();
     if (type !== 'client' && type !== 'worker') {
@@ -123,13 +127,14 @@ export class MobileService implements OnModuleInit {
       throw new BadRequestException('password must be at least 4 characters');
     }
 
-    const phone = this.geoHelpers.normalizePhone(input.phone);
+    const proof = await this.phoneVerification.verify(input);
+    const phone = this.geoHelpers.normalizePhone(proof?.e164 ?? input.phone);
     const lastName = input.lastName?.trim() || null;
 
     // Web signup creates the same account used by the mobile app. Save the
     // contact request in the same transaction so success also guarantees follow-up.
     const isWebWorker = input.source === 'web' && type === 'worker';
-    if (isWebWorker && (!isEmail(email) || !phone || !/^\d{7,15}$/.test(phone) ||
+    if (input.source === 'web' && (!isEmail(email) || !phone || !/^\d{7,15}$/.test(phone) ||
         password.length < 8 || Buffer.byteLength(password, 'utf8') > 72)) {
       throw new BadRequestException('Revisa tu correo, telefono y contraseña');
     }
@@ -142,11 +147,13 @@ export class MobileService implements OnModuleInit {
         WHERE LOWER(email) = LOWER($1)
            OR (
              $2::text IS NOT NULL
-             AND regexp_replace(COALESCE(phone, ''), '[^0-9]+', '', 'g') = $2
+             AND (regexp_replace(COALESCE(phone, ''), '[^0-9]+', '', 'g') = $2
+               OR ($3::text IS NOT NULL AND (phone_e164 = $3 OR
+                 regexp_replace(COALESCE(phone, ''), '[^0-9]+', '', 'g') = replace($3,'+',''))))
            )
         LIMIT 1
         `,
-        [email, phone],
+        [email, phone, proof?.e164 ?? null],
       );
 
       if (existing[0]) {
@@ -163,14 +170,15 @@ export class MobileService implements OnModuleInit {
           first_name,
           last_name,
           is_available,
-          ci_number
+          ci_number, phone_e164, phone_verified_at, firebase_phone_uid, country_code
         )
-        VALUES ($1, $2, $3, $4, $5, false, $6)
+        VALUES ($1, $2, $3, $4, $5, false, $6, $7::text, CASE WHEN $7::text IS NOT NULL THEN now() ELSE NULL END, $8, $9)
         RETURNING id, type, first_name, last_name, email, phone, profile_photo_url,
                   verification_status, id_photo_url, face_photo_url,
-                  id_photo_verified, face_photo_verified, is_available
+                  id_photo_verified, face_photo_verified, is_available, phone_verified_at
         `,
-        [type, email, phone, firstName, lastName, ciNumber],
+        [type, email, phone, firstName, lastName, ciNumber, proof?.e164 ?? null, proof?.uid ?? null,
+          proof?.e164.startsWith('+591') ? '+591' : input.countryCode ?? null],
       );
 
       const created = createdRows[0];
@@ -203,6 +211,7 @@ export class MobileService implements OnModuleInit {
           lastName: created.last_name ?? null,
           email: created.email,
           phone: created.phone ?? null,
+          phoneVerifiedAt: created.phone_verified_at ?? null,
           profilePhotoUrl: created.profile_photo_url ?? null,
           verificationStatus: created.verification_status ?? 'not_verified',
           idPhotoUrl: created.id_photo_url ?? null,
@@ -212,7 +221,24 @@ export class MobileService implements OnModuleInit {
           isAvailable: Boolean(created.is_available),
         },
       };
+    }).catch(error => {
+      if (error?.code === '23505') throw new ConflictException('El correo o teléfono ya está registrado.');
+      throw error;
     });
+  }
+
+  async session(userId: string) {
+    const [row] = await this.dataSource.query(`SELECT id,type,first_name,last_name,email,phone,phone_verified_at
+      FROM users WHERE id=$1 AND NOT is_blocked AND deleted_at IS NULL`, [userId]);
+    if (!row) throw new UnauthorizedException('Sesión inválida');
+    return { user: { id: row.id, type: row.type, firstName: row.first_name, lastName: row.last_name,
+      email: row.email, phone: row.phone, phoneVerifiedAt: row.phone_verified_at } };
+  }
+
+  async webJobs(userId: string) {
+    const jobs = await this.dataSource.query(`SELECT id,title,description,status,budget::float8 AS budget,address,created_at AS "createdAt"
+      FROM job_requests WHERE client_user_id=$1 ORDER BY created_at DESC LIMIT 30`, [userId]);
+    return { jobs };
   }
 
   async login(identifier: string, password: string) {
@@ -221,7 +247,7 @@ export class MobileService implements OnModuleInit {
     }
 
     const normalizedEmail = identifier.trim().toLowerCase();
-    const normalizedPhone = this.geoHelpers.normalizePhone(identifier);
+    const normalizedPhone = identifier.includes('@') ? null : this.geoHelpers.normalizePhone(identifier);
 
     const rows = await this.dataSource.query<any[]>(
       `
@@ -247,7 +273,8 @@ export class MobileService implements OnModuleInit {
           LOWER(u.email) = LOWER($1)
           OR (
             $2::text IS NOT NULL
-            AND regexp_replace(COALESCE(u.phone, ''), '[^0-9]+', '', 'g') = $2
+            AND (regexp_replace(COALESCE(u.phone, ''), '[^0-9]+', '', 'g') = $2
+              OR ($2 ~ '^[67][0-9]{7}$' AND regexp_replace(COALESCE(u.phone, ''), '[^0-9]+', '', 'g') = '591' || $2))
           )
         )
       LIMIT 1
@@ -387,14 +414,20 @@ export class MobileService implements OnModuleInit {
     lastName?: string;
     googleId: string;
     type: 'worker' | 'client';
+    phone?: string;
+    countryCode?: string;
+    phoneIdToken?: string;
   }) {
     const verified = this.access.verifyGoogleRegistration(params.registrationToken);
+    const proof = await this.phoneVerification.verify(params);
     if (!['client', 'worker'].includes(params.type)) throw new BadRequestException('Tipo inválido');
     params = { ...params, email: verified.email, googleId: verified.googleId,
       firstName: verified.firstName, lastName: verified.lastName };
     const existingRows = await this.dataSource.query<any[]>(
-      `SELECT id FROM users WHERE LOWER(email) = LOWER($1) OR google_id = $2 LIMIT 1`,
-      [params.email, params.googleId],
+      `SELECT id FROM users WHERE LOWER(email) = LOWER($1) OR google_id = $2
+        OR ($3::text IS NOT NULL AND (phone_e164=$3 OR regexp_replace(COALESCE(phone,''),'[^0-9]+','','g')
+          IN (replace($3,'+',''),$4))) LIMIT 1`,
+      [params.email, params.googleId, proof?.e164 ?? null, this.geoHelpers.normalizePhone(proof?.e164)],
     );
 
     if (existingRows[0]) {
@@ -405,9 +438,9 @@ export class MobileService implements OnModuleInit {
       const createdRows = await manager.query<any[]>(
         `
         INSERT INTO users (
-          type, email, first_name, last_name, is_available, google_id
+          type, email, first_name, last_name, is_available, google_id, phone, phone_e164, firebase_phone_uid, phone_verified_at, country_code
         )
-        VALUES ($1, $2, $3, $4, false, $5)
+        VALUES ($1, $2, $3, $4, false, $5, $6, $7::text, $8, CASE WHEN $7::text IS NOT NULL THEN now() ELSE NULL END, $9)
         RETURNING id, type, first_name, last_name, email, phone, profile_photo_url,
                   verification_status, id_photo_url, face_photo_url,
                   id_photo_verified, face_photo_verified, is_blocked, is_available
@@ -418,6 +451,10 @@ export class MobileService implements OnModuleInit {
           params.firstName,
           params.lastName ?? null,
           params.googleId,
+          this.geoHelpers.normalizePhone(proof?.e164 ?? params.phone),
+          proof?.e164 ?? null,
+          proof?.uid ?? null,
+          proof?.e164.startsWith('+591') ? '+591' : params.countryCode ?? null,
         ],
       );
 
@@ -447,6 +484,9 @@ export class MobileService implements OnModuleInit {
         },
         token: this.access.issueMobile(row.id, row.type),
       };
+    }).catch(error => {
+      if (error?.code === '23505') throw new ConflictException('El correo o teléfono ya está registrado.');
+      throw error;
     });
   }
 

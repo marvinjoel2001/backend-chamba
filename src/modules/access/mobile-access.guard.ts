@@ -28,7 +28,7 @@ export class MobileAccessGuard implements CanActivate {
   constructor(private readonly access: AccessService) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const name = context.getHandler().name;
-    if (['register', 'login', 'googleLogin', 'googleRegister', 'checkIdentifier'].includes(name)) return true;
+    if (['register', 'login', 'googleLogin', 'googleRegister', 'checkIdentifier', 'registrationConfig'].includes(name)) return true;
     const req = context.switchToHttp().getRequest();
     const principal = await this.access.authenticate(req.headers.authorization?.replace(/^Bearer\s+/i, ''));
     req.principal = principal;
@@ -57,7 +57,7 @@ export class MobileAccessGuard implements CanActivate {
       }
     }
     if (path.includes('/worker/') && principal.role !== 'worker') throw new ForbiddenException();
-    if (['createRequest', 'uploadRequestPhoto', 'acceptOffer', 'clientCounterOffer', 'clientConfirmArrival', 'setWorkPaused', 'createReview'].includes(name)
+    if (['createRequest', 'webJobs', 'uploadRequestPhoto', 'acceptOffer', 'clientCounterOffer', 'clientConfirmArrival', 'setWorkPaused', 'createReview'].includes(name)
         && principal.role !== 'client') throw new ForbiddenException();
     if (['getIncomingRequest', 'upsertOffer', 'discardOffer', 'declineOffer', 'reactivateOffer', 'workerMarkArrived', 'completeJob', 'dismissRequest'].includes(name)
         && principal.role !== 'worker') throw new ForbiddenException();

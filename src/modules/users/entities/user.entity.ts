@@ -26,6 +26,15 @@ export enum VerificationStatus {
 
 @Entity({ name: 'users' })
 export class User {
+  @Column({ name: 'phone_e164', type: 'varchar', length: 16, nullable: true })
+  phoneE164?: string | null;
+
+  @Column({ name: 'phone_verified_at', type: 'timestamptz', nullable: true })
+  phoneVerifiedAt?: Date | null;
+
+  @Column({ name: 'firebase_phone_uid', type: 'varchar', length: 128, nullable: true, select: false })
+  firebasePhoneUid?: string | null;
+
   @Column({ name: 'location_updated_at', type: 'timestamptz', nullable: true })
   locationUpdatedAt?: Date | null;
 

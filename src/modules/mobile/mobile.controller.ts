@@ -19,6 +19,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
 import { MobileWorkerPortfolioService } from './services/mobile-worker-portfolio.service';
 import { MobileAccountService } from './services/mobile-account.service';
+import { PhoneVerificationService } from './services/phone-verification.service';
 
 const parseNumber = (value?: string): number | undefined => {
   if (value === undefined || value === null || value === '') {
@@ -38,6 +39,7 @@ export class MobileController {
     private readonly access: AccessService,
     private readonly portfolioService: MobileWorkerPortfolioService,
     private readonly accountService: MobileAccountService,
+    private readonly phoneVerification: PhoneVerificationService,
   ) {}
 
   // ── Eliminación de cuenta (espera de 30 días). El usuario sale del token,
@@ -67,6 +69,8 @@ export class MobileController {
     @Body('password') password: string,
     @Body('ciNumber') ciNumber: string | undefined,
     @Body('source') source: string | undefined,
+    @Body('countryCode') countryCode: string | undefined,
+    @Body('phoneIdToken') phoneIdToken: string | undefined,
   ) {
     return this.mobileService.register({
       type,
@@ -77,6 +81,8 @@ export class MobileController {
       password,
       ciNumber,
       source,
+      countryCode,
+      phoneIdToken,
     });
   }
 
@@ -87,6 +93,15 @@ export class MobileController {
   ) {
     return this.mobileService.login(identifier, password);
   }
+
+  @Get('auth/registration-config')
+  registrationConfig() { return this.phoneVerification.registrationConfig(); }
+
+  @Get('auth/session')
+  session(@Req() req: any) { return this.mobileService.session(req.principal.id); }
+
+  @Get('mobile/client/web-jobs')
+  webJobs(@Req() req: any) { return this.mobileService.webJobs(req.principal.id); }
 
   @Post('auth/google')
   googleLogin(@Body('idToken') idToken: string) {
@@ -101,6 +116,9 @@ export class MobileController {
     @Body('googleId') googleId: string,
     @Body('type') type: 'worker' | 'client',
     @Body('registrationToken') registrationToken: string,
+    @Body('phone') phone: string | undefined,
+    @Body('countryCode') countryCode: string | undefined,
+    @Body('phoneIdToken') phoneIdToken: string | undefined,
   ) {
     return this.mobileService.googleRegister({
       registrationToken,
@@ -109,6 +127,9 @@ export class MobileController {
       lastName,
       googleId,
       type,
+      phone,
+      countryCode,
+      phoneIdToken,
     });
   }
 
