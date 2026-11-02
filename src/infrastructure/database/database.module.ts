@@ -17,6 +17,7 @@ import { PlatformCommission1792100000000 } from './migrations/1792100000000-Plat
 import { AgencyWorkerInvites1792200000000 } from './migrations/1792200000000-AgencyWorkerInvites';
 import { BudgetRaisedAt1792300000000 } from './migrations/1792300000000-BudgetRaisedAt';
 import { WebContactMessages1792400000000 } from './migrations/1792400000000-WebContactMessages';
+import { BotSimulation1793652000000 } from './migrations/1793652000000-BotSimulation';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { WebContactMessages1792400000000 } from './migrations/1792400000000-WebC
             AgencyWorkerInvites1792200000000,
             BudgetRaisedAt1792300000000,
             WebContactMessages1792400000000,
+            BotSimulation1793652000000,
           ],
           migrationsRun: true,
           migrationsTableName: 'typeorm_migrations',

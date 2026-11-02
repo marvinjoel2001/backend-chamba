@@ -26,6 +26,9 @@ export enum VerificationStatus {
 
 @Entity({ name: 'users' })
 export class User {
+  @Column({ name: 'location_updated_at', type: 'timestamptz', nullable: true })
+  locationUpdatedAt?: Date | null;
+
   @ApiProperty({ format: 'uuid' })
   @PrimaryGeneratedColumn('uuid')
   id: string;
