@@ -627,12 +627,14 @@ export class MobileRequestsService {
             AND (
               w.work_modalities IS NULL 
               OR jsonb_array_length(w.work_modalities) = 0 
+              -- La modalidad guardada manda; en pedidos viejos se deduce del
+              -- tipo de precio sin tildes ("Por día" también es diario).
               OR w.work_modalities @> jsonb_build_array(
-                CASE 
-                  WHEN LOWER(jr.price_type) LIKE '%hora%' OR LOWER(jr.price_type) LIKE '%hour%' THEN 'hourly'
-                  WHEN LOWER(jr.price_type) LIKE '%dia%' OR LOWER(jr.price_type) LIKE '%day%' THEN 'daily'
+                COALESCE(jr.modality, CASE
+                  WHEN ${plainSql('jr.price_type')} LIKE '%hora%' OR ${plainSql('jr.price_type')} LIKE '%hour%' THEN 'hourly'
+                  WHEN ${plainSql('jr.price_type')} LIKE '%dia%' OR ${plainSql('jr.price_type')} LIKE '%day%' THEN 'daily'
                   ELSE 'fixed'
-                END
+                END)
               )
             )
           )
@@ -1452,9 +1454,18 @@ export class MobileRequestsService {
       normalizedSkills.length === 0 ||
       normalizedSkills.every((s) => s === 'general');
 
-    const requiredModality = {
-      hour: 'hourly', day: 'daily', fixed: 'fixed',
-    }[this.repo.normalizePriceTypeKey(request.price_type)];
+    // La modalidad guardada manda; en pedidos viejos se deduce del tipo de precio.
+    const storedModality = String(request.modality ?? '');
+    const priceTypeModality = {
+      hour: 'hourly',
+      day: 'daily',
+      fixed: 'fixed',
+    }[this.repo.normalizePriceTypeKey(String(request.price_type ?? ''))];
+    const requiredModality = ['fixed', 'hourly', 'daily'].includes(
+      storedModality,
+    )
+      ? storedModality
+      : priceTypeModality;
 
     const workers = await this.dataSource.query<any[]>(
       `
