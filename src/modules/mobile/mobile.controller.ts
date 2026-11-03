@@ -208,6 +208,7 @@ export class MobileController {
     photos?: Array<{
       url?: string;
       publicId?: string;
+      uploadToken?: string;
     }>,
     @Body('paymentMethod') paymentMethod?: string,
     @Body('paymentMethodCode') paymentMethodCode?: string,
@@ -245,8 +246,9 @@ export class MobileController {
       startDate,
       photos:
         photos?.map((item) => ({
-          url: item.url ?? '',
-          publicId: item.publicId ?? '',
+          url: item?.url ?? '',
+          publicId: item?.publicId ?? '',
+          uploadToken: item?.uploadToken,
         })) ?? [],
     });
   }
@@ -310,8 +312,8 @@ export class MobileController {
   }
 
   @Post('mobile/requests/photos/upload')
-  uploadRequestPhoto(@Body('imageBase64') imageBase64: string) {
-    return this.mobileService.uploadRequestPhoto(imageBase64);
+  uploadRequestPhoto(@Req() req: any, @Body('imageBase64') imageBase64: string) {
+    return this.mobileService.uploadRequestPhoto(req.principal.id, imageBase64);
   }
 
   @Post('mobile/requests/photos/delete')

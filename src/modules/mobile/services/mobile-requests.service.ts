@@ -40,9 +40,10 @@ type CreateRequestInput = {
   longitude: number;
   scheduledAt?: string;
   photosBase64?: string[];
+  /** publicId null = foto que no subió el backend: se guarda pero nunca se borra. */
   photos?: Array<{
     url: string;
-    publicId: string;
+    publicId: string | null;
   }>;
   paymentMethod?: string;
   paymentMethodCode?: string;
@@ -1993,7 +1994,7 @@ Reglas obligatorias:
 
   private async persistUploadedRequestPhotos(
     requestId: string,
-    images: Array<{ url: string; publicId: string }>,
+    images: Array<{ url: string; publicId: string | null }>,
   ) {
     const uploaded: string[] = [];
     for (const image of images) {

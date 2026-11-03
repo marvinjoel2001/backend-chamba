@@ -48,8 +48,10 @@ type CreateRequestInput = {
   scheduledAt?: string;
   photosBase64?: string[];
   photos?: Array<{
-    url: string;
-    publicId: string;
+    url?: string;
+    publicId?: string;
+    /** Comprobante que devuelve POST mobile/requests/photos/upload. */
+    uploadToken?: string;
   }>;
   paymentMethod?: string;
   paymentMethodCode?: string;
@@ -697,7 +699,30 @@ export class MobileService implements OnModuleInit {
   }
 
   async createRequest(input: CreateRequestInput) {
-    return this.requestsService.createRequest(input);
+    return this.requestsService.createRequest({
+      ...input,
+      photos: this.resolveRequestPhotos(input.clientUserId, input.photos),
+    });
+  }
+
+  /**
+   * Fotos que la app ya subió para la solicitud. Solo queda como nuestra (y
+   * se puede borrar después) la que subió el backend para este cliente,
+   * probado con su comprobante. Las versiones viejas de la app suben directo
+   * a Cloudinary: se acepta la URL si es de la cuenta de Chamba, pero sin
+   * publicId, así nunca se borra una imagen que no sabemos de quién es.
+   */
+  private resolveRequestPhotos(
+    clientUserId: string,
+    photos?: CreateRequestInput['photos'],
+  ): Array<{ url: string; publicId: string | null }> {
+    return (photos ?? []).map((photo) => {
+      const ticket = this.access.verifyUploadTicket(photo?.uploadToken, clientUserId);
+      if (ticket) return { url: ticket.url, publicId: ticket.publicId };
+      const url = photo?.url?.trim();
+      if (url && this.storageService.isOwnImageUrl(url)) return { url, publicId: null };
+      throw new BadRequestException('Una de las fotos no es válida. Vuelve a subirla.');
+    });
   }
 
   async uploadProfilePhoto(params: {
@@ -897,10 +922,16 @@ export class MobileService implements OnModuleInit {
     return this.requestsService.setWorkPaused(params);
   }
 
-  async uploadRequestPhoto(imageBase64: string) {
+  async uploadRequestPhoto(clientUserId: string, imageBase64: string) {
     const images = this.geoHelpers.validateBase64Images([imageBase64], 1);
     if (!images[0]) throw new BadRequestException('Selecciona una imagen válida');
-    return this.storageService.uploadBase64Image({ base64Data: images[0], folder: 'chamba/requests' });
+    const uploaded = await this.storageService.uploadBase64Image({ base64Data: images[0], folder: 'chamba/requests' });
+    // Con el comprobante, createRequest sabe que esta foto la subió el
+    // backend para este cliente (y que puede borrarla si la quita).
+    return {
+      ...uploaded,
+      uploadToken: this.access.issueUploadTicket(clientUserId, uploaded.publicId, uploaded.url),
+    };
   }
 
   async cancelJob(params: { requestId: string; userId: string }) {

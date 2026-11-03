@@ -34,26 +34,29 @@ export class MobileUsersService {
   }) {
     const user = await this.repo.getUserByIdWithPhotoMeta(params.userId);
     const incomingUrl = params.imageUrl?.trim();
-    const incomingPublicId = params.imagePublicId?.trim();
 
     if (incomingUrl) {
-      this.ensureSecureImageUrl(incomingUrl);
+      // Versiones viejas de la app suben la foto directo a Cloudinary y mandan
+      // la URL. Solo se acepta una imagen de la cuenta de Chamba y, como no se
+      // puede saber quién la subió, el publicId que manda la app se ignora:
+      // esa imagen nunca se borra desde aquí.
+      if (!this.storageService.isOwnImageUrl(incomingUrl)) {
+        throw new BadRequestException('La foto no es válida. Vuelve a subirla.');
+      }
 
       await this.dataSource.query(
         `
       UPDATE users
       SET profile_photo_url = $2,
-          profile_photo_public_id = $3,
+          profile_photo_public_id = NULL,
           updated_at = NOW()
       WHERE id = $1
       `,
-        [params.userId, incomingUrl, incomingPublicId || null],
+        [params.userId, incomingUrl],
       );
 
-      if (
-        user.profilePhotoPublicId &&
-        (!incomingPublicId || user.profilePhotoPublicId !== incomingPublicId)
-      ) {
+      // La anterior sí era nuestra si tenía publicId (solo se guardan los del backend).
+      if (user.profilePhotoPublicId) {
         await this.storageService.deleteImage(user.profilePhotoPublicId);
       }
 
@@ -94,19 +97,6 @@ export class MobileUsersService {
     return {
       user: await this.repo.getUserById(params.userId),
     };
-  }
-
-  private ensureSecureImageUrl(value: string): void {
-    try {
-      const parsed = new URL(value);
-      if (parsed.protocol !== 'https:') {
-        throw new UnsupportedMediaTypeException(
-          'Only HTTPS image urls are supported',
-        );
-      }
-    } catch (_) {
-      throw new UnsupportedMediaTypeException('Invalid image URL');
-    }
   }
 
   private ensureDataUri(value: string): void {

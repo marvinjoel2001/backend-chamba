@@ -78,6 +78,27 @@ export class StorageService {
     };
   }
 
+  /**
+   * true si la URL es una imagen de la cuenta de Cloudinary de Chamba
+   * (https://res.cloudinary.com/<cloud>/image/upload/...). Una foto de
+   * cualquier otro sitio no se acepta.
+   */
+  isOwnImageUrl(value?: string | null): boolean {
+    if (!value || !this.cloudName) return false;
+    try {
+      const url = new URL(value.trim());
+      return (
+        url.protocol === 'https:' &&
+        url.hostname === 'res.cloudinary.com' &&
+        !url.username &&
+        !url.password &&
+        url.pathname.startsWith(`/${this.cloudName}/image/upload/`)
+      );
+    } catch {
+      return false;
+    }
+  }
+
   async deleteImage(publicId?: string | null): Promise<void> {
     if (!publicId) {
       return;

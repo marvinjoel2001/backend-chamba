@@ -47,6 +47,26 @@ export class AccessService {
     } catch { throw new UnauthorizedException('La recuperación venció. Vuelve a empezar con Google.'); }
   }
 
+  /**
+   * Comprobante (24 h) de que el backend subió esta foto para este usuario.
+   * Solo con él una foto queda como nuestra y se puede borrar después.
+   */
+  issueUploadTicket(userId: string, publicId: string, url: string): string {
+    return this.jwt.sign({ sub: userId, kind: 'upload', pid: publicId, url },
+      { secret: this.secret, expiresIn: '1d' });
+  }
+
+  /** La foto que subió el backend para este usuario, o null si el comprobante no es suyo o venció. */
+  verifyUploadTicket(token: unknown, userId: string): { publicId: string; url: string } | null {
+    if (typeof token !== 'string' || !token) return null;
+    try {
+      const data = this.jwt.verify(token, { secret: this.secret, algorithms: ['HS256'] });
+      if (data.kind !== 'upload' || data.sub !== userId
+        || typeof data.pid !== 'string' || typeof data.url !== 'string') return null;
+      return { publicId: data.pid, url: data.url };
+    } catch { return null; }
+  }
+
   verifyGoogleRegistration(token: string): any {
     try {
       const data = this.jwt.verify(token, { secret: this.secret, algorithms: ['HS256'] });
