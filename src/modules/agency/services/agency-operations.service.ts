@@ -375,7 +375,7 @@ export class AgencyOperationsService {
        WHERE jo.offered_by_agency_id = $1
          AND jo.status = 'accepted'
          AND jr.status = 'completed'
-       -- Las comisiones quedan congeladas, pero un QR que el admin confirma
+       -- Las comisiones quedan congeladas, pero un pago que el proveedor confirma
        -- después de registrar el trabajo pasa de efectivo a digital.
        ON CONFLICT (request_id) DO UPDATE SET is_digital = true
          WHERE agency_job_ledger.is_digital = false AND EXCLUDED.is_digital = true`,

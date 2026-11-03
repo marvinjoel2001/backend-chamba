@@ -1,5 +1,8 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { CHAMBA_STRIPE_CURRENCY, StripeService } from '../stripe/stripe.service';
+import {
+  CHAMBA_STRIPE_CURRENCY,
+  StripeService,
+} from '../stripe/stripe.service';
 import {
   PaymentProvider,
   PaymentStatus,
@@ -8,41 +11,15 @@ import {
   StoredPayment,
 } from './payment-provider';
 
-/**
- * QR fijo que sube el admin (el QR de cobro de la cuenta del negocio).
- * El cliente paga desde su banco y toca "Ya pagué"; el admin lo confirma en
- * el panel. config: { qrImageUrl, instructions?, currency?, expiresMinutes? }
+/*
+ * Pagos por QR: se conectan como un proveedor más cuando el banco entregue su
+ * API. El proveedor genera un QR por cobro (con el monto exacto) en
+ * `createCheckout`, y el pago solo pasa a `paid` cuando el banco lo confirma:
+ * por `handleWebhook` (validando la firma del banco) y/o `refreshStatus`
+ * (consultando el estado). No existe confirmación manual ni "Ya pagué".
+ * Si después hay que devolver el dinero, el reembolso aparece en
+ * Admin → Pagos → Reembolsos.
  */
-@Injectable()
-export class ManualQrProvider implements PaymentProvider {
-  readonly key = 'manual_qr';
-  readonly label = 'QR fijo (confirmación manual)';
-
-  async createCheckout(ctx: ProviderContext): Promise<ProviderCheckout> {
-    const imageUrl = String(ctx.config.qrImageUrl ?? '').trim();
-    if (!imageUrl) {
-      throw new ServiceUnavailableException(
-        'Este método de pago aún no está configurado. Elige otro.',
-      );
-    }
-    const minutes = Number(ctx.config.expiresMinutes) || 30;
-    return {
-      action: 'qr',
-      status: 'pending',
-      currency: String(ctx.config.currency || ctx.currency || 'BOB').toUpperCase(),
-      expiresAt: new Date(Date.now() + minutes * 60_000),
-      canReportPaid: true,
-      // Se consulta para enterarse cuando el admin confirma.
-      pollSeconds: 6,
-      payload: {
-        instructions:
-          String(ctx.config.instructions ?? '').trim() ||
-          'Escanea el QR desde la app de tu banco, paga el monto exacto y toca "Ya pagué".',
-        qr: { imageUrl, imageBase64: null },
-      },
-    };
-  }
-}
 
 /** Tarjeta con Stripe Payment Sheet (config en Admin → Stripe). */
 @Injectable()
@@ -61,14 +38,15 @@ export class StripeCardProvider implements PaymentProvider {
     );
     const clientSecret = intent.paymentIntent;
     if (!clientSecret) {
-      throw new ServiceUnavailableException('No se pudo iniciar el pago con tarjeta.');
+      throw new ServiceUnavailableException(
+        'No se pudo iniciar el pago con tarjeta.',
+      );
     }
     return {
       action: 'card_sheet',
       status: 'pending',
       currency: intent.currency.toUpperCase(),
       externalId: clientSecret.split('_secret')[0],
-      canReportPaid: false,
       pollSeconds: 0,
       payload: {
         card: {
@@ -97,9 +75,9 @@ export class StripeCardProvider implements PaymentProvider {
 export class PaymentProvidersRegistry {
   private readonly providers: Map<string, PaymentProvider>;
 
-  constructor(manualQr: ManualQrProvider, stripe: StripeCardProvider) {
+  constructor(stripe: StripeCardProvider) {
     this.providers = new Map(
-      [manualQr, stripe].map((provider) => [provider.key, provider]),
+      [stripe].map((provider) => [provider.key, provider]),
     );
   }
 

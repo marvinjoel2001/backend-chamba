@@ -9,6 +9,37 @@ import { Observable, tap } from 'rxjs';
 import type { Request, Response } from 'express';
 import { ApiLogsService } from '../../modules/api-logs/api-logs.service';
 
+/**
+ * Campos que nunca se guardan en los logs (consola de Railway y tabla
+ * api_request_logs, visible en Admin → Logs): contraseñas, tokens, claves
+ * (geminiKey, nvidiaKey, secretKey…), fotos en base64 (carnet, selfie,
+ * solicitudes, chat), el número de carnet y las URL de las fotos de
+ * verificación.
+ */
+const SENSITIVE_KEY =
+  /password|token|secret|authorization|signature|key$|api.?key|private.?key|base64|ci_?number|(id|face)_?photo/i;
+
+/** Textos más largos que esto (p. ej. una imagen sin prefijo data:) se recortan. */
+const MAX_LOGGED_TEXT = 500;
+
+export function sanitizeForLog(value: unknown, depth = 0): unknown {
+  if (typeof value === 'string') {
+    if (/^data:/i.test(value)) return `[archivo omitido: ${value.length} caracteres]`;
+    return value.length > MAX_LOGGED_TEXT
+      ? `${value.slice(0, 80)}… [${value.length} caracteres]`
+      : value;
+  }
+  if (!value || typeof value !== 'object') return value;
+  if (depth > 6) return '[…]';
+  if (Array.isArray(value)) return value.map((item) => sanitizeForLog(item, depth + 1));
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      SENSITIVE_KEY.test(key) ? '***' : sanitizeForLog(item, depth + 1),
+    ]),
+  );
+}
+
 @Injectable()
 export class HttpLoggerInterceptor implements NestInterceptor {
   private readonly logger = new Logger('HTTP');
@@ -89,11 +120,7 @@ export class HttpLoggerInterceptor implements NestInterceptor {
   }
 
   private sanitizeBody(body: unknown): unknown {
-    if (!body || typeof body !== 'object') return body;
-    if (Array.isArray(body)) return body.map(value => this.sanitizeBody(value));
-    return Object.fromEntries(Object.entries(body).map(([key, value]) => [key,
-      /password|token|secret|api.?key|private.?key|authorization|imagebase64|photosbase64/i.test(key)
-        ? '***' : this.sanitizeBody(value)]));
+    return sanitizeForLog(body);
   }
 
   private previewBody(body: unknown): string {

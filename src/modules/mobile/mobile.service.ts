@@ -1,13 +1,16 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
   OnModuleInit,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
-import { AccessService } from '../access/access.service';
+import { AccessService, issuedBeforeRevocation } from '../access/access.service';
+import { LoginAttemptsService } from '../access/login-attempts.service';
 import * as bcrypt from 'bcryptjs';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
@@ -26,6 +29,7 @@ import { MobileAdminService } from './services/mobile-admin.service';
 import { WorkerLead } from '../worker-leads/entities/worker-lead.entity';
 import { isEmail } from 'class-validator';
 import { PhoneVerificationService } from './services/phone-verification.service';
+import { WorkModalitiesService } from './services/work-modalities.service';
 
 type CreateRequestInput = {
   clientUserId: string;
@@ -45,8 +49,10 @@ type CreateRequestInput = {
   scheduledAt?: string;
   photosBase64?: string[];
   photos?: Array<{
-    url: string;
-    publicId: string;
+    url?: string;
+    publicId?: string;
+    /** Comprobante que devuelve POST mobile/requests/photos/upload. */
+    uploadToken?: string;
   }>;
   paymentMethod?: string;
   paymentMethodCode?: string;
@@ -88,11 +94,13 @@ export class MobileService implements OnModuleInit {
     private readonly adminService: MobileAdminService,
     private readonly access: AccessService,
     private readonly phoneVerification: PhoneVerificationService,
+    @Optional() private readonly loginAttempts?: LoginAttemptsService,
+    @Optional() private readonly workModalities?: WorkModalitiesService,
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.ensureSchema();
-    await this.seedData();
+    // El esquema lo manejan las migraciones (database.module.ts → migrationsRun).
+    await this.seedBaseData();
   }
 
   async register(input: {
@@ -283,9 +291,19 @@ export class MobileService implements OnModuleInit {
     );
 
     const row = rows[0];
+    // Límite de intentos: por cuenta cuando existe (da igual si escribe el
+    // correo o el teléfono) y, si no existe, por lo que escribió.
+    const attemptsKey = row ? `user:${row.id}` : `ident:${normalizedPhone ?? normalizedEmail}`;
+    await this.loginAttempts?.assertAllowed('mobile', attemptsKey);
     const validPassword = row?.password && (row.password.startsWith('$2')
       ? await bcrypt.compare(password.trim(), row.password) : row.password === password.trim());
-    if (!row || !validPassword || row.is_blocked) throw new UnauthorizedException('Credenciales invalidas');
+    if (!row || !validPassword) {
+      const remaining = await this.loginAttempts?.recordFailure('mobile', attemptsKey);
+      throw new UnauthorizedException(remaining === undefined ? 'Credenciales invalidas'
+        : this.loginAttempts!.invalidCredentialsMessage('mobile', remaining, 'Credenciales invalidas'));
+    }
+    if (row.is_blocked) throw new UnauthorizedException('Credenciales invalidas');
+    await this.loginAttempts?.reset('mobile', attemptsKey);
     if (!row.password.startsWith('$2')) await this.dataSource.query(
       'UPDATE auth_credentials SET password = $2 WHERE user_id = $1', [row.id, await bcrypt.hash(password.trim(), 12)]);
 
@@ -316,7 +334,7 @@ export class MobileService implements OnModuleInit {
     let response: Response;
     try {
       response = await fetch(
-        `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`,
+        `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
       );
     } catch {
       throw new UnauthorizedException(
@@ -361,9 +379,11 @@ export class MobileService implements OnModuleInit {
       SELECT u.id, u.type, u.first_name, u.last_name, u.email, u.phone,
              u.profile_photo_url, u.verification_status, u.id_photo_url,
              u.face_photo_url, u.id_photo_verified, u.face_photo_verified, u.is_blocked,
-             u.is_available, u.google_id
+             u.is_available, u.google_id, (c.password IS NOT NULL) AS has_password
       FROM users u
+      LEFT JOIN auth_credentials c ON c.user_id = u.id
       WHERE LOWER(u.email) = LOWER($1) OR u.google_id = $2
+      ORDER BY (u.google_id = $2) DESC NULLS LAST
       LIMIT 1
       `,
       [googleData.email, googleData.googleId],
@@ -379,11 +399,31 @@ export class MobileService implements OnModuleInit {
     }
 
     if (row.is_blocked) throw new UnauthorizedException('Cuenta bloqueada');
+    if (row.google_id && row.google_id !== googleData.googleId) {
+      throw new UnauthorizedException('Este correo ya está vinculado a otra cuenta de Google.');
+    }
+    // Primera vez con Google en una cuenta creada con contraseña: el registro
+    // con correo no verifica el correo, así que esa contraseña pudo ponerla
+    // otra persona. Google sí prueba que el correo es de quien entra, así que
+    // se desactiva la contraseña anterior y se cierran las demás sesiones.
+    // El usuario puede crear una nueva en "Olvidé mi contraseña".
+    let passwordDisabled = false;
     if (!row.google_id) {
-      await this.dataSource.query(
-        `UPDATE users SET google_id = $1 WHERE id = $2`,
-        [googleData.googleId, row.id],
-      );
+      passwordDisabled = row.has_password === true;
+      await this.dataSource.transaction(async (manager) => {
+        await manager.query(
+          `UPDATE users SET google_id = $1, updated_at = NOW(),
+             tokens_valid_after = CASE WHEN $3::boolean THEN $4::timestamptz ELSE tokens_valid_after END
+           WHERE id = $2`,
+          [googleData.googleId, row.id, passwordDisabled, new Date()],
+        );
+        if (passwordDisabled) {
+          await manager.query(`UPDATE auth_credentials SET password = NULL WHERE user_id = $1`, [row.id]);
+        }
+      });
+      if (passwordDisabled) {
+        this.logger.log(`Cuenta ${row.id}: Google vinculado; contraseña anterior desactivada`);
+      }
     }
 
     return {
@@ -401,6 +441,126 @@ export class MobileService implements OnModuleInit {
         idPhotoVerified: row.id_photo_verified,
         facePhotoVerified: row.face_photo_verified,
         isBlocked: row.is_blocked,
+        isAvailable: Boolean(row.is_available),
+      },
+      token: this.access.issueMobile(row.id, row.type),
+      passwordDisabled,
+    };
+  }
+
+  // ── Recuperar la contraseña con Google ─────────────────────────────
+  // 1) La app inicia sesión con Google y manda el idToken: si el correo de esa
+  //    cuenta de Google es el de una cuenta de Chamba, devuelve un token de
+  //    10 minutos. 2) Con ese token se guarda la contraseña nueva, se vincula
+  //    Google, se cierran las demás sesiones y la persona queda adentro.
+
+  async startGooglePasswordReset(idToken: string) {
+    if (!idToken?.trim()) throw new BadRequestException('Inicia sesión con Google para continuar.');
+    const google = await this.verifyGoogleToken(idToken.trim());
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT u.id, u.first_name, u.email, u.is_blocked, u.google_id,
+              (c.password IS NOT NULL) AS has_password
+       FROM users u
+       LEFT JOIN auth_credentials c ON c.user_id = u.id
+       WHERE LOWER(u.email) = LOWER($1) AND u.deleted_at IS NULL
+       LIMIT 1`,
+      [google.email],
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new NotFoundException(
+        `No hay una cuenta de Chamba con ${google.email}. Elige la cuenta de Google del correo con el que te registraste.`,
+      );
+    }
+    if (row.is_blocked) throw new ForbiddenException('Esta cuenta está bloqueada. Escríbenos a soporte.');
+    if (row.google_id && row.google_id !== google.googleId) {
+      throw new ForbiddenException('Esta cuenta está vinculada a otra cuenta de Google.');
+    }
+    return {
+      resetToken: this.access.issuePasswordReset(row.id, google.googleId),
+      email: row.email,
+      firstName: row.first_name,
+      hadPassword: row.has_password === true,
+    };
+  }
+
+  async completeGooglePasswordReset(resetToken: string, newPassword: string) {
+    const claims = this.access.verifyPasswordReset(resetToken);
+    const password = newPassword?.trim() ?? '';
+    if (password.length < 8) {
+      throw new BadRequestException('La contraseña debe tener al menos 8 caracteres.');
+    }
+    if (Buffer.byteLength(password, 'utf8') > 72) {
+      throw new BadRequestException('La contraseña es demasiado larga.');
+    }
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT id, is_blocked, google_id, tokens_valid_after FROM users
+       WHERE id = $1 AND deleted_at IS NULL`,
+      [claims.sub],
+    );
+    const row = rows[0];
+    if (!row) throw new NotFoundException('Cuenta no encontrada');
+    if (row.is_blocked) throw new ForbiddenException('Esta cuenta está bloqueada. Escríbenos a soporte.');
+    // De un solo uso: al guardar la contraseña se cierran las sesiones, y un
+    // token emitido antes de eso ya no sirve.
+    if (issuedBeforeRevocation(claims.iat, row.tokens_valid_after)) {
+      throw new UnauthorizedException('La recuperación venció. Vuelve a empezar con Google.');
+    }
+    if (row.google_id && row.google_id !== claims.gid) {
+      throw new ForbiddenException('Esta cuenta está vinculada a otra cuenta de Google.');
+    }
+    const hash = await bcrypt.hash(password, 12);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        `INSERT INTO auth_credentials (user_id, password) VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE SET password = EXCLUDED.password`,
+        [row.id, hash],
+      );
+      await manager.query(
+        `UPDATE users SET google_id = COALESCE(google_id, $2), tokens_valid_after = $3,
+           updated_at = NOW()
+         WHERE id = $1`,
+        [row.id, claims.gid, new Date()],
+      );
+    }).catch((error) => {
+      if (error?.code === '23505') {
+        throw new ConflictException('Esa cuenta de Google ya está vinculada a otra cuenta de Chamba.');
+      }
+      throw error;
+    });
+    await this.loginAttempts?.reset('mobile', `user:${row.id}`);
+    this.logger.log(`Cuenta ${row.id}: contraseña nueva creada con Google`);
+    return this.sessionPayload(row.id);
+  }
+
+  /** Mismo formato que la respuesta de login, para dejar a la persona adentro. */
+  private async sessionPayload(userId: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `SELECT id, type, first_name, last_name, email, phone, profile_photo_url,
+              verification_status, id_photo_url, face_photo_url, id_photo_verified,
+              face_photo_verified, is_blocked, is_agency_worker, agency_id, is_available
+       FROM users WHERE id = $1`,
+      [userId],
+    );
+    const row = rows[0];
+    if (!row) throw new NotFoundException('Cuenta no encontrada');
+    return {
+      user: {
+        id: row.id,
+        type: row.type,
+        firstName: row.first_name,
+        lastName: row.last_name ?? null,
+        email: row.email,
+        phone: row.phone ?? null,
+        profilePhotoUrl: row.profile_photo_url ?? null,
+        verificationStatus: row.verification_status ?? 'not_verified',
+        idPhotoUrl: row.id_photo_url ?? null,
+        facePhotoUrl: row.face_photo_url ?? null,
+        idPhotoVerified: row.id_photo_verified,
+        facePhotoVerified: row.face_photo_verified,
+        isBlocked: row.is_blocked,
+        isAgencyWorker: row.is_agency_worker ?? false,
+        agencyId: row.agency_id ?? null,
         isAvailable: Boolean(row.is_available),
       },
       token: this.access.issueMobile(row.id, row.type),
@@ -541,7 +701,41 @@ export class MobileService implements OnModuleInit {
   }
 
   async createRequest(input: CreateRequestInput) {
-    return this.requestsService.createRequest(input);
+    // Una modalidad que el admin desactivó ya no sirve para solicitudes nuevas
+    // (las apps viejas todavía pueden mostrarla). Sin modalidad, se deduce del
+    // tipo de precio, como hace el reparto.
+    if (this.workModalities) {
+      const modality =
+        input.modality ||
+        ({ hour: 'hourly', day: 'daily', fixed: 'fixed' } as const)[
+          this.repo.normalizePriceTypeKey(input.priceType)
+        ];
+      await this.workModalities.assertEnabled(modality);
+    }
+    return this.requestsService.createRequest({
+      ...input,
+      photos: this.resolveRequestPhotos(input.clientUserId, input.photos),
+    });
+  }
+
+  /**
+   * Fotos que la app ya subió para la solicitud. Solo queda como nuestra (y
+   * se puede borrar después) la que subió el backend para este cliente,
+   * probado con su comprobante. Las versiones viejas de la app suben directo
+   * a Cloudinary: se acepta la URL si es de la cuenta de Chamba, pero sin
+   * publicId, así nunca se borra una imagen que no sabemos de quién es.
+   */
+  private resolveRequestPhotos(
+    clientUserId: string,
+    photos?: CreateRequestInput['photos'],
+  ): Array<{ url: string; publicId: string | null }> {
+    return (photos ?? []).map((photo) => {
+      const ticket = this.access.verifyUploadTicket(photo?.uploadToken, clientUserId);
+      if (ticket) return { url: ticket.url, publicId: ticket.publicId };
+      const url = photo?.url?.trim();
+      if (url && this.storageService.isOwnImageUrl(url)) return { url, publicId: null };
+      throw new BadRequestException('Una de las fotos no es válida. Vuelve a subirla.');
+    });
   }
 
   async uploadProfilePhoto(params: {
@@ -741,10 +935,16 @@ export class MobileService implements OnModuleInit {
     return this.requestsService.setWorkPaused(params);
   }
 
-  async uploadRequestPhoto(imageBase64: string) {
+  async uploadRequestPhoto(clientUserId: string, imageBase64: string) {
     const images = this.geoHelpers.validateBase64Images([imageBase64], 1);
     if (!images[0]) throw new BadRequestException('Selecciona una imagen válida');
-    return this.storageService.uploadBase64Image({ base64Data: images[0], folder: 'chamba/requests' });
+    const uploaded = await this.storageService.uploadBase64Image({ base64Data: images[0], folder: 'chamba/requests' });
+    // Con el comprobante, createRequest sabe que esta foto la subió el
+    // backend para este cliente (y que puede borrarla si la quita).
+    return {
+      ...uploaded,
+      uploadToken: this.access.issueUploadTicket(clientUserId, uploaded.publicId, uploaded.url),
+    };
   }
 
   async cancelJob(params: { requestId: string; userId: string }) {
@@ -839,207 +1039,14 @@ export class MobileService implements OnModuleInit {
     return this.requestsService.createReview(params);
   }
 
-  private async ensureSchema(): Promise<void> {
-    // Schema is managed by TypeORM migrations (database.module.ts → migrationsRun: true).
-  }
-
-  private async seedData(): Promise<void> {
+  /**
+   * Solo datos de catálogo y configuración que la app necesita para arrancar en
+   * una base vacía. Nunca usuarios: este backend corre en producción y las
+   * cuentas demo con contraseña conocida quedaban expuestas en el repo público.
+   */
+  private async seedBaseData(): Promise<void> {
     await this.seedDefaultConfig();
     await this.seedDefaultCategories();
-
-    const demoUsers = [
-      {
-        type: 'client',
-        email: 'cliente.demo@chamba.app',
-        phone: '+59170000001',
-        firstName: 'Carla',
-        lastName: 'Mendoza',
-        profilePhotoUrl:
-          'https://images.unsplash.com/photo-1494790108377-be9c29b29330',
-        latitude: -16.5002,
-        longitude: -68.1342,
-        isAvailable: false,
-        workRadiusKm: 5,
-        averageRating: 0,
-        completedJobs: 0,
-        skills: [] as string[],
-      },
-      {
-        type: 'worker',
-        email: 'worker.roberto@chamba.app',
-        phone: '+59170000011',
-        firstName: 'Roberto',
-        lastName: 'Gomez',
-        profilePhotoUrl:
-          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e',
-        latitude: -16.4965,
-        longitude: -68.129,
-        isAvailable: true,
-        workRadiusKm: 8,
-        averageRating: 4.9,
-        completedJobs: 124,
-        skills: ['Pintura', 'Construccion', 'Acabados'],
-      },
-      {
-        type: 'worker',
-        email: 'worker.elena@chamba.app',
-        phone: '+59170000012',
-        firstName: 'Elena',
-        lastName: 'Morales',
-        profilePhotoUrl:
-          'https://images.unsplash.com/photo-1500917293891-ef795e70e1f6',
-        latitude: -16.491,
-        longitude: -68.122,
-        isAvailable: true,
-        workRadiusKm: 7,
-        averageRating: 4.8,
-        completedJobs: 86,
-        skills: ['Pintura', 'Decoracion'],
-      },
-      {
-        type: 'worker',
-        email: 'worker.marcos@chamba.app',
-        phone: '+59170000013',
-        firstName: 'Marcos',
-        lastName: 'Quispe',
-        profilePhotoUrl:
-          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d',
-        latitude: -16.506,
-        longitude: -68.139,
-        isAvailable: true,
-        workRadiusKm: 10,
-        averageRating: 4.7,
-        completedJobs: 210,
-        skills: ['Pintura', 'Plomeria', 'Electricidad'],
-      },
-    ];
-
-    const userIdsByEmail = new Map<string, string>();
-    for (const demoUser of demoUsers) {
-      const rows = await this.dataSource.query<any[]>(
-        `
-        INSERT INTO users (
-          type,
-          email,
-          phone,
-          first_name,
-          last_name,
-          profile_photo_url,
-          current_location,
-          work_radius_km,
-          average_rating,
-          completed_jobs,
-          is_available
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          ST_SetSRID(ST_MakePoint($8::float8, $7::float8), 4326)::geography,
-          $9,
-          $10,
-          $11,
-          $12
-        )
-        ON CONFLICT (email)
-        DO UPDATE SET
-          type = EXCLUDED.type,
-          phone = EXCLUDED.phone,
-          first_name = EXCLUDED.first_name,
-          last_name = EXCLUDED.last_name,
-          profile_photo_url = EXCLUDED.profile_photo_url,
-          current_location = EXCLUDED.current_location,
-          work_radius_km = EXCLUDED.work_radius_km,
-          average_rating = EXCLUDED.average_rating,
-          completed_jobs = EXCLUDED.completed_jobs,
-          is_available = EXCLUDED.is_available,
-          updated_at = NOW()
-        RETURNING id
-        `,
-        [
-          demoUser.type,
-          demoUser.email,
-          demoUser.phone,
-          demoUser.firstName,
-          demoUser.lastName,
-          demoUser.profilePhotoUrl,
-          demoUser.latitude,
-          demoUser.longitude,
-          demoUser.workRadiusKm,
-          demoUser.averageRating,
-          demoUser.completedJobs,
-          demoUser.isAvailable,
-        ],
-      );
-
-      const userId = rows[0]?.id;
-      if (!userId) {
-        continue;
-      }
-
-      userIdsByEmail.set(demoUser.email, userId);
-
-      await this.dataSource.query(
-        `
-        INSERT INTO auth_credentials (user_id, password)
-        VALUES ($1, '123456')
-        ON CONFLICT (user_id) DO UPDATE SET password = EXCLUDED.password
-        `,
-        [userId],
-      );
-
-      if (demoUser.type === 'worker') {
-        await this.dataSource.query(
-          `DELETE FROM worker_skills WHERE user_id = $1`,
-          [userId],
-        );
-        for (const skill of demoUser.skills) {
-          await this.dataSource.query(
-            `INSERT INTO worker_skills (user_id, skill) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-            [userId, skill],
-          );
-        }
-      }
-    }
-
-    const countRows = await this.dataSource.query<any[]>(
-      `SELECT COUNT(*)::text AS count FROM job_requests`,
-    );
-    if (Number(countRows[0]?.count ?? 0) > 0) {
-      return;
-    }
-
-    const clientId = userIdsByEmail.get('cliente.demo@chamba.app');
-    if (!clientId) {
-      return;
-    }
-
-    const created = await this.createRequest({
-      clientUserId: clientId,
-      title: 'Pintado de fachada exterior',
-      description:
-        'Necesito pintor con experiencia para retoques en fachada de vivienda unifamiliar.',
-      category: 'Pintura',
-      budget: 100,
-      priceType: 'Por dia',
-      address: 'Av. Arce, Edificio Multicine',
-      latitude: -16.502,
-      longitude: -68.132,
-      scheduledAt: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
-    });
-
-    const offers = await this.getOffers({ requestId: created.request.id });
-    const firstOffer = offers.offers[0];
-
-    if (firstOffer) {
-      await this.acceptOffer({
-        offerId: firstOffer.id,
-        clientUserId: clientId,
-      });
-    }
   }
 
   private async seedDefaultCategories() {
@@ -1096,17 +1103,14 @@ export class MobileService implements OnModuleInit {
       },
     ];
 
+    // Solo crea las que faltan: si el admin renombró o desactivó una categoría,
+    // reiniciar el backend no debe deshacer ese cambio.
     for (const category of defaults) {
       await this.dataSource.query(
         `
         INSERT INTO categories (id, name, description, is_active)
         VALUES ($1, $2, $3, true)
-        ON CONFLICT (id)
-        DO UPDATE SET
-          name = EXCLUDED.name,
-          description = EXCLUDED.description,
-          is_active = true,
-          updated_at = NOW()
+        ON CONFLICT (id) DO NOTHING
         `,
         [category.id, category.name, category.description],
       );

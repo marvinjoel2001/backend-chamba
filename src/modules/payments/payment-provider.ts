@@ -14,14 +14,23 @@ export type PaymentAction = 'none' | 'qr' | 'card_sheet' | 'open_url';
 export type PaymentStatus =
   | 'not_required'
   | 'pending'
+  /** Solo pagos viejos: era el "Ya pagué" del QR fijo, que ya no existe. */
   | 'reported'
   | 'paid'
   | 'failed'
   | 'expired'
-  | 'cancelled';
+  | 'cancelled'
+  /** Se cobró pero el trabajo no se hizo con ese pago: hay que devolverlo. */
+  | 'refund_pending'
+  | 'refunded'
+  /** El admin revisó el reembolso y decidió no devolverlo (con motivo). */
+  | 'refund_declined';
 
-/** Estados con los que el cliente ya puede aceptar la oferta. */
-export const PAYABLE_STATUSES: PaymentStatus[] = ['paid', 'reported'];
+/**
+ * Estados con los que el cliente ya puede aceptar la oferta: solo un pago que
+ * el proveedor confirmó por su API (webhook o consulta de estado).
+ */
+export const PAYABLE_STATUSES: PaymentStatus[] = ['paid'];
 
 /** Lo que recibe la app (POST checkout / GET pago). */
 export interface PaymentView {
@@ -42,7 +51,10 @@ export interface PaymentView {
   } | null;
   url: string | null;
   expiresAt: string | null;
-  /** Muestra el botón "Ya pagué" (QR que confirma un humano). */
+  /**
+   * Siempre false: ya no existe "Ya pagué". Se sigue enviando para que las
+   * versiones viejas de la app no muestren ese botón.
+   */
   canReportPaid: boolean;
   /** Cada cuántos segundos la app vuelve a consultar el estado (0 = no). */
   pollSeconds: number;
@@ -65,7 +77,6 @@ export interface ProviderCheckout {
   currency: string;
   externalId?: string | null;
   expiresAt?: Date | null;
-  canReportPaid?: boolean;
   pollSeconds?: number;
   /** Se guarda tal cual y se devuelve a la app (qr, card, url, instructions). */
   payload: {
@@ -84,8 +95,12 @@ export interface StoredPayment {
 }
 
 /**
- * Un proveedor nuevo (BNB, Libélula, otro banco…) solo implementa esta
+ * Un proveedor nuevo (QR de BNB, Libélula, otro banco…) solo implementa esta
  * interfaz y se registra en `PaymentProvidersRegistry`.
+ *
+ * El pago se confirma únicamente con la API del proveedor: hay que
+ * implementar `refreshStatus`, `handleWebhook` (validando la firma) o ambos.
+ * Un proveedor sin ninguno de los dos no se puede usar para cobrar.
  */
 export interface PaymentProvider {
   readonly key: string;

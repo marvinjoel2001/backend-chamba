@@ -19,6 +19,11 @@ import { BudgetRaisedAt1792300000000 } from './migrations/1792300000000-BudgetRa
 import { WebContactMessages1792400000000 } from './migrations/1792400000000-WebContactMessages';
 import { BotSimulation1793652000000 } from './migrations/1793652000000-BotSimulation';
 import { VerifiedPhones1793656000000 } from './migrations/1793656000000-VerifiedPhones';
+import { DisableDemoAccounts1793700000000 } from './migrations/1793700000000-DisableDemoAccounts';
+import { SessionRevocation1793700100000 } from './migrations/1793700100000-SessionRevocation';
+import { PaymentRefunds1793700200000 } from './migrations/1793700200000-PaymentRefunds';
+import { RedactSensitiveApiLogs1793700300000 } from './migrations/1793700300000-RedactSensitiveApiLogs';
+import { MediaOwnership1793700400000 } from './migrations/1793700400000-MediaOwnership';
 
 @Module({
   imports: [
@@ -67,6 +72,11 @@ import { VerifiedPhones1793656000000 } from './migrations/1793656000000-Verified
             WebContactMessages1792400000000,
             BotSimulation1793652000000,
             VerifiedPhones1793656000000,
+            DisableDemoAccounts1793700000000,
+            SessionRevocation1793700100000,
+            PaymentRefunds1793700200000,
+            RedactSensitiveApiLogs1793700300000,
+            MediaOwnership1793700400000,
           ],
           migrationsRun: true,
           migrationsTableName: 'typeorm_migrations',

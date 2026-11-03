@@ -71,6 +71,7 @@ export class WaveDispatchProcessorService
     // Fuera también quien bloqueó a este cliente: no debe sonarle su solicitud.
     const eligible = await this.dataSource.query(`SELECT id FROM users WHERE id = ANY($1::uuid[]) AND type = 'worker'
       AND is_available = true AND COALESCE(is_blocked, false) = false
+      AND verification_status = 'verified'
       AND COALESCE(is_agency_worker, false) = false
       AND NOT EXISTS (SELECT 1 FROM user_blocks b JOIN job_requests jr ON jr.client_user_id = b.blocked_user_id
         WHERE jr.id = $2 AND b.blocker_user_id = users.id)`, [params.waveWorkers.map(w => w.workerId), params.requestId]);

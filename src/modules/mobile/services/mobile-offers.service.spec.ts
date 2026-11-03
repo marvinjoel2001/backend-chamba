@@ -136,13 +136,35 @@ describe('MobileOffersService.acceptOffer', () => {
       .mockResolvedValueOnce([
         { id: OFFER_ID, request_id: REQUEST_ID, worker_user_id: WORKER_ID, status: 'pending', amount: 150, expires_at: futureDate },
       ])
-      .mockResolvedValueOnce([{ id: WORKER_ID }])
+      .mockResolvedValueOnce([{ id: WORKER_ID, verification_status: 'verified', is_blocked: false }])
       // el worker ya tiene un trabajo 'assigned' en otra solicitud
       .mockResolvedValueOnce([{ '?column?': 1 }]);
 
     await expect(
       service.acceptOffer({ offerId: OFFER_ID, clientUserId: CLIENT_ID }),
     ).rejects.toThrow('ya está asignado a otro trabajo');
+
+    expect(queryRunnerMock.rollbackTransaction).toHaveBeenCalled();
+    expect(queryRunnerMock.commitTransaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['sin verificar', { verification_status: 'pending', is_blocked: false }],
+    ['bloqueado', { verification_status: 'verified', is_blocked: true }],
+  ])('rechaza aceptar la oferta de un trabajador %s (también las de agencia)', async (_label, worker) => {
+    const futureDate = new Date(Date.now() + 600000);
+    queryRunnerMock.query
+      .mockResolvedValueOnce([
+        { id: REQUEST_ID, client_user_id: CLIENT_ID, status: 'searching', title: 'Plomería' },
+      ])
+      .mockResolvedValueOnce([
+        { id: OFFER_ID, request_id: REQUEST_ID, worker_user_id: WORKER_ID, status: 'pending', amount: 150, expires_at: futureDate },
+      ])
+      .mockResolvedValueOnce([{ id: WORKER_ID, ...worker }]);
+
+    await expect(
+      service.acceptOffer({ offerId: OFFER_ID, clientUserId: CLIENT_ID }),
+    ).rejects.toThrow('ya no está disponible');
 
     expect(queryRunnerMock.rollbackTransaction).toHaveBeenCalled();
     expect(queryRunnerMock.commitTransaction).not.toHaveBeenCalled();
@@ -160,7 +182,7 @@ describe('MobileOffersService.acceptOffer', () => {
         { id: OFFER_ID, request_id: REQUEST_ID, worker_user_id: WORKER_ID, status: 'pending', amount: 150, expires_at: futureDate },
       ])
       // 2b. SELECT users FOR UPDATE (serializa aceptaciones del mismo worker)
-      .mockResolvedValueOnce([{ id: WORKER_ID }])
+      .mockResolvedValueOnce([{ id: WORKER_ID, verification_status: 'verified', is_blocked: false }])
       // 2c. el worker no tiene otro trabajo asignado
       .mockResolvedValueOnce([])
       // 3. UPDATE job_offers accepted

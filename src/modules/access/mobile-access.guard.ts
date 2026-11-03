@@ -28,7 +28,8 @@ export class MobileAccessGuard implements CanActivate {
   constructor(private readonly access: AccessService) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const name = context.getHandler().name;
-    if (['register', 'login', 'googleLogin', 'googleRegister', 'checkIdentifier', 'registrationConfig'].includes(name)) return true;
+    if (['register', 'login', 'googleLogin', 'googleRegister', 'checkIdentifier', 'registrationConfig',
+      'passwordResetGoogleStart', 'passwordResetGoogleComplete'].includes(name)) return true;
     const req = context.switchToHttp().getRequest();
     const principal = await this.access.authenticate(req.headers.authorization?.replace(/^Bearer\s+/i, ''));
     req.principal = principal;

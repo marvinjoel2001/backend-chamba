@@ -23,6 +23,13 @@ function firstUpdatedRow(result: any[]) {
   return Array.isArray(result[0]) ? result[0][0] : result[0];
 }
 
+/**
+ * lower() sin tildes, para comparar oficios con categorías: "Plomería" y
+ * "Plomeria" son el mismo oficio (la web y la app no siempre escriben igual).
+ */
+const plainSql = (expr: string) =>
+  `translate(lower(${expr}), 'áéíóúüñàèìòùÁÉÍÓÚÜÑÀÈÌÒÙ', 'aeiouunaeiouaeiouunaeiou')`;
+
 type CreateRequestInput = {
   clientUserId: string;
   title: string;
@@ -40,9 +47,10 @@ type CreateRequestInput = {
   longitude: number;
   scheduledAt?: string;
   photosBase64?: string[];
+  /** publicId null = foto que no subió el backend: se guarda pero nunca se borra. */
   photos?: Array<{
     url: string;
-    publicId: string;
+    publicId: string | null;
   }>;
   paymentMethod?: string;
   paymentMethodCode?: string;
@@ -121,6 +129,9 @@ export class MobileRequestsService {
       WHERE w.type = 'worker'
         AND w.is_available = true
         AND w.is_agency_worker = false
+        -- Solo trabajadores con identidad verificada y sin bloqueo.
+        AND w.verification_status = 'verified'
+        AND COALESCE(w.is_blocked, false) = false
         AND w.current_location IS NOT NULL
         AND origin.point IS NOT NULL
         AND ST_DWithin(w.current_location, origin.point, $4::float8 * 1000)
@@ -582,6 +593,8 @@ export class MobileRequestsService {
             jr.status IN ('searching', 'negotiating')
             AND w.is_available = true
             AND w.is_agency_worker = false
+            AND w.verification_status = 'verified'
+            AND COALESCE(w.is_blocked, false) = false
             AND w.current_location IS NOT NULL
             AND NOT EXISTS (
               SELECT 1
@@ -603,9 +616,9 @@ export class MobileRequestsService {
                 FROM worker_skills ws
                 WHERE ws.user_id = $1
                   AND (
-                    LOWER(ws.skill) = LOWER(jr.category)
-                    OR LOWER(ws.skill) IN (
-                      SELECT LOWER(value->>'name')
+                    ${plainSql('ws.skill')} = ${plainSql('jr.category')}
+                    OR ${plainSql('ws.skill')} IN (
+                      SELECT ${plainSql("value->>'name'")}
                       FROM jsonb_array_elements(jr.ai_categories) value
                     )
                   )
@@ -614,12 +627,14 @@ export class MobileRequestsService {
             AND (
               w.work_modalities IS NULL 
               OR jsonb_array_length(w.work_modalities) = 0 
+              -- La modalidad guardada manda; en pedidos viejos se deduce del
+              -- tipo de precio sin tildes ("Por día" también es diario).
               OR w.work_modalities @> jsonb_build_array(
-                CASE 
-                  WHEN LOWER(jr.price_type) LIKE '%hora%' OR LOWER(jr.price_type) LIKE '%hour%' THEN 'hourly'
-                  WHEN LOWER(jr.price_type) LIKE '%dia%' OR LOWER(jr.price_type) LIKE '%day%' THEN 'daily'
+                COALESCE(jr.modality, CASE
+                  WHEN ${plainSql('jr.price_type')} LIKE '%hora%' OR ${plainSql('jr.price_type')} LIKE '%hour%' THEN 'hourly'
+                  WHEN ${plainSql('jr.price_type')} LIKE '%dia%' OR ${plainSql('jr.price_type')} LIKE '%day%' THEN 'daily'
                   ELSE 'fixed'
-                END
+                END)
               )
             )
           )
@@ -1429,7 +1444,9 @@ export class MobileRequestsService {
       .map((value) =>
         String(value ?? '')
           .trim()
-          .toLowerCase(),
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, ''),
       )
       .filter(Boolean);
 
@@ -1437,9 +1454,18 @@ export class MobileRequestsService {
       normalizedSkills.length === 0 ||
       normalizedSkills.every((s) => s === 'general');
 
-    const requiredModality = {
-      hour: 'hourly', day: 'daily', fixed: 'fixed',
-    }[this.repo.normalizePriceTypeKey(request.price_type)];
+    // La modalidad guardada manda; en pedidos viejos se deduce del tipo de precio.
+    const storedModality = String(request.modality ?? '');
+    const priceTypeModality = {
+      hour: 'hourly',
+      day: 'daily',
+      fixed: 'fixed',
+    }[this.repo.normalizePriceTypeKey(String(request.price_type ?? ''))];
+    const requiredModality = ['fixed', 'hourly', 'daily'].includes(
+      storedModality,
+    )
+      ? storedModality
+      : priceTypeModality;
 
     const workers = await this.dataSource.query<any[]>(
       `
@@ -1450,6 +1476,9 @@ export class MobileRequestsService {
         AND u.is_available = true
         -- Los de agencia no pueden ofertar P2P (su agencia oferta por ellos).
         AND COALESCE(u.is_agency_worker, false) = false
+        -- Nadie bloqueado ni sin verificar recibe solicitudes (ni sus datos).
+        AND u.verification_status = 'verified'
+        AND COALESCE(u.is_blocked, false) = false
         AND u.current_location IS NOT NULL
         AND NOT EXISTS (
           SELECT 1
@@ -1467,7 +1496,7 @@ export class MobileRequestsService {
             SELECT 1
             FROM worker_skills ws
             WHERE ws.user_id = u.id
-              AND LOWER(ws.skill) = ANY($3::text[])
+              AND ${plainSql('ws.skill')} = ANY($3::text[])
           )
           OR NOT EXISTS (
             SELECT 1 FROM worker_skills ws2 WHERE ws2.user_id = u.id
@@ -1595,6 +1624,7 @@ export class MobileRequestsService {
     // Fuera también quien bloqueó a este cliente: no debe sonarle su solicitud.
     const eligible = await this.dataSource.query(`SELECT id FROM users WHERE id = ANY($1::uuid[])
       AND is_available = true AND COALESCE(is_blocked, false) = false
+      AND verification_status = 'verified'
       AND COALESCE(is_agency_worker, false) = false
       AND NOT EXISTS (SELECT 1 FROM user_blocks b JOIN job_requests jr ON jr.client_user_id = b.blocked_user_id
         WHERE jr.id = $2 AND b.blocker_user_id = users.id)`, [params.waveWorkers.map(w => w.workerId), params.requestId]);
@@ -1984,7 +2014,7 @@ Reglas obligatorias:
 
   private async persistUploadedRequestPhotos(
     requestId: string,
-    images: Array<{ url: string; publicId: string }>,
+    images: Array<{ url: string; publicId: string | null }>,
   ) {
     const uploaded: string[] = [];
     for (const image of images) {

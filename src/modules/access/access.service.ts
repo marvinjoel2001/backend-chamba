@@ -5,6 +5,17 @@ import { DataSource } from 'typeorm';
 
 export type Principal = { id: string; kind: 'mobile' | 'admin' | 'agency'; role?: string };
 
+/**
+ * true si el token se emitió antes de que se cerraran todas las sesiones del
+ * usuario (`users.tokens_valid_after`). `iat` viene en segundos.
+ */
+export function issuedBeforeRevocation(iat: unknown, validAfter: unknown): boolean {
+  if (!validAfter) return false;
+  const cutoff = Math.floor(new Date(validAfter as string).getTime() / 1000);
+  if (!Number.isFinite(cutoff)) return false;
+  return typeof iat !== 'number' || iat < cutoff;
+}
+
 @Injectable()
 export class AccessService {
   constructor(private readonly jwt: JwtService, private readonly config: ConfigService,
@@ -22,6 +33,40 @@ export class AccessService {
     return this.jwt.sign({ ...data, kind: 'google-registration' }, { secret: this.secret, expiresIn: '10m' });
   }
 
+  /** Token de un solo uso (10 min) para crear una contraseña nueva tras validar Google. */
+  issuePasswordReset(userId: string, googleId: string): string {
+    return this.jwt.sign({ sub: userId, gid: googleId, kind: 'password-reset' },
+      { secret: this.secret, expiresIn: '10m' });
+  }
+
+  verifyPasswordReset(token: string): { sub: string; gid: string; iat: number } {
+    try {
+      const data = this.jwt.verify(token || '', { secret: this.secret, algorithms: ['HS256'] });
+      if (data.kind !== 'password-reset' || typeof data.sub !== 'string' || typeof data.gid !== 'string') throw new Error();
+      return data;
+    } catch { throw new UnauthorizedException('La recuperación venció. Vuelve a empezar con Google.'); }
+  }
+
+  /**
+   * Comprobante (24 h) de que el backend subió esta foto para este usuario.
+   * Solo con él una foto queda como nuestra y se puede borrar después.
+   */
+  issueUploadTicket(userId: string, publicId: string, url: string): string {
+    return this.jwt.sign({ sub: userId, kind: 'upload', pid: publicId, url },
+      { secret: this.secret, expiresIn: '1d' });
+  }
+
+  /** La foto que subió el backend para este usuario, o null si el comprobante no es suyo o venció. */
+  verifyUploadTicket(token: unknown, userId: string): { publicId: string; url: string } | null {
+    if (typeof token !== 'string' || !token) return null;
+    try {
+      const data = this.jwt.verify(token, { secret: this.secret, algorithms: ['HS256'] });
+      if (data.kind !== 'upload' || data.sub !== userId
+        || typeof data.pid !== 'string' || typeof data.url !== 'string') return null;
+      return { publicId: data.pid, url: data.url };
+    } catch { return null; }
+  }
+
   verifyGoogleRegistration(token: string): any {
     try {
       const data = this.jwt.verify(token, { secret: this.secret, algorithms: ['HS256'] });
@@ -36,8 +81,11 @@ export class AccessService {
     catch { throw new UnauthorizedException('Sesión inválida o expirada'); }
     if (typeof claims.sub !== 'string') throw new UnauthorizedException();
     if (claims.kind === 'mobile') {
-      const rows = await this.db.query(`SELECT type, is_blocked FROM users WHERE id = $1`, [claims.sub]);
+      const rows = await this.db.query(`SELECT type, is_blocked, tokens_valid_after FROM users WHERE id = $1`, [claims.sub]);
       if (!rows[0] || rows[0].is_blocked) throw new UnauthorizedException();
+      if (issuedBeforeRevocation(claims.iat, rows[0].tokens_valid_after)) {
+        throw new UnauthorizedException('Tu sesión se cerró. Vuelve a iniciar sesión.');
+      }
       return { id: claims.sub, kind: 'mobile', role: rows[0].type };
     }
     if (claims.type === 'agency') {

@@ -20,6 +20,7 @@ import { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
 import { MobileWorkerPortfolioService } from './services/mobile-worker-portfolio.service';
 import { MobileAccountService } from './services/mobile-account.service';
 import { PhoneVerificationService } from './services/phone-verification.service';
+import { WorkModalitiesService } from './services/work-modalities.service';
 
 const parseNumber = (value?: string): number | undefined => {
   if (value === undefined || value === null || value === '') {
@@ -40,6 +41,7 @@ export class MobileController {
     private readonly portfolioService: MobileWorkerPortfolioService,
     private readonly accountService: MobileAccountService,
     private readonly phoneVerification: PhoneVerificationService,
+    private readonly workModalities: WorkModalitiesService,
   ) {}
 
   // ── Eliminación de cuenta (espera de 30 días). El usuario sale del token,
@@ -138,6 +140,21 @@ export class MobileController {
     return this.mobileService.checkIdentifier(identifier);
   }
 
+  // "Olvidé mi contraseña": se recupera iniciando sesión con la cuenta de
+  // Google del mismo correo. Públicas (la persona todavía no tiene sesión).
+  @Post('auth/password/google/start')
+  passwordResetGoogleStart(@Body('idToken') idToken: string) {
+    return this.mobileService.startGooglePasswordReset(idToken);
+  }
+
+  @Post('auth/password/google/complete')
+  passwordResetGoogleComplete(
+    @Body('resetToken') resetToken: string,
+    @Body('newPassword') newPassword: string,
+  ) {
+    return this.mobileService.completeGooglePasswordReset(resetToken, newPassword);
+  }
+
   @Get('mobile/explore')
   getExploreData(
     @Query('userId') userId: string,
@@ -193,6 +210,7 @@ export class MobileController {
     photos?: Array<{
       url?: string;
       publicId?: string;
+      uploadToken?: string;
     }>,
     @Body('paymentMethod') paymentMethod?: string,
     @Body('paymentMethodCode') paymentMethodCode?: string,
@@ -230,8 +248,9 @@ export class MobileController {
       startDate,
       photos:
         photos?.map((item) => ({
-          url: item.url ?? '',
-          publicId: item.publicId ?? '',
+          url: item?.url ?? '',
+          publicId: item?.publicId ?? '',
+          uploadToken: item?.uploadToken,
         })) ?? [],
     });
   }
@@ -295,8 +314,8 @@ export class MobileController {
   }
 
   @Post('mobile/requests/photos/upload')
-  uploadRequestPhoto(@Body('imageBase64') imageBase64: string) {
-    return this.mobileService.uploadRequestPhoto(imageBase64);
+  uploadRequestPhoto(@Req() req: any, @Body('imageBase64') imageBase64: string) {
+    return this.mobileService.uploadRequestPhoto(req.principal.id, imageBase64);
   }
 
   @Post('mobile/requests/photos/delete')
@@ -637,6 +656,22 @@ export class MobileController {
     return this.mobileService.updateAdminWorkerNotificationSettings({
       radiusKm: Number(radiusKm),
     });
+  }
+
+  // --- Admin: modalidades de contratación (por trabajo, por hora, por día) ---
+
+  @Get('mobile/admin/work-modalities')
+  getWorkModalitiesSettings() {
+    return this.workModalities.get();
+  }
+
+  @Post('mobile/admin/work-modalities')
+  updateWorkModalitiesSettings(
+    @Body('fixed') fixed?: boolean,
+    @Body('hourly') hourly?: boolean,
+    @Body('daily') daily?: boolean,
+  ) {
+    return this.workModalities.update({ fixed, hourly, daily });
   }
 
   @Get('mobile/admin/offer-lifetime-settings')

@@ -145,12 +145,16 @@ export class MobileGeoHelpers {
     }
   }
 
+  /**
+   * Fotos ya subidas (las resuelve MobileService.createRequest). publicId
+   * null = no la subió el backend: se guarda la URL pero nunca se borra.
+   */
   public validateUploadedImages(
-    images: Array<{ url?: string; publicId?: string }> | undefined,
+    images: Array<{ url?: string; publicId?: string | null }> | undefined,
     limit: number,
-  ) {
+  ): Array<{ url: string; publicId: string | null }> {
     if (!images || images.length === 0) {
-      return [] as Array<{ url: string; publicId: string }>;
+      return [];
     }
 
     if (images.length > limit) {
@@ -159,16 +163,12 @@ export class MobileGeoHelpers {
 
     return images.map((item, index) => {
       const url = item?.url?.trim();
-      const publicId = item?.publicId?.trim();
-
-      if (!url || !publicId) {
-        throw new BadRequestException(
-          `photos[${index}] must include url and publicId`,
-        );
+      if (!url) {
+        throw new BadRequestException(`photos[${index}] must include url`);
       }
 
       this.ensureSecureImageUrl(url);
-      return { url, publicId };
+      return { url, publicId: item?.publicId?.trim() || null };
     });
   }
 

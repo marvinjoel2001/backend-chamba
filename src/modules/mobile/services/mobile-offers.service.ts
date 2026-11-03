@@ -142,6 +142,7 @@ export class MobileOffersService {
         WHERE u.type = 'worker'
           AND u.is_available = true
           AND u.is_blocked = false
+          AND u.verification_status = 'verified'
           AND u.is_agency_worker = false
           AND u.current_location IS NOT NULL
           AND u.id <> jr.client_user_id
@@ -219,6 +220,10 @@ export class MobileOffersService {
     // re-ofertando; solo se reabren las pendientes, vencidas o declinadas.
     if (['accepted', 'rejected'].includes(existingRows[0]?.status)) {
       throw new BadRequestException('Esta oferta ya fue resuelta por el cliente');
+    }
+    // Si el cliente ya pagó esta oferta en la app, el monto queda fijo.
+    if (existingRows[0]) {
+      await this.payments?.assertOfferAmountEditable(existingRows[0].id, params.amount);
     }
 
     let offerId = '';
@@ -502,9 +507,22 @@ export class MobileOffersService {
       // Un worker solo puede tener un trabajo asignado. Se bloquea su fila de
       // usuario para serializar dos aceptaciones simultáneas del mismo worker
       // en solicitudes distintas.
-      await queryRunner.query(`SELECT id FROM users WHERE id = $1 FOR UPDATE`, [
-        offer.worker_user_id,
-      ]);
+      const rawWorker = await queryRunner.query(
+        `SELECT id, verification_status, is_blocked FROM users WHERE id = $1 FOR UPDATE`,
+        [offer.worker_user_id],
+      );
+      const lockedWorker = (Array.isArray(rawWorker?.[0]) ? rawWorker[0] : rawWorker)?.[0];
+      // Vale también para ofertas de agencia: nadie sin identidad verificada o
+      // bloqueado puede quedar asignado a un trabajo.
+      if (
+        !lockedWorker ||
+        lockedWorker.is_blocked === true ||
+        lockedWorker.verification_status !== 'verified'
+      ) {
+        throw new BadRequestException(
+          'Este trabajador ya no está disponible. Elige otra oferta.',
+        );
+      }
       if (
         await this.workerHasActiveJob(
           offer.worker_user_id,

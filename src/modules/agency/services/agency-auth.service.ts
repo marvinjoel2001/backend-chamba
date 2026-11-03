@@ -1,4 +1,5 @@
-import { Injectable, Logger, OnApplicationBootstrap, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap, Optional, UnauthorizedException } from '@nestjs/common';
+import { LoginAttemptsService } from '../../access/login-attempts.service';
 import { JwtService } from '@nestjs/jwt';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -12,6 +13,7 @@ export class AgencyAuthService implements OnApplicationBootstrap {
   constructor(
     private readonly dataSource: DataSource,
     private readonly jwtService: JwtService,
+    @Optional() private readonly loginAttempts?: LoginAttemptsService,
   ) {}
 
   async onApplicationBootstrap() {
@@ -56,6 +58,9 @@ export class AgencyAuthService implements OnApplicationBootstrap {
   }
 
   async login(loginDto: AgencyLoginDto) {
+    // 5 intentos fallidos bloquean ese correo 15 minutos.
+    const attemptsKey = String(loginDto.email ?? '').trim().toLowerCase();
+    await this.loginAttempts?.assertAllowed('agency', attemptsKey);
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT id, name, contact_email, contact_phone, commission_rate, password_hash, is_active
@@ -71,9 +76,15 @@ export class AgencyAuthService implements OnApplicationBootstrap {
       agency?.password_hash &&
       (await bcrypt.compare(loginDto.password, agency.password_hash));
 
-    if (!agency || !passwordOk || agency.is_active === false) {
+    if (!agency || !passwordOk) {
+      const remaining = await this.loginAttempts?.recordFailure('agency', attemptsKey);
+      throw new UnauthorizedException(remaining === undefined ? 'Credenciales inválidas'
+        : this.loginAttempts!.invalidCredentialsMessage('agency', remaining, 'Credenciales inválidas'));
+    }
+    if (agency.is_active === false) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
+    await this.loginAttempts?.reset('agency', attemptsKey);
 
     const payload = { sub: agency.id, type: 'agency', name: agency.name };
 

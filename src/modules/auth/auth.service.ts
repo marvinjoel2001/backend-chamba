@@ -2,7 +2,9 @@ import {
   Injectable,
   UnauthorizedException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { LoginAttemptsService } from '../access/login-attempts.service';
 import { JwtService } from '@nestjs/jwt';
 import { AdminUsersService } from '../admin-users/admin-users.service';
 import * as bcrypt from 'bcryptjs';
@@ -14,6 +16,7 @@ export class AuthService {
   constructor(
     private readonly adminUsersService: AdminUsersService,
     private readonly jwtService: JwtService,
+    @Optional() private readonly loginAttempts?: LoginAttemptsService,
   ) {}
 
   async validateAdminUser(loginDto: LoginDto): Promise<any> {
@@ -26,10 +29,16 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
+    // 5 intentos fallidos bloquean ese usuario 15 minutos.
+    const attemptsKey = loginDto.username.trim().toLowerCase();
+    await this.loginAttempts?.assertAllowed('admin', attemptsKey);
     const user = await this.validateAdminUser(loginDto);
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      const remaining = await this.loginAttempts?.recordFailure('admin', attemptsKey);
+      throw new UnauthorizedException(remaining === undefined ? 'Invalid credentials'
+        : this.loginAttempts!.invalidCredentialsMessage('admin', remaining, 'Usuario o contraseña incorrectos'));
     }
+    await this.loginAttempts?.reset('admin', attemptsKey);
     const payload = { username: user.username, sub: user.id };
     return {
       access_token: this.jwtService.sign(payload),

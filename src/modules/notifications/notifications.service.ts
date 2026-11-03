@@ -646,6 +646,36 @@ export class NotificationsService {
   }
 
 
+  /** Reembolso de un pago hecho en la app: cuando se programa y cuando se hizo. */
+  async notifyPaymentRefund(params: {
+    userId: string;
+    requestId: string;
+    jobTitle: string;
+    amount: number;
+    stage: 'pending' | 'done';
+  }): Promise<string | null> {
+    const amount = Number.isInteger(params.amount)
+      ? String(params.amount)
+      : params.amount.toFixed(2);
+    const title =
+      params.stage === 'pending' ? '💸 Te devolveremos tu pago' : '✅ Reembolso hecho';
+    const body =
+      params.stage === 'pending'
+        ? `Vamos a devolverte Bs ${amount} de "${params.jobTitle}". Te avisaremos cuando esté hecho.`
+        : `Te devolvimos Bs ${amount} de "${params.jobTitle}".`;
+    return this.deliver({
+      userId: params.userId,
+      title,
+      body,
+      data: {
+        type: 'payment',
+        requestId: params.requestId,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        deep_link: `/request/${params.requestId}`,
+      },
+    });
+  }
+
   private async deliver(params: { userId: string; title: string; body: string; data: Record<string, string> }): Promise<string | null> {
     const eventId = params.data.eventId || randomUUID();
     const data: Record<string, string> = { ...params.data, eventId, userId: params.userId, title: params.title, body: params.body,

@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MobileModule } from '../mobile/mobile.module';
+import { AccessModule } from '../access/access.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AgencyAuthController } from './controllers/agency-auth.controller';
 import { AgencyController } from './controllers/agency.controller';
@@ -22,6 +23,7 @@ import { AgencyJwtStrategy } from './strategies/agency-jwt.strategy';
 @Module({
   imports: [
     MobileModule,
+    AccessModule,
     NotificationsModule,
     RealtimeModule,
     PassportModule,
