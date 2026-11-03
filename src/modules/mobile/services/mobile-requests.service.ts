@@ -23,6 +23,13 @@ function firstUpdatedRow(result: any[]) {
   return Array.isArray(result[0]) ? result[0][0] : result[0];
 }
 
+/**
+ * lower() sin tildes, para comparar oficios con categorías: "Plomería" y
+ * "Plomeria" son el mismo oficio (la web y la app no siempre escriben igual).
+ */
+const plainSql = (expr: string) =>
+  `translate(lower(${expr}), 'áéíóúüñàèìòùÁÉÍÓÚÜÑÀÈÌÒÙ', 'aeiouunaeiouaeiouunaeiou')`;
+
 type CreateRequestInput = {
   clientUserId: string;
   title: string;
@@ -609,9 +616,9 @@ export class MobileRequestsService {
                 FROM worker_skills ws
                 WHERE ws.user_id = $1
                   AND (
-                    LOWER(ws.skill) = LOWER(jr.category)
-                    OR LOWER(ws.skill) IN (
-                      SELECT LOWER(value->>'name')
+                    ${plainSql('ws.skill')} = ${plainSql('jr.category')}
+                    OR ${plainSql('ws.skill')} IN (
+                      SELECT ${plainSql("value->>'name'")}
                       FROM jsonb_array_elements(jr.ai_categories) value
                     )
                   )
@@ -1435,7 +1442,9 @@ export class MobileRequestsService {
       .map((value) =>
         String(value ?? '')
           .trim()
-          .toLowerCase(),
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, ''),
       )
       .filter(Boolean);
 
@@ -1476,7 +1485,7 @@ export class MobileRequestsService {
             SELECT 1
             FROM worker_skills ws
             WHERE ws.user_id = u.id
-              AND LOWER(ws.skill) = ANY($3::text[])
+              AND ${plainSql('ws.skill')} = ANY($3::text[])
           )
           OR NOT EXISTS (
             SELECT 1 FROM worker_skills ws2 WHERE ws2.user_id = u.id

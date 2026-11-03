@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -12,6 +13,7 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { MobileRequestRepository } from '../shared/mobile-request.repository';
 import { MobileCatalogService } from './mobile-catalog.service';
 import { workClock } from '../shared/work-clock';
+import { WorkModalitiesService } from './work-modalities.service';
 
 @Injectable()
 export class MobileUsersService {
@@ -24,6 +26,7 @@ export class MobileUsersService {
     private readonly notificationsService: NotificationsService,
     private readonly repo: MobileRequestRepository,
     private readonly catalogService: MobileCatalogService,
+    @Optional() private readonly workModalities?: WorkModalitiesService,
   ) {}
 
   public async uploadProfilePhoto(params: {
@@ -520,7 +523,7 @@ export class MobileUsersService {
   ) {
     await this.repo.getUserById(workerUserId);
 
-    const modalities = [
+    const requested = [
       ...new Set(
         (input.modalities ?? [])
           .map((item) => String(item).trim().toLowerCase())
@@ -529,10 +532,16 @@ export class MobileUsersService {
           ),
       ),
     ];
+    // Las que el admin desactivó no se guardan (apps viejas aún las muestran).
+    const modalities = this.workModalities
+      ? await this.workModalities.keepEnabled(requested)
+      : requested;
 
     if (modalities.length === 0) {
       throw new BadRequestException(
-        'Selecciona al menos una modalidad de trabajo',
+        requested.length
+          ? 'Esas modalidades no están disponibles por ahora. Elige otra.'
+          : 'Selecciona al menos una modalidad de trabajo',
       );
     }
 

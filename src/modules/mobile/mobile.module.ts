@@ -7,6 +7,9 @@ import { QueuesModule } from '../queues/queues.module';
 import { ApiLogsModule } from '../api-logs/api-logs.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { MobileController } from './mobile.controller';
+import { PublicJobsController } from './public-jobs.controller';
+import { PublicJobsService } from './services/public-jobs.service';
+import { WorkModalitiesService } from './services/work-modalities.service';
 import { MobileService } from './mobile.service';
 import { MobileRequestRepository } from './shared/mobile-request.repository';
 import { MobileGeoHelpers } from './shared/mobile-geo.helpers';
@@ -34,7 +37,7 @@ import { PhoneVerificationService } from './services/phone-verification.service'
     ApiLogsModule,
     PaymentsModule,
   ],
-  controllers: [MobileController],
+  controllers: [MobileController, PublicJobsController],
   providers: [
     MobileService,
     MobileRequestRepository,
@@ -52,6 +55,8 @@ import { PhoneVerificationService } from './services/phone-verification.service'
     MobileRequestsCronService,
     MobileAccountService,
     PhoneVerificationService,
+    WorkModalitiesService,
+    PublicJobsService,
   ],
   exports: [MobileService, MobileOffersService],
 })

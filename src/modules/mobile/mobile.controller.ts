@@ -20,6 +20,7 @@ import { AddPortfolioPhotoDto } from './dto/add-portfolio-photo.dto';
 import { MobileWorkerPortfolioService } from './services/mobile-worker-portfolio.service';
 import { MobileAccountService } from './services/mobile-account.service';
 import { PhoneVerificationService } from './services/phone-verification.service';
+import { WorkModalitiesService } from './services/work-modalities.service';
 
 const parseNumber = (value?: string): number | undefined => {
   if (value === undefined || value === null || value === '') {
@@ -40,6 +41,7 @@ export class MobileController {
     private readonly portfolioService: MobileWorkerPortfolioService,
     private readonly accountService: MobileAccountService,
     private readonly phoneVerification: PhoneVerificationService,
+    private readonly workModalities: WorkModalitiesService,
   ) {}
 
   // ── Eliminación de cuenta (espera de 30 días). El usuario sale del token,
@@ -654,6 +656,22 @@ export class MobileController {
     return this.mobileService.updateAdminWorkerNotificationSettings({
       radiusKm: Number(radiusKm),
     });
+  }
+
+  // --- Admin: modalidades de contratación (por trabajo, por hora, por día) ---
+
+  @Get('mobile/admin/work-modalities')
+  getWorkModalitiesSettings() {
+    return this.workModalities.get();
+  }
+
+  @Post('mobile/admin/work-modalities')
+  updateWorkModalitiesSettings(
+    @Body('fixed') fixed?: boolean,
+    @Body('hourly') hourly?: boolean,
+    @Body('daily') daily?: boolean,
+  ) {
+    return this.workModalities.update({ fixed, hourly, daily });
   }
 
   @Get('mobile/admin/offer-lifetime-settings')

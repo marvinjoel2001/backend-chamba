@@ -29,6 +29,7 @@ import { MobileAdminService } from './services/mobile-admin.service';
 import { WorkerLead } from '../worker-leads/entities/worker-lead.entity';
 import { isEmail } from 'class-validator';
 import { PhoneVerificationService } from './services/phone-verification.service';
+import { WorkModalitiesService } from './services/work-modalities.service';
 
 type CreateRequestInput = {
   clientUserId: string;
@@ -94,6 +95,7 @@ export class MobileService implements OnModuleInit {
     private readonly access: AccessService,
     private readonly phoneVerification: PhoneVerificationService,
     @Optional() private readonly loginAttempts?: LoginAttemptsService,
+    @Optional() private readonly workModalities?: WorkModalitiesService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -699,6 +701,17 @@ export class MobileService implements OnModuleInit {
   }
 
   async createRequest(input: CreateRequestInput) {
+    // Una modalidad que el admin desactivó ya no sirve para solicitudes nuevas
+    // (las apps viejas todavía pueden mostrarla). Sin modalidad, se deduce del
+    // tipo de precio, como hace el reparto.
+    if (this.workModalities) {
+      const modality =
+        input.modality ||
+        ({ hour: 'hourly', day: 'daily', fixed: 'fixed' } as const)[
+          this.repo.normalizePriceTypeKey(input.priceType)
+        ];
+      await this.workModalities.assertEnabled(modality);
+    }
     return this.requestsService.createRequest({
       ...input,
       photos: this.resolveRequestPhotos(input.clientUserId, input.photos),
