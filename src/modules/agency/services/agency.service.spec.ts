@@ -56,11 +56,22 @@ describe('AgencyService', () => {
       expect(mobileOffersService.upsertOffer).not.toHaveBeenCalled();
     });
 
+    it('rechaza si el trabajador no verificó su identidad', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { id: WORKER_ID, is_available: true, is_blocked: false, verification_status: 'pending' },
+      ]);
+
+      await expect(
+        service.sendOffer(AGENCY_ID, REQUEST_ID, dto),
+      ).rejects.toThrow('verificó su identidad');
+      expect(mobileOffersService.upsertOffer).not.toHaveBeenCalled();
+    });
+
     it('delega en upsertOffer marcando offered_by_agency_id y notifica al worker', async () => {
       dataSource.query
         // validación de pertenencia del worker
         .mockResolvedValueOnce([
-          { id: WORKER_ID, is_available: true, is_blocked: false },
+          { id: WORKER_ID, is_available: true, is_blocked: false, verification_status: 'verified' },
         ])
         // metadata para la notificación push
         .mockResolvedValueOnce([
@@ -101,7 +112,7 @@ describe('AgencyService', () => {
     it('no falla la oferta si la notificación revienta', async () => {
       dataSource.query
         .mockResolvedValueOnce([
-          { id: WORKER_ID, is_available: true, is_blocked: false },
+          { id: WORKER_ID, is_available: true, is_blocked: false, verification_status: 'verified' },
         ])
         .mockRejectedValueOnce(new Error('db down'));
       mobileOffersService.upsertOffer.mockResolvedValueOnce({ ok: true });

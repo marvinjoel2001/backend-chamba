@@ -10,7 +10,10 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AdminAccessGuard, UserAccessGuard } from '../access/mobile-access.guard';
+import {
+  AdminAccessGuard,
+  UserAccessGuard,
+} from '../access/mobile-access.guard';
 import { PaymentsService } from './payments.service';
 
 /** Rutas de la app: el contrato está en payment-provider.ts. */
@@ -30,12 +33,6 @@ export class PaymentsController {
     return this.payments.getForClient(req.principal.id, id);
   }
 
-  @UseGuards(UserAccessGuard)
-  @Post(':id/report')
-  report(@Req() req: any, @Param('id', ParseUUIDPipe) id: string) {
-    return this.payments.reportPaid(req.principal.id, id);
-  }
-
   /** Avisos automáticos de pasarelas (cada proveedor valida su firma). */
   @Post('webhooks/:provider')
   webhook(
@@ -47,6 +44,10 @@ export class PaymentsController {
   }
 }
 
+/**
+ * Admin → Pagos. Los pagos solo se confirman con la API del proveedor; aquí
+ * se ven y se gestionan los reembolsos.
+ */
 @UseGuards(AdminAccessGuard)
 @Controller('mobile/admin/payments')
 export class AdminPaymentsController {
@@ -62,22 +63,30 @@ export class AdminPaymentsController {
     return this.payments.providerOptions();
   }
 
-  @Post('qr-image')
-  uploadQr(@Body('imageBase64') imageBase64: string) {
-    return this.payments.uploadQrImage(imageBase64);
-  }
-
-  @Post(':id/confirm')
-  confirm(@Req() req: any, @Param('id', ParseUUIDPipe) id: string) {
-    return this.payments.adminConfirm(id, req.principal.id);
-  }
-
-  @Post(':id/reject')
-  reject(
+  @Post(':id/refund')
+  startRefund(
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,
     @Body('reason') reason?: string,
   ) {
-    return this.payments.adminReject(id, req.principal.id, reason);
+    return this.payments.adminStartRefund(id, req.principal.id, reason);
+  }
+
+  @Post(':id/refund/done')
+  markRefunded(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('note') note?: string,
+  ) {
+    return this.payments.adminMarkRefunded(id, req.principal.id, note);
+  }
+
+  @Post(':id/refund/decline')
+  declineRefund(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('note') note?: string,
+  ) {
+    return this.payments.adminDeclineRefund(id, req.principal.id, note);
   }
 }

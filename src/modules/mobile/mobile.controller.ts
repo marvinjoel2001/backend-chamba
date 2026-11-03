@@ -138,6 +138,21 @@ export class MobileController {
     return this.mobileService.checkIdentifier(identifier);
   }
 
+  // "Olvidé mi contraseña": se recupera iniciando sesión con la cuenta de
+  // Google del mismo correo. Públicas (la persona todavía no tiene sesión).
+  @Post('auth/password/google/start')
+  passwordResetGoogleStart(@Body('idToken') idToken: string) {
+    return this.mobileService.startGooglePasswordReset(idToken);
+  }
+
+  @Post('auth/password/google/complete')
+  passwordResetGoogleComplete(
+    @Body('resetToken') resetToken: string,
+    @Body('newPassword') newPassword: string,
+  ) {
+    return this.mobileService.completeGooglePasswordReset(resetToken, newPassword);
+  }
+
   @Get('mobile/explore')
   getExploreData(
     @Query('userId') userId: string,

@@ -121,6 +121,9 @@ export class MobileRequestsService {
       WHERE w.type = 'worker'
         AND w.is_available = true
         AND w.is_agency_worker = false
+        -- Solo trabajadores con identidad verificada y sin bloqueo.
+        AND w.verification_status = 'verified'
+        AND COALESCE(w.is_blocked, false) = false
         AND w.current_location IS NOT NULL
         AND origin.point IS NOT NULL
         AND ST_DWithin(w.current_location, origin.point, $4::float8 * 1000)
@@ -582,6 +585,8 @@ export class MobileRequestsService {
             jr.status IN ('searching', 'negotiating')
             AND w.is_available = true
             AND w.is_agency_worker = false
+            AND w.verification_status = 'verified'
+            AND COALESCE(w.is_blocked, false) = false
             AND w.current_location IS NOT NULL
             AND NOT EXISTS (
               SELECT 1
@@ -1450,6 +1455,9 @@ export class MobileRequestsService {
         AND u.is_available = true
         -- Los de agencia no pueden ofertar P2P (su agencia oferta por ellos).
         AND COALESCE(u.is_agency_worker, false) = false
+        -- Nadie bloqueado ni sin verificar recibe solicitudes (ni sus datos).
+        AND u.verification_status = 'verified'
+        AND COALESCE(u.is_blocked, false) = false
         AND u.current_location IS NOT NULL
         AND NOT EXISTS (
           SELECT 1
@@ -1595,6 +1603,7 @@ export class MobileRequestsService {
     // Fuera también quien bloqueó a este cliente: no debe sonarle su solicitud.
     const eligible = await this.dataSource.query(`SELECT id FROM users WHERE id = ANY($1::uuid[])
       AND is_available = true AND COALESCE(is_blocked, false) = false
+      AND verification_status = 'verified'
       AND COALESCE(is_agency_worker, false) = false
       AND NOT EXISTS (SELECT 1 FROM user_blocks b JOIN job_requests jr ON jr.client_user_id = b.blocked_user_id
         WHERE jr.id = $2 AND b.blocker_user_id = users.id)`, [params.waveWorkers.map(w => w.workerId), params.requestId]);

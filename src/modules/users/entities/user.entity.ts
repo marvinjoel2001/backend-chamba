@@ -205,6 +205,11 @@ export class User {
   @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt?: Date | null;
 
+  // Tokens de la app emitidos antes de esta fecha ya no valen (AccessService).
+  // Declarada aquí para que DATABASE_SYNC no la borre.
+  @Column({ name: 'tokens_valid_after', type: 'timestamptz', nullable: true, select: false })
+  tokensValidAfter?: Date | null;
+
   @ApiProperty({ type: String, example: '2026-03-08T22:42:26.170Z' })
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

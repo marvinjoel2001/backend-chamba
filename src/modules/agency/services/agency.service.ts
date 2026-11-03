@@ -434,7 +434,7 @@ export class AgencyService {
   ) {
     const rows = await this.dataSource.query<any[]>(
       `
-      SELECT id, is_available, is_blocked
+      SELECT id, is_available, is_blocked, verification_status
       FROM users
       WHERE id = $1
         AND agency_id = $2
@@ -451,6 +451,12 @@ export class AgencyService {
     }
     if (worker.is_blocked === true) {
       throw new BadRequestException('El trabajador está bloqueado');
+    }
+    // Igual que en la app: sin identidad verificada no se oferta a clientes.
+    if (worker.verification_status !== 'verified') {
+      throw new BadRequestException(
+        'Este trabajador aún no verificó su identidad. Pídele que entre a la app de Chamba y complete "Verifica tu identidad".',
+      );
     }
 
     // Se delega en el flujo P2P existente: crea/actualiza la oferta,
