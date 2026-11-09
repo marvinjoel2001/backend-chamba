@@ -1,6 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 import { MobileService } from '../mobile.service';
-import { publicJobTitle } from './public-jobs.service';
+import {
+  publicJobTitle,
+  publicMaterialsMode,
+  publicStartDate,
+} from './public-jobs.service';
 import { WorkModalitiesService } from './work-modalities.service';
 
 /** app_config en memoria. */
@@ -137,5 +141,20 @@ describe('Título público de un trabajo', () => {
     );
     expect(long.length).toBeLessThanOrEqual(60);
     expect(long.endsWith('…')).toBe(true);
+  });
+});
+
+describe('Materiales y fecha de inicio en la lista pública', () => {
+  it('solo pasa los dos modos que entiende la web', () => {
+    expect(publicMaterialsMode('worker')).toBe('worker');
+    expect(publicMaterialsMode('client')).toBe('client');
+    expect(publicMaterialsMode('discuss')).toBeNull();
+    expect(publicMaterialsMode(null)).toBeNull();
+  });
+  it('la fecha de inicio va sin segundos y nada raro pasa', () => {
+    expect(publicStartDate('2026-11-10T08:00:00')).toBe('2026-11-10T08:00');
+    expect(publicStartDate('2026-11-10')).toBe('2026-11-10');
+    expect(publicStartDate('mañana')).toBeNull();
+    expect(publicStartDate(null)).toBeNull();
   });
 });

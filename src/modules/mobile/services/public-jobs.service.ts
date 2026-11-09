@@ -6,6 +6,10 @@ export type PublicJob = {
   category: string;
   budget: number;
   modality: 'fixed' | 'hourly' | 'daily';
+  /** 'worker': el cliente pidió que coticen los materiales; 'client': solo mano de obra. */
+  materialsMode: 'client' | 'worker' | null;
+  /** Inicio programado, 'AAAA-MM-DD' o 'AAAA-MM-DDTHH:mm' (hora de Bolivia). */
+  startDate: string | null;
   createdAt: string;
 };
 
@@ -45,10 +49,24 @@ const modalityOf = (
   return 'fixed';
 };
 
+/** Solo los dos valores que entiende la web; 'discuss' (viejo) u otros, nada. */
+export function publicMaterialsMode(raw: unknown): PublicJob['materialsMode'] {
+  return raw === 'client' || raw === 'worker' ? raw : null;
+}
+
+/** Fecha de inicio sin segundos, o null si no tiene el formato esperado. */
+export function publicStartDate(raw: unknown): string | null {
+  const match = /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2})?/.exec(
+    typeof raw === 'string' ? raw.trim() : '',
+  );
+  return match ? `${match[1]}${match[2] ?? ''}` : null;
+}
+
 /**
  * Trabajos abiertos para la web pública (para que los trabajadores vean que
  * hay movimiento y descarguen la app). Solo título corto, categoría,
- * presupuesto, modalidad y fecha: nunca dirección, descripción, fotos,
+ * presupuesto, modalidad, si incluye materiales, cuándo empieza y fecha de
+ * publicación: nunca dirección, descripción, fotos,
  * ubicación ni datos del cliente.
  */
 @Injectable()
@@ -67,7 +85,7 @@ export class PublicJobsService {
     const [rows, totals] = await Promise.all([
       this.dataSource.query<any[]>(
         `SELECT jr.title, jr.category, jr.budget::float8 AS budget, jr.modality,
-                jr.price_type, jr.created_at
+                jr.price_type, jr.materials_mode, jr.start_date, jr.created_at
          ${filters}
          ORDER BY jr.created_at DESC
          LIMIT $1`,
@@ -84,6 +102,8 @@ export class PublicJobsService {
         category: String(row.category ?? 'General'),
         budget: Number(row.budget ?? 0),
         modality: modalityOf(row.modality, row.price_type),
+        materialsMode: publicMaterialsMode(row.materials_mode),
+        startDate: publicStartDate(row.start_date),
         createdAt: new Date(row.created_at).toISOString(),
       })),
     };
