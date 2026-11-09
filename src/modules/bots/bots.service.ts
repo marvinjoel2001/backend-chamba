@@ -37,6 +37,34 @@ const SPECIALTIES = [
   'Pintura',
   'Pintura',
 ];
+// Nombres comunes en Santa Cruz: apellidos cruceños y del occidente del país.
+// Los trabajadores siguen el orden de SPECIALTIES.
+const NAMES: Record<string, string[]> = {
+  client: [
+    'María Fernanda Justiniano',
+    'Luis Fernando Saucedo',
+    'Carla Antelo',
+    'Juan Carlos Áñez',
+    'Daniela Roca',
+    'Marcelo Vaca',
+    'Gabriela Rivero',
+    'José Luis Suárez',
+    'Paola Cuéllar',
+    'Rodrigo Landívar',
+  ],
+  worker: [
+    'Rosa Mamani',
+    'Lourdes Arteaga',
+    'Gladys Choque',
+    'Freddy Quispe',
+    'Wilson Montero',
+    'Ronald Vargas',
+    'Jhonny Peña',
+    'Edwin Gutiérrez',
+    'Mario Flores',
+    'Raúl Melgar',
+  ],
+};
 const COLORS = ['#7c3aed', '#2563eb', '#059669', '#db2777', '#d97706'];
 const TITLES: Record<string, string> = {
   Limpieza: 'Limpieza de una habitación',
@@ -232,11 +260,12 @@ export class BotsService {
           const code = `${role === 'client' ? 'CLIENT' : 'WORKER'}-${String(i + 1).padStart(2, '0')}`;
           await em.query(
             `INSERT INTO chamba_simulation.profiles(id,role,name,avatar_color,specialty)
-            VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO NOTHING`,
+            VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name
+            WHERE profiles.name ~ '^(Cliente|Trabajador) demo [0-9]{2}$'`,
             [
               code,
               role,
-              `${role === 'client' ? 'Cliente' : 'Trabajador'} demo ${String(i + 1).padStart(2, '0')}`,
+              NAMES[role][i],
               COLORS[i % COLORS.length],
               SPECIALTIES[i],
             ],
