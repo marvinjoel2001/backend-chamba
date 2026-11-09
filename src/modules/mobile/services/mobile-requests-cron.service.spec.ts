@@ -43,6 +43,64 @@ describe('request deadlines and reminders', () => {
     await cron.handleRequestTimeouts();
     expect(db.query).toHaveBeenCalledTimes(2);
   });
+  describe('day-before reminder', () => {
+    const assigned = (start_date: string) => ({
+      id: 'qa-job', title: 'Instalar ducha', client_user_id: 'client', worker_user_id: 'worker',
+      worker_first_name: 'Jorge', worker_last_name: 'QA', scheduled_at: null, start_date });
+    const at = (iso: string) => jest.setSystemTime(new Date(iso));
+    beforeEach(() => {
+      notifications.notifyWorkerJobTomorrow = jest.fn().mockResolvedValue(null);
+      notifications.notifyClientJobTomorrow = jest.fn().mockResolvedValue(null);
+    });
+
+    it('avisa a los dos la noche anterior, con la hora del trabajo', async () => {
+      at('2026-11-09T23:30:00Z'); // 19:30 en Bolivia
+      db.query.mockResolvedValueOnce([assigned('2026-11-10T08:00:00')])
+        .mockResolvedValueOnce([[{ id: 'qa-job' }], 1]);
+      await cron.handleDayBeforeReminders();
+      expect(db.query.mock.calls[1][0]).toContain('day_before_reminder_sent = true');
+      expect(notifications.notifyWorkerJobTomorrow).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'worker', timeLabel: 'a las 08:00' }));
+      expect(notifications.notifyClientJobTomorrow).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'client', workerName: 'Jorge QA', timeLabel: 'a las 08:00' }));
+    });
+
+    it('sin hora elegida no inventa una', async () => {
+      at('2026-11-09T23:30:00Z');
+      db.query.mockResolvedValueOnce([assigned('2026-11-10')]).mockResolvedValueOnce([[{ id: 'qa-job' }], 1]);
+      await cron.handleDayBeforeReminders();
+      expect(notifications.notifyWorkerJobTomorrow).toHaveBeenCalledWith(expect.objectContaining({ timeLabel: '' }));
+    });
+
+    it.each([
+      ['antes de las 19:00', '2026-11-09T22:00:00Z', '2026-11-10T08:00:00'],
+      ['después de las 22:00', '2026-11-10T02:30:00Z', '2026-11-10T08:00:00'],
+      ['faltando más de un día', '2026-11-09T23:30:00Z', '2026-11-12T08:00:00'],
+    ])('no avisa %s', async (_label, now, start) => {
+      at(now);
+      db.query.mockResolvedValueOnce([assigned(start)]);
+      await cron.handleDayBeforeReminders();
+      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(notifications.notifyWorkerJobTomorrow).not.toHaveBeenCalled();
+    });
+
+    it('un trabajo de hoy se marca sin avisar "mañana"', async () => {
+      at('2026-11-10T12:00:00Z'); // 08:00 en Bolivia
+      db.query.mockResolvedValueOnce([assigned('2026-11-10T16:00:00')]).mockResolvedValueOnce([[{ id: 'qa-job' }], 1]);
+      await cron.handleDayBeforeReminders();
+      expect(db.query).toHaveBeenCalledTimes(2);
+      expect(notifications.notifyWorkerJobTomorrow).not.toHaveBeenCalled();
+      expect(notifications.notifyClientJobTomorrow).not.toHaveBeenCalled();
+    });
+
+    it('si otra instancia ya lo marcó, no avisa dos veces', async () => {
+      at('2026-11-09T23:30:00Z');
+      db.query.mockResolvedValueOnce([assigned('2026-11-10T08:00:00')]).mockResolvedValueOnce([[], 0]);
+      await cron.handleDayBeforeReminders();
+      expect(notifications.notifyWorkerJobTomorrow).not.toHaveBeenCalled();
+    });
+  });
+
   it('uses Bolivia time consistently and accepts both API and UI modality names', () => {
     expect(repo.resolveStartAt(null, '2026-10-09T17:00:00')?.toISOString()).toBe('2026-10-09T21:00:00.000Z');
     expect(repo.resolveStartAt(null, '2026-10-09')?.toISOString()).toBe('2026-10-09T13:00:00.000Z');

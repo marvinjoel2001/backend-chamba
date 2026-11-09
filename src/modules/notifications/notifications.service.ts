@@ -645,6 +645,47 @@ export class NotificationsService {
     });
   }
 
+  /** Noche anterior a un trabajo programado. `timeLabel`: "a las 08:00" o ''. */
+  async notifyWorkerJobTomorrow(params: {
+    userId: string;
+    jobTitle: string;
+    requestId: string;
+    timeLabel: string;
+  }): Promise<string | null> {
+    const when = params.timeLabel ? `, ${params.timeLabel}` : '';
+    return this.deliver({
+      userId: params.userId,
+      title: '📅 Mañana tienes un trabajo',
+      body: `${params.jobTitle}${when}. Revisa la dirección en tu Agenda.`,
+      data: {
+        type: 'job_starting_soon',
+        requestId: params.requestId,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        deep_link: `/request/${params.requestId}`,
+      },
+    });
+  }
+
+  async notifyClientJobTomorrow(params: {
+    userId: string;
+    workerName: string;
+    jobTitle: string;
+    requestId: string;
+    timeLabel: string;
+  }): Promise<string | null> {
+    const when = params.timeLabel ? ` ${params.timeLabel}` : '';
+    return this.deliver({
+      userId: params.userId,
+      title: '📅 Mañana es tu trabajo',
+      body: `${params.workerName} irá${when} para: ${params.jobTitle}`,
+      data: {
+        type: 'job_starting_soon',
+        requestId: params.requestId,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        deep_link: `/request/${params.requestId}`,
+      },
+    });
+  }
 
   /** Reembolso de un pago hecho en la app: cuando se programa y cuando se hizo. */
   async notifyPaymentRefund(params: {

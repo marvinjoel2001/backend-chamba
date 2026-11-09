@@ -13,6 +13,12 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
   private static readonly CANCEL_BEFORE_START_MINUTES = 60;
   // Ventana del recordatorio "tu trabajo empieza pronto".
   private static readonly START_REMINDER_WINDOW_MINUTES = 60;
+  // Recordatorio de la noche anterior, en hora de Bolivia: de 19:00 a 22:00.
+  // Fuera de ese rango no se manda (nadie quiere un aviso a medianoche); el
+  // de 1 hora antes sigue cubriendo el trabajo.
+  private static readonly DAY_BEFORE_FROM_HOUR = 19;
+  private static readonly DAY_BEFORE_UNTIL_HOUR = 22;
+  private static readonly BOLIVIA_OFFSET_MS = -4 * 60 * 60 * 1000;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -35,6 +41,11 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
       await this.handleStartReminders();
     } catch (e) {
       this.logger.error('Initial start reminder check failed', e);
+    }
+    try {
+      await this.handleDayBeforeReminders();
+    } catch (e) {
+      this.logger.error('Initial day-before reminder check failed', e);
     }
   }
 
@@ -229,6 +240,107 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
           this.logger.error('Error sending client start reminder', e),
         );
     }
+  }
+
+  /**
+   * La noche anterior a un trabajo programado avisa al cliente y al trabajador
+   * que es mañana. Un trabajo aceptado el mismo día no recibe este aviso.
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async handleDayBeforeReminders() {
+    const rows = await this.dataSource.query<any[]>(`
+      SELECT jr.id,
+             jr.title,
+             jr.client_user_id,
+             jr.scheduled_at,
+             jr.start_date,
+             jo.worker_user_id,
+             u.first_name AS worker_first_name,
+             u.last_name AS worker_last_name
+      FROM job_requests jr
+      JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
+      JOIN users u ON u.id = jo.worker_user_id
+      WHERE jr.status = 'assigned'
+        AND jr.day_before_reminder_sent = false
+        AND (jr.scheduled_at IS NOT NULL OR NULLIF(jr.start_date, '') IS NOT NULL)
+    `);
+    if (rows.length === 0) return;
+
+    const local = this.boliviaClock(new Date());
+    const inWindow =
+      local.hour >= MobileRequestsCronService.DAY_BEFORE_FROM_HOUR &&
+      local.hour < MobileRequestsCronService.DAY_BEFORE_UNTIL_HOUR;
+
+    for (const req of rows) {
+      const startAt = this.repo.resolveStartAt(req.scheduled_at, req.start_date);
+      if (!startAt) continue;
+      const start = this.boliviaClock(startAt);
+      const daysUntil = Math.round((start.day - local.day) / 86_400_000);
+      if (daysUntil > 1) continue;
+      if (daysUntil === 1 && !inWindow) continue;
+
+      // Se marca antes de avisar: si dos instancias corren a la vez, solo una
+      // gana. Si ya es el día (o pasó), se marca sin avisar.
+      const claimed = await this.dataSource.query<any[]>(
+        `UPDATE job_requests SET day_before_reminder_sent = true
+         WHERE id = $1 AND day_before_reminder_sent = false
+         RETURNING id`,
+        [req.id],
+      );
+      // TypeORM devuelve [filas, cantidad] en un UPDATE de PostgreSQL.
+      const claimedRow = Array.isArray(claimed[0]) ? claimed[0][0] : claimed[0];
+      if (daysUntil < 1 || !claimedRow) continue;
+
+      const hasTime =
+        req.scheduled_at != null || String(req.start_date ?? '').includes('T');
+      const timeLabel = hasTime ? `a las ${start.time}` : '';
+      const workerName =
+        `${req.worker_first_name ?? ''} ${req.worker_last_name ?? ''}`.trim() ||
+        'Tu trabajador';
+
+      this.logger.log(
+        `[dayBeforeReminder] Trabajo ${req.id} es mañana; notificando a worker y cliente`,
+      );
+
+      await this.notificationsService
+        .notifyWorkerJobTomorrow({
+          userId: req.worker_user_id,
+          jobTitle: req.title,
+          requestId: req.id,
+          timeLabel,
+        })
+        .catch((e) =>
+          this.logger.error('Error sending worker day-before reminder', e),
+        );
+      await this.notificationsService
+        .notifyClientJobTomorrow({
+          userId: req.client_user_id,
+          workerName,
+          jobTitle: req.title,
+          requestId: req.id,
+          timeLabel,
+        })
+        .catch((e) =>
+          this.logger.error('Error sending client day-before reminder', e),
+        );
+    }
+  }
+
+  /** Día (medianoche, en ms) y hora en Bolivia, que no tiene horario de verano. */
+  private boliviaClock(date: Date): { day: number; hour: number; time: string } {
+    const local = new Date(
+      date.getTime() + MobileRequestsCronService.BOLIVIA_OFFSET_MS,
+    );
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return {
+      day: Date.UTC(
+        local.getUTCFullYear(),
+        local.getUTCMonth(),
+        local.getUTCDate(),
+      ),
+      hour: local.getUTCHours(),
+      time: `${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}`,
+    };
   }
 
   private buildStartsInLabel(minutesUntilStart: number): string {
