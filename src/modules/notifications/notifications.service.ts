@@ -8,6 +8,12 @@ import { PushService } from '../../infrastructure/push/push.service';
 import { SendTestPushDto } from './dto/send-test-push.dto';
 import { Notification } from './entities/notification.entity';
 
+/** Bs sin decimales de más: 300, 12.50. */
+function formatBs(value: number): string {
+  const n = Number(value);
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -120,12 +126,25 @@ export class NotificationsService {
     userId: string;
     token: string | null;
     workerName: string;
+    /** Total de la oferta (mano de obra + materiales). */
     amount: number;
+    /** Parte del total que es materiales; 0 si es solo mano de obra. */
+    materialsAmount?: number;
     jobTitle: string;
     requestId: string;
   }): Promise<string | null> {
-    const title = `💰 ${params.workerName} ofertó Bs ${params.amount}`;
-    const body = `En tu solicitud: ${params.jobTitle}`;
+    // Igual que la tarjeta de la oferta: manda la mano de obra y los
+    // materiales van aparte, para que el cliente no vea solo el total.
+    const materials = Number(params.materialsAmount ?? 0);
+    const labor = Number(params.amount) - materials;
+    const title =
+      materials > 0
+        ? `💰 ${params.workerName} ofertó Bs ${formatBs(labor)} de mano de obra`
+        : `💰 ${params.workerName} ofertó Bs ${formatBs(params.amount)}`;
+    const body =
+      materials > 0
+        ? `Más Bs ${formatBs(materials)} en materiales. En tu solicitud: ${params.jobTitle}`
+        : `En tu solicitud: ${params.jobTitle}`;
     const type = 'offer_new';
 
 

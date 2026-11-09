@@ -42,6 +42,17 @@ describe('Notification delivery policy', () => {
     expect(push.sendToTokens).not.toHaveBeenCalled();
     expect(realtime.emitToUser).toHaveBeenCalledWith('client', 'notifications.changed', expect.any(Object));
   });
+  it('una oferta con materiales destaca la mano de obra y suma los materiales aparte', async () => {
+    await service.notifyClientNewOffer({ ...offer, workerName: 'Pedro', amount: 1000, materialsAmount: 700 });
+    expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({
+      title: '💰 Pedro ofertó Bs 300 de mano de obra',
+      body: 'Más Bs 700 en materiales. En tu solicitud: Pintura' }));
+  });
+  it('una oferta solo de mano de obra muestra un solo precio, sin decimales de más', async () => {
+    await service.notifyClientNewOffer({ ...offer, amount: 180, materialsAmount: 0 });
+    expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({
+      title: '💰 Ana ofertó Bs 180', body: 'En tu solicitud: Pintura' }));
+  });
   it('sends push to every registered device without a presentation acknowledgement', async () => {
     db.query.mockResolvedValue([{ token: 'one' }, { token: 'two' }, { token: 'one' }]);
     await service.notifyClientNewOffer(offer);

@@ -362,6 +362,7 @@ export class MobileOffersService {
       params.workerUserId,
       params.amount,
       request.title,
+      materialsAmount ?? 0,
     ).catch((err) => {
       this.logger.warn(
         'Failed to send push notification for new offer:',
@@ -387,6 +388,7 @@ export class MobileOffersService {
     workerUserId: string,
     amount: number,
     jobTitle: string,
+    materialsAmount = 0,
   ): Promise<void> {
     const workerRows = await this.dataSource.query<any[]>(
       `SELECT first_name, last_name FROM users WHERE id = $1`,
@@ -413,6 +415,7 @@ export class MobileOffersService {
       token: tokenRows[0]?.push_token || null,
       workerName,
       amount,
+      materialsAmount,
       jobTitle,
       requestId,
     });
