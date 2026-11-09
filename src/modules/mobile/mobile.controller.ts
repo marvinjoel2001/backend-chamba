@@ -11,7 +11,10 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AccessService } from '../access/access.service';
 import { MobileAccessGuard } from '../access/mobile-access.guard';
 import { MobileService } from './mobile.service';
@@ -220,8 +223,20 @@ export class MobileController {
     @Body('days') days?: number,
     @Body('dailyRate') dailyRate?: number,
     @Body('startDate') startDate?: string,
+    @Body('materialsMode') materialsMode?: string,
+    @Body('materialsNote') materialsNote?: string,
+    @Body('video') video?: { uploadToken?: string; thumbnailUrl?: string },
   ) {
     return this.mobileService.createRequest({
+      materialsMode,
+      materialsNote,
+      video:
+        video && typeof video === 'object'
+          ? {
+              uploadToken: video.uploadToken,
+              thumbnailUrl: video.thumbnailUrl,
+            }
+          : undefined,
       clientUserId,
       title,
       description,
@@ -316,6 +331,17 @@ export class MobileController {
   @Post('mobile/requests/photos/upload')
   uploadRequestPhoto(@Req() req: any, @Body('imageBase64') imageBase64: string) {
     return this.mobileService.uploadRequestPhoto(req.principal.id, imageBase64);
+  }
+
+  @Post('mobile/requests/videos/upload')
+  @UseInterceptors(
+    FileInterceptor('video', { limits: { fileSize: 80 * 1024 * 1024, files: 1 } }),
+  )
+  uploadRequestVideo(
+    @Req() req: any,
+    @UploadedFile() video?: { buffer: Buffer; mimetype: string; size: number },
+  ) {
+    return this.mobileService.uploadRequestVideo(req.principal.id, video);
   }
 
   @Post('mobile/requests/photos/delete')
@@ -530,13 +556,22 @@ export class MobileController {
     @Body('workerUserId') workerUserId: string,
     @Body('amount') amount: number,
     @Body('message') message?: string,
+    @Body('materialsAmount') materialsAmount?: number,
   ) {
     return this.mobileService.upsertOffer({
       requestId,
       workerUserId,
       amount: Number(amount),
       message,
+      materialsAmount:
+        materialsAmount == null ? undefined : Number(materialsAmount),
     });
+  }
+
+  /** Gastos de servicio (%) que la app muestra antes de ofertar. */
+  @Get('mobile/config/service-fee')
+  getServiceFeeConfig() {
+    return this.mobileService.getServiceFeeConfig();
   }
 
   @Post('mobile/offers/accept')

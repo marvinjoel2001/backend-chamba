@@ -53,8 +53,8 @@ export class AdminAgenciesService {
 
     const rows = await this.dataSource.query<any[]>(
       `
-      INSERT INTO agencies (name, contact_email, contact_phone, tax_id, commission_rate, password_hash, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6, true)
+      INSERT INTO agencies (name, contact_email, contact_phone, tax_id, commission_rate, password_hash, is_active, must_change_password)
+      VALUES ($1, $2, $3, $4, $5, $6, true, true)
       RETURNING id, name, tax_id, contact_email, contact_phone, commission_rate, is_active, created_at
       `,
       [
@@ -109,6 +109,8 @@ export class AdminAgenciesService {
           commission_rate = COALESCE($6, commission_rate),
           is_active = COALESCE($7, is_active),
           password_hash = COALESCE($8, password_hash),
+          -- Una contraseña puesta por el admin se cambia al entrar.
+          must_change_password = CASE WHEN $8::text IS NOT NULL THEN true ELSE must_change_password END,
           updated_at = NOW()
       WHERE id = $1
       RETURNING id, name, tax_id, contact_email, contact_phone, commission_rate, is_active, created_at

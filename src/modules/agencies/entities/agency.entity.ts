@@ -41,6 +41,10 @@ export class Agency {
   @Column({ name: 'password_hash', nullable: true, select: false })
   passwordHash?: string;
 
+  /** Contraseña puesta por el admin: el panel obliga a cambiarla al entrar. */
+  @Column({ name: 'must_change_password', type: 'boolean', default: false })
+  mustChangePassword: boolean;
+
   @ApiProperty({ example: true })
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

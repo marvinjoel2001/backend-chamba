@@ -85,7 +85,8 @@ describe('Arrival confirmation is idempotent', () => {
       { broadcastRequest: jest.fn(), emitToUser: jest.fn() } as any, {} as any, {} as any, {} as any,
       {} as any, {} as any, {} as any);
     await service.completeJob({ requestId: 'job', workerUserId: 'worker' });
-    expect(query.mock.calls[2][1]).toEqual(['job', 'worker', 10]);
+    // Sin comisión configurada, Chamba no cobra (0%).
+    expect(query.mock.calls[2][1]).toEqual(['job', 'worker', 0]);
     expect(query.mock.calls.some(([sql]) => String(sql).includes('is_available = true'))).toBe(false);
   });
 });

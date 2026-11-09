@@ -58,6 +58,7 @@ export class AuthController {
     return {
       id: admin.id,
       username: admin.username,
+      mustChangePassword: admin.mustChangePassword === true,
     };
   }
 }

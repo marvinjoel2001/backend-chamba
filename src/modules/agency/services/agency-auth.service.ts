@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnApplicationBootstrap, Optional, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnApplicationBootstrap, Optional, UnauthorizedException } from '@nestjs/common';
 import { LoginAttemptsService } from '../../access/login-attempts.service';
 import { JwtService } from '@nestjs/jwt';
 import { DataSource } from 'typeorm';
@@ -63,7 +63,8 @@ export class AgencyAuthService implements OnApplicationBootstrap {
     await this.loginAttempts?.assertAllowed('agency', attemptsKey);
     const rows = await this.dataSource.query<any[]>(
       `
-      SELECT id, name, contact_email, contact_phone, commission_rate, password_hash, is_active
+      SELECT id, name, contact_email, contact_phone, commission_rate, password_hash, is_active,
+             must_change_password
       FROM agencies
       WHERE LOWER(contact_email) = LOWER($1)
       LIMIT 1
@@ -96,6 +97,7 @@ export class AgencyAuthService implements OnApplicationBootstrap {
         contactEmail: agency.contact_email,
         contactPhone: agency.contact_phone ?? null,
         commissionRate: Number(agency.commission_rate ?? 0),
+        mustChangePassword: agency.must_change_password === true,
       },
     };
   }
@@ -112,10 +114,17 @@ export class AgencyAuthService implements OnApplicationBootstrap {
     if (!currentOk) {
       throw new UnauthorizedException('La contraseña actual es incorrecta');
     }
+    if (dto.newPassword === dto.currentPassword) {
+      throw new BadRequestException(
+        'Elige una contraseña nueva, distinta de la actual',
+      );
+    }
 
     const newHash = await bcrypt.hash(dto.newPassword, await bcrypt.genSalt());
     await this.dataSource.query(
-      `UPDATE agencies SET password_hash = $2, updated_at = NOW() WHERE id = $1`,
+      `UPDATE agencies
+       SET password_hash = $2, must_change_password = false, updated_at = NOW()
+       WHERE id = $1`,
       [agencyId, newHash],
     );
 
@@ -125,7 +134,8 @@ export class AgencyAuthService implements OnApplicationBootstrap {
   async getProfile(agencyId: string) {
     const rows = await this.dataSource.query<any[]>(
       `
-      SELECT id, name, tax_id, contact_email, contact_phone, commission_rate, created_at
+      SELECT id, name, tax_id, contact_email, contact_phone, commission_rate, created_at,
+             must_change_password
       FROM agencies
       WHERE id = $1
       LIMIT 1
@@ -145,6 +155,7 @@ export class AgencyAuthService implements OnApplicationBootstrap {
       contactEmail: agency.contact_email,
       contactPhone: agency.contact_phone ?? null,
       commissionRate: Number(agency.commission_rate ?? 0),
+      mustChangePassword: agency.must_change_password === true,
       createdAt: agency.created_at,
     };
   }

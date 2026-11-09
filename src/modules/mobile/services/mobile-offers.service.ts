@@ -11,6 +11,7 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import { MobileRequestRepository } from '../shared/mobile-request.repository';
 import { PaymentsService } from '../../payments/payments.service';
+import { jobFirstDaySql, jobLastDaySql } from '../shared/job-schedule';
 
 @Injectable()
 export class MobileOffersService {
@@ -44,6 +45,7 @@ export class MobileOffersService {
       )
       SELECT jo.id AS offer_id,
              jo.amount,
+             jo.materials_amount,
              jo.status,
              jo.expires_at,
              EXTRACT(EPOCH FROM (jo.expires_at - NOW())) AS seconds_left,
@@ -92,6 +94,8 @@ export class MobileOffersService {
       offers: rows.map((row) => ({
         id: row.offer_id,
         amount: Number(row.amount),
+        materialsAmount:
+          row.materials_amount == null ? null : Number(row.materials_amount),
         status: row.status,
         expiresAt: row.expires_at ?? null,
         secondsRemaining:
@@ -176,10 +180,26 @@ export class MobileOffersService {
     amount: number;
     message?: string;
     offeredByAgencyId?: string;
+    /** Parte de `amount` que es materiales (los compra el trabajador). */
+    materialsAmount?: number;
   }) {
     if (!Number.isFinite(params.amount) || params.amount <= 0) {
       throw new BadRequestException('amount must be greater than 0');
     }
+    const materialsAmount =
+      params.materialsAmount != null && Number(params.materialsAmount) > 0
+        ? Math.round(Number(params.materialsAmount) * 100) / 100
+        : null;
+    if (
+      materialsAmount != null &&
+      (!Number.isFinite(materialsAmount) || materialsAmount >= params.amount)
+    ) {
+      throw new BadRequestException(
+        'Los materiales no pueden ser todo el monto de la oferta',
+      );
+    }
+    // La comisión y el precio mínimo se miden sobre la mano de obra.
+    const laborAmount = params.amount - (materialsAmount ?? 0);
 
     await this.repo.expireStaleOffers(params.requestId);
     await this.repo.getUserById(params.workerUserId);
@@ -191,18 +211,24 @@ export class MobileOffersService {
       throw new BadRequestException('La solicitud ya no admite nuevas ofertas');
     }
 
-    // Un worker atiende un solo trabajo a la vez: con uno asignado no puede
-    // ofertar a otras solicitudes.
-    if (await this.workerHasActiveJob(params.workerUserId, params.requestId)) {
+    // Un worker atiende un trabajo por día: puede ofertar a solicitudes de
+    // otros días aunque ya tenga trabajos programados.
+    const conflict = await this.workerConflictingJob(
+      params.workerUserId,
+      params.requestId,
+    );
+    if (conflict) {
       throw new BadRequestException(
-        'Ya tienes un trabajo en curso. Termínalo antes de ofertar a otro.',
+        `Ese día ya tienes "${conflict}". Puedes ofertar a trabajos de otros días.`,
       );
     }
 
     const currentBudget = Number(request.budget);
-    if (params.amount < currentBudget) {
+    if (laborAmount < currentBudget) {
       throw new BadRequestException(
-        `Tu oferta (Bs ${params.amount}) no puede ser menor al precio actual del cliente (Bs ${currentBudget})`,
+        materialsAmount
+          ? `Tu mano de obra (Bs ${laborAmount}) no puede ser menor al precio actual del cliente (Bs ${currentBudget})`
+          : `Tu oferta (Bs ${params.amount}) no puede ser menor al precio actual del cliente (Bs ${currentBudget})`,
       );
     }
 
@@ -237,6 +263,7 @@ export class MobileOffersService {
             status = 'pending',
             expires_at = NOW() + ($4::int * INTERVAL '1 second'),
             offered_by_agency_id = $5,
+            materials_amount = $6,
             created_at = NOW()
         WHERE id = $1
         `,
@@ -246,14 +273,15 @@ export class MobileOffersService {
           params.message ?? null,
           offerLifetimeSeconds,
           params.offeredByAgencyId ?? null,
+          materialsAmount,
         ],
       );
       offerId = existingRows[0].id;
     } else {
       const rows = await this.dataSource.query<any[]>(
         `
-        INSERT INTO job_offers (request_id, worker_user_id, amount, message, status, expires_at, offered_by_agency_id)
-        VALUES ($1, $2, $3, $4, 'pending', NOW() + ($5::int * INTERVAL '1 second'), $6)
+        INSERT INTO job_offers (request_id, worker_user_id, amount, message, status, expires_at, offered_by_agency_id, materials_amount)
+        VALUES ($1, $2, $3, $4, 'pending', NOW() + ($5::int * INTERVAL '1 second'), $6, $7)
         RETURNING id
         `,
         [
@@ -263,6 +291,7 @@ export class MobileOffersService {
           params.message ?? null,
           offerLifetimeSeconds,
           params.offeredByAgencyId ?? null,
+          materialsAmount,
         ],
       );
       offerId = rows[0].id;
@@ -289,6 +318,7 @@ export class MobileOffersService {
       workerUserId: params.workerUserId,
       clientUserId: request.client_user_id,
       amount: params.amount,
+      materialsAmount,
       message: params.message ?? '',
       status: 'pending',
       offerLifetimeSeconds,
@@ -345,6 +375,7 @@ export class MobileOffersService {
         requestId: params.requestId,
         workerUserId: params.workerUserId,
         amount: params.amount,
+        materialsAmount,
         message: params.message ?? '',
         status: 'pending',
       },
@@ -388,31 +419,35 @@ export class MobileOffersService {
   }
 
   /**
-   * true si el worker ya tiene un trabajo asignado (oferta aceptada sobre una
-   * solicitud en estado 'assigned'). `excludeRequestId` ignora esa solicitud.
+   * Título del trabajo asignado al worker que cae el mismo día que la
+   * solicitud `requestId` (ver job-schedule.ts), o null si no choca con nada.
+   * Un trabajo programado para otro día no lo bloquea.
    * `runner` permite ejecutarlo dentro de una transacción.
    */
-  private async workerHasActiveJob(
+  private async workerConflictingJob(
     workerUserId: string,
-    excludeRequestId?: string,
+    requestId: string,
     runner: { query: (sql: string, params?: any[]) => Promise<any> } = this
       .dataSource,
-  ): Promise<boolean> {
+  ): Promise<string | null> {
     const raw = await runner.query(
       `
-      SELECT 1
-      FROM job_offers jo
-      JOIN job_requests jr ON jr.id = jo.request_id
-      WHERE jo.worker_user_id = $1
-        AND jo.status = 'accepted'
-        AND jr.status = 'assigned'
-        AND ($2::uuid IS NULL OR jr.id <> $2::uuid)
+      SELECT sjr.title
+      FROM job_requests cand
+      JOIN job_offers sjo ON sjo.worker_user_id = $1
+      JOIN job_requests sjr ON sjr.id = sjo.request_id
+      WHERE cand.id = $2::uuid
+        AND sjo.status = 'accepted'
+        AND sjr.status = 'assigned'
+        AND sjr.id <> cand.id
+        AND ${jobFirstDaySql('sjr')} <= ${jobLastDaySql('cand')}
+        AND ${jobFirstDaySql('cand')} <= ${jobLastDaySql('sjr')}
       LIMIT 1
       `,
-      [workerUserId, excludeRequestId ?? null],
+      [workerUserId, requestId],
     );
     const rows = Array.isArray(raw?.[0]) ? raw[0] : raw;
-    return Boolean(rows?.[0]);
+    return rows?.[0] ? String(rows[0].title ?? 'otro trabajo') : null;
   }
 
   public async acceptOffer(params: { offerId: string; clientUserId: string }) {
@@ -524,14 +559,14 @@ export class MobileOffersService {
         );
       }
       if (
-        await this.workerHasActiveJob(
+        await this.workerConflictingJob(
           offer.worker_user_id,
           request.id,
           queryRunner,
         )
       ) {
         throw new BadRequestException(
-          'Este trabajador ya está asignado a otro trabajo en curso',
+          'Este trabajador ya tiene otro trabajo ese día. Elige otra oferta.',
         );
       }
 

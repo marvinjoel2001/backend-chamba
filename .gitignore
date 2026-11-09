@@ -6,3 +6,4 @@ dist/
 .env.qa.private
 serviceAccountKey.json
 serviceAccountKey.json.json
+dev-uploads/

@@ -62,6 +62,10 @@ type CreateRequestInput = {
   days?: number;
   dailyRate?: number;
   startDate?: string;
+  /** 'client' (los tiene), 'worker' (que los traiga) o 'discuss' (lo hablan). */
+  materialsMode?: string;
+  materialsNote?: string;
+  video?: { uploadToken?: string; thumbnailUrl?: string };
 };
 
 @Injectable()
@@ -712,9 +716,29 @@ export class MobileService implements OnModuleInit {
         ];
       await this.workModalities.assertEnabled(modality);
     }
+    // El video solo vale con el comprobante de que lo subió el backend para
+    // este cliente.
+    let video: { url: string; publicId: string; thumbnailUrl: string | null } | undefined;
+    if (input.video?.uploadToken) {
+      const ticket = this.access.verifyUploadTicket(
+        input.video.uploadToken,
+        input.clientUserId,
+      );
+      if (!ticket) {
+        throw new BadRequestException('El video no es válido. Vuelve a subirlo.');
+      }
+      const thumb = input.video.thumbnailUrl?.trim();
+      video = {
+        url: ticket.url,
+        publicId: ticket.publicId,
+        thumbnailUrl:
+          thumb && thumb.startsWith('https://res.cloudinary.com/') ? thumb : null,
+      };
+    }
     return this.requestsService.createRequest({
       ...input,
       photos: this.resolveRequestPhotos(input.clientUserId, input.photos),
+      video,
     });
   }
 
@@ -884,8 +908,13 @@ export class MobileService implements OnModuleInit {
     workerUserId: string;
     amount: number;
     message?: string;
+    materialsAmount?: number;
   }) {
     return this.offersService.upsertOffer(params);
+  }
+
+  async getServiceFeeConfig() {
+    return this.requestsService.getServiceFeeConfig();
   }
 
   async acceptOffer(params: { offerId: string; clientUserId: string }) {
@@ -944,6 +973,32 @@ export class MobileService implements OnModuleInit {
     return {
       ...uploaded,
       uploadToken: this.access.issueUploadTicket(clientUserId, uploaded.publicId, uploaded.url),
+    };
+  }
+
+  /** Video del lugar del trabajo (uno por solicitud, hasta 60 s). */
+  async uploadRequestVideo(
+    clientUserId: string,
+    file?: { buffer: Buffer; mimetype: string; size: number },
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Graba o elige un video');
+    }
+    if (!/^video\//.test(file.mimetype ?? '')) {
+      throw new BadRequestException('El archivo no es un video');
+    }
+    const uploaded = await this.storageService.uploadVideo({
+      buffer: file.buffer,
+      mimeType: file.mimetype,
+      folder: 'chamba/requests/videos',
+    });
+    return {
+      ...uploaded,
+      uploadToken: this.access.issueUploadTicket(
+        clientUserId,
+        uploaded.publicId,
+        uploaded.url,
+      ),
     };
   }
 

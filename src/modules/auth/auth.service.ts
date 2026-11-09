@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   UnauthorizedException,
   NotFoundException,
@@ -45,6 +46,7 @@ export class AuthService {
       user: {
         id: user.id,
         username: user.username,
+        mustChangePassword: user.mustChangePassword === true,
       },
     };
   }
@@ -60,7 +62,15 @@ export class AuthService {
       user.passwordHash,
     );
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid current password');
+      throw new UnauthorizedException('La contraseña actual es incorrecta');
+    }
+    if (
+      changePasswordDto.newPassword === changePasswordDto.currentPassword ||
+      changePasswordDto.newPassword.trim().toLowerCase() === 'admin'
+    ) {
+      throw new BadRequestException(
+        'Elige una contraseña nueva, distinta de la actual',
+      );
     }
 
     const salt = await bcrypt.genSalt();

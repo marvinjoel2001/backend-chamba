@@ -6,8 +6,8 @@ export class AgencyChangePasswordDto {
   @IsString()
   currentPassword: string;
 
-  @ApiProperty({ example: 'nuevoSecreto123', minLength: 6 })
+  @ApiProperty({ example: 'nuevoSecreto123', minLength: 8 })
   @IsString()
-  @MinLength(6)
+  @MinLength(8)
   newPassword: string;
 }

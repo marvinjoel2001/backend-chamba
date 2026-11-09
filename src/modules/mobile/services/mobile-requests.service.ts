@@ -17,6 +17,10 @@ import { MobileCatalogService } from './mobile-catalog.service';
 import { MobileOffersService } from './mobile-offers.service';
 import { ApiLogsService } from '../../api-logs/api-logs.service';
 import { workClock } from '../shared/work-clock';
+import {
+  jobIsScheduledSql,
+  workerHasConflictingJobSql,
+} from '../shared/job-schedule';
 
 // TypeORM's PostgreSQL UPDATE returns [rows, affectedCount], unlike SELECT.
 function firstUpdatedRow(result: any[]) {
@@ -60,7 +64,13 @@ type CreateRequestInput = {
   days?: number;
   dailyRate?: number;
   startDate?: string;
+  materialsMode?: string;
+  materialsNote?: string;
+  /** Video ya subido por el backend para este cliente (ver mobile.service). */
+  video?: { url: string; publicId: string; thumbnailUrl: string | null };
 };
+
+const MATERIALS_MODES = ['client', 'worker', 'discuss'];
 
 @Injectable()
 export class MobileRequestsService {
@@ -147,6 +157,9 @@ export class MobileRequestsService {
     );
 
     const activeRequest = await this.repo.findLatestClientRequest(user.id);
+    const scheduledRequests = await this.repo.findClientScheduledRequests(
+      user.id,
+    );
 
     const topCategories = this.geoHelpers.extractTopCategories(workerRows);
     const categories =
@@ -158,6 +171,7 @@ export class MobileRequestsService {
       user,
       categories,
       activeRequest,
+      scheduledRequests,
       nearbyWorkers: workerRows.map((row) => ({
         id: row.id,
         firstName: row.first_name,
@@ -311,7 +325,12 @@ export class MobileRequestsService {
         days,
         daily_rate,
         start_date,
-        payment_method_code
+        payment_method_code,
+        materials_mode,
+        materials_note,
+        video_url,
+        video_public_id,
+        video_thumbnail_url
       )
       VALUES (
         $1,
@@ -332,7 +351,12 @@ export class MobileRequestsService {
         $16,
         $17,
         $18,
-        $19
+        $19,
+        $20,
+        $21,
+        $22,
+        $23,
+        $24
       )
       RETURNING id, status, title, budget, address, ai_categories, created_at, payment_method, modality, estimated_hours, hourly_rate, days, daily_rate, start_date
       `,
@@ -356,6 +380,13 @@ export class MobileRequestsService {
         input.dailyRate || null,
         input.startDate || null,
         input.paymentMethodCode?.trim().slice(0, 50) || null,
+        MATERIALS_MODES.includes(input.materialsMode ?? '')
+          ? input.materialsMode
+          : null,
+        input.materialsNote?.trim().slice(0, 300) || null,
+        input.video?.url ?? null,
+        input.video?.publicId ?? null,
+        input.video?.thumbnailUrl ?? null,
       ],
     );
 
@@ -548,6 +579,10 @@ export class MobileRequestsService {
              jr.days,
              jr.daily_rate,
              jr.start_date,
+             jr.materials_mode,
+             jr.materials_note,
+             jr.video_url,
+             jr.video_thumbnail_url,
              CASE
                WHEN w.current_location IS NOT NULL
                  THEN ST_Distance(jr.location, w.current_location) / 1000.0
@@ -567,8 +602,11 @@ export class MobileRequestsService {
              ) AS photos,
              jo.id AS offer_id,
              jo.amount AS offer_amount,
+             jo.materials_amount AS offer_materials_amount,
              jo.status AS offer_status,
              jo.expires_at AS offer_expires_at,
+             -- Asignado para otro día: va a la agenda, no es el trabajo de ahora.
+             (jr.status = 'assigned' AND ${jobIsScheduledSql('jr')}) AS is_scheduled,
              -- El cliente subió su presupuesto después de esta oferta.
              (jr.budget_raised_at IS NOT NULL AND jr.budget_raised_at > jo.created_at) AS offer_client_raised,
              CASE
@@ -596,14 +634,9 @@ export class MobileRequestsService {
             AND w.verification_status = 'verified'
             AND COALESCE(w.is_blocked, false) = false
             AND w.current_location IS NOT NULL
-            AND NOT EXISTS (
-              SELECT 1
-              FROM job_offers jo3
-              JOIN job_requests jr3 ON jr3.id = jo3.request_id
-              WHERE jo3.worker_user_id = $1
-                AND jo3.status = 'accepted'
-                AND jr3.status = 'assigned'
-            )
+            -- Con un trabajo asignado ese día no ve otros del mismo día; los
+            -- de otros días sí (agenda, ver job-schedule.ts).
+            AND NOT ${workerHasConflictingJobSql('$1', 'jr')}
             AND ST_DWithin(
               jr.location,
               w.current_location,
@@ -650,7 +683,15 @@ export class MobileRequestsService {
           )
         )
       ORDER BY
-        CASE WHEN jr.status = 'assigned' THEN 0 ELSE 1 END,
+        -- Primero el trabajo de hoy, después las solicitudes nuevas y al
+        -- final los programados (las apps viejas toman el primero como el
+        -- trabajo en curso).
+        CASE
+          WHEN jr.status = 'assigned' AND NOT ${jobIsScheduledSql('jr')} THEN 0
+          WHEN jr.status = 'assigned' THEN 2
+          ELSE 1
+        END,
+        CASE WHEN jr.status = 'assigned' THEN jr.start_date END ASC NULLS LAST,
         distance_km ASC NULLS LAST,
         jr.created_at DESC
       `,
@@ -685,8 +726,14 @@ export class MobileRequestsService {
         days: row.days == null ? null : Number(row.days),
         dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
         startDate: row.start_date,
+        materialsMode: row.materials_mode ?? null,
+        materialsNote: row.materials_note ?? null,
+        video: row.video_url
+          ? { url: row.video_url, thumbnailUrl: row.video_thumbnail_url ?? null }
+          : null,
         address: row.address,
         status: row.status,
+        isScheduled: row.is_scheduled === true,
         photos: row.photos ?? [],
         distanceKm: row.distance_km == null ? null : Number(row.distance_km),
         client: {
@@ -703,6 +750,10 @@ export class MobileRequestsService {
           ? {
               id: row.offer_id,
               amount: Number(row.offer_amount ?? 0),
+              materialsAmount:
+                row.offer_materials_amount == null
+                  ? null
+                  : Number(row.offer_materials_amount),
               status: row.offer_status ?? 'pending',
               expiresAt: row.offer_expires_at ?? null,
               clientRaisedBudget: row.offer_client_raised === true,
@@ -820,6 +871,10 @@ export class MobileRequestsService {
              jr.days,
              jr.daily_rate,
              jr.start_date,
+             jr.materials_mode,
+             jr.materials_note,
+             jr.video_url,
+             jr.video_thumbnail_url,
              ST_Y(jr.location::geometry) AS dest_lat,
              ST_X(jr.location::geometry) AS dest_lng,
              w.id AS worker_id,
@@ -834,6 +889,7 @@ export class MobileRequestsService {
                ELSE NULL
              END AS distance_km,
              jo.amount,
+             jo.materials_amount AS offer_materials_amount,
              c.id AS client_id,
              c.first_name AS client_first_name,
              c.last_name AS client_last_name,
@@ -868,6 +924,11 @@ export class MobileRequestsService {
       days: row.days == null ? null : Number(row.days),
       dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
       startDate: row.start_date,
+      materialsMode: row.materials_mode ?? null,
+      materialsNote: row.materials_note ?? null,
+      video: row.video_url
+        ? { url: row.video_url, thumbnailUrl: row.video_thumbnail_url ?? null }
+        : null,
       workerArrived: row.worker_arrived ?? false,
       clientConfirmedArrival: row.client_confirmed_arrival ?? false,
       completedAt: row.completed_at ?? null,
@@ -879,6 +940,8 @@ export class MobileRequestsService {
       etaMinutes:
         distanceKm == null ? null : Math.max(5, Math.ceil(distanceKm / 0.5)),
       agreedAmount: Number(row.amount),
+      materialsAmount:
+        row.offer_materials_amount == null ? null : Number(row.offer_materials_amount),
       destination: {
         latitude: row.dest_lat != null ? Number(row.dest_lat) : null,
         longitude: row.dest_lng != null ? Number(row.dest_lng) : null,
@@ -1089,8 +1152,10 @@ export class MobileRequestsService {
         -- Comisión de Chamba congelada al terminar (la que el admin tiene hoy).
         -- Trabajos de agencia: la cobra el libro de la agencia, no se duplica.
         platform_commission_rate = CASE WHEN jo.offered_by_agency_id IS NULL THEN $3::float8 END,
+        -- Solo sobre la mano de obra: los materiales los compró el trabajador.
         platform_fee = CASE WHEN jo.offered_by_agency_id IS NULL
-          THEN ROUND((jo.amount * $3::float8 / 100)::numeric, 2) END,
+          THEN ROUND((GREATEST(jo.amount - COALESCE(jo.materials_amount, 0), 0)
+            * $3::float8 / 100)::numeric, 2) END,
         work_paused_seconds = jr.work_paused_seconds + CASE WHEN jr.work_paused_at IS NOT NULL
           THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - jr.work_paused_at)))::integer) ELSE 0 END,
         work_paused_at = NULL
@@ -1480,13 +1545,10 @@ export class MobileRequestsService {
         AND u.verification_status = 'verified'
         AND COALESCE(u.is_blocked, false) = false
         AND u.current_location IS NOT NULL
+        -- Quien ya tiene un trabajo ese día no recibe esta solicitud.
         AND NOT EXISTS (
-          SELECT 1
-          FROM job_offers jo3
-          JOIN job_requests jr3 ON jr3.id = jo3.request_id
-          WHERE jo3.worker_user_id = u.id
-            AND jo3.status = 'accepted'
-            AND jr3.status = 'assigned'
+          SELECT 1 FROM job_requests cand
+          WHERE cand.id = $6::uuid AND ${workerHasConflictingJobSql('u.id', 'cand')}
         )
         AND ST_DWithin(u.current_location, $1::geography, $4::float8 * 1000)
         AND (
@@ -1515,6 +1577,7 @@ export class MobileRequestsService {
         normalizedSkills,
         notificationRadiusKm,
         requiredModality,
+        requestId,
       ],
     );
 
@@ -1979,6 +2042,14 @@ Reglas obligatorias:
     return defaultVal;
   }
 
+  /**
+   * Gastos de servicio que la app muestra antes de ofertar: el porcentaje
+   * que Chamba descuenta de la mano de obra (0 mientras no se configure).
+   */
+  public async getServiceFeeConfig() {
+    return { serviceFeePercent: await this.getPlatformCommissionPercent() };
+  }
+
   /** Porcentaje que el admin fija en Comisión (mismo default que getCommissionConfig). */
   private async getPlatformCommissionPercent(): Promise<number> {
     const rows = await this.dataSource.query<any[]>(
@@ -1986,8 +2057,8 @@ Reglas obligatorias:
     );
     const raw = rows[0]?.value_json;
     const val = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    const percent = Number(val?.percent ?? 10);
-    return Number.isFinite(percent) ? Math.min(50, Math.max(0, percent)) : 10;
+    const percent = Number(val?.percent ?? 0);
+    return Number.isFinite(percent) ? Math.min(50, Math.max(0, percent)) : 0;
   }
 
   private async uploadRequestPhotos(requestId: string, images: string[]) {

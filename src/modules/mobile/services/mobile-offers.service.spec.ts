@@ -142,7 +142,7 @@ describe('MobileOffersService.acceptOffer', () => {
 
     await expect(
       service.acceptOffer({ offerId: OFFER_ID, clientUserId: CLIENT_ID }),
-    ).rejects.toThrow('ya está asignado a otro trabajo');
+    ).rejects.toThrow('ya tiene otro trabajo ese día');
 
     expect(queryRunnerMock.rollbackTransaction).toHaveBeenCalled();
     expect(queryRunnerMock.commitTransaction).not.toHaveBeenCalled();

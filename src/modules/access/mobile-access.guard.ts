@@ -58,7 +58,7 @@ export class MobileAccessGuard implements CanActivate {
       }
     }
     if (path.includes('/worker/') && principal.role !== 'worker') throw new ForbiddenException();
-    if (['createRequest', 'webJobs', 'uploadRequestPhoto', 'acceptOffer', 'clientCounterOffer', 'clientConfirmArrival', 'setWorkPaused', 'createReview'].includes(name)
+    if (['createRequest', 'webJobs', 'uploadRequestPhoto', 'uploadRequestVideo', 'acceptOffer', 'clientCounterOffer', 'clientConfirmArrival', 'setWorkPaused', 'createReview'].includes(name)
         && principal.role !== 'client') throw new ForbiddenException();
     if (['getIncomingRequest', 'upsertOffer', 'discardOffer', 'declineOffer', 'reactivateOffer', 'workerMarkArrived', 'completeJob', 'dismissRequest'].includes(name)
         && principal.role !== 'worker') throw new ForbiddenException();

@@ -32,10 +32,49 @@ export class StorageService {
     }
   }
 
+  /**
+   * Solo en desarrollo y sin Cloudinary: guarda el archivo en disco
+   * (`dev-uploads/`) y lo sirve el propio backend, para poder probar fotos y
+   * videos en emuladores. En producción nunca se usa.
+   */
+  private get useDevDisk(): boolean {
+    return (
+      !this.enabled &&
+      this.configService.get<string>('NODE_ENV') !== 'production'
+    );
+  }
+
+  private async saveToDevDisk(
+    data: Buffer,
+    extension: string,
+  ): Promise<{ url: string; publicId: string }> {
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    const { join } = await import('node:path');
+    const dir = join(process.cwd(), 'dev-uploads');
+    await mkdir(dir, { recursive: true });
+    const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+    await writeFile(join(dir, name), data);
+    const base = (
+      this.configService.get<string>('DEV_PUBLIC_BASE_URL') ||
+      `http://10.0.2.2:${this.configService.get<string>('PORT') || 3000}`
+    ).replace(/\/$/, '');
+    return { url: `${base}/dev-uploads/${name}`, publicId: `dev/${name}` };
+  }
+
   async uploadBase64Image(params: {
     base64Data: string;
     folder: string;
   }): Promise<{ url: string; publicId: string }> {
+    if (this.useDevDisk) {
+      const match = /^data:image\/([a-z0-9+.-]+);base64,(.+)$/i.exec(
+        params.base64Data,
+      );
+      const ext = (match?.[1] ?? 'jpg').replace('jpeg', 'jpg').replace(/[^a-z0-9]/gi, '');
+      return this.saveToDevDisk(
+        Buffer.from(match?.[2] ?? params.base64Data, 'base64'),
+        ext,
+      );
+    }
     this.ensureConfigured();
 
     const timestamp = Math.floor(Date.now() / 1000);
@@ -79,6 +118,90 @@ export class StorageService {
   }
 
   /**
+   * Sube un video corto (el lugar del trabajo) y devuelve también una
+   * miniatura JPG que Cloudinary genera del primer segundo.
+   */
+  async uploadVideo(params: {
+    buffer: Buffer;
+    mimeType: string;
+    folder: string;
+  }): Promise<{ url: string; publicId: string; thumbnailUrl: string }> {
+    if (this.useDevDisk) {
+      const ext = params.mimeType.includes('quicktime') ? 'mov' : 'mp4';
+      const saved = await this.saveToDevDisk(params.buffer, ext);
+      return { ...saved, thumbnailUrl: '' };
+    }
+    this.ensureConfigured();
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signature = this.sign({
+      folder: params.folder,
+      timestamp: String(timestamp),
+    });
+
+    const formData = new FormData();
+    formData.append(
+      'file',
+      new Blob([new Uint8Array(params.buffer)], { type: params.mimeType }),
+      'video',
+    );
+    formData.append('folder', params.folder);
+    formData.append('timestamp', String(timestamp));
+    formData.append('api_key', this.apiKey);
+    formData.append('signature', signature);
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${this.cloudName}/video/upload`,
+      {
+        method: 'POST',
+        body: formData,
+        signal: AbortSignal.timeout(120000),
+      },
+    );
+
+    const payload = (await response.json()) as {
+      secure_url?: string;
+      public_id?: string;
+      error?: { message?: string };
+    };
+
+    if (!response.ok || !payload.secure_url || !payload.public_id) {
+      throw new ServiceUnavailableException(
+        payload.error?.message || 'Cloudinary video upload failed',
+      );
+    }
+
+    return {
+      url: payload.secure_url,
+      publicId: payload.public_id,
+      thumbnailUrl: payload.secure_url
+        .replace('/video/upload/', '/video/upload/so_1,w_480,c_limit/')
+        .replace(/\.[a-z0-9]+$/i, '.jpg'),
+    };
+  }
+
+  async deleteVideo(publicId?: string | null): Promise<void> {
+    if (!publicId || this.useDevDisk) return;
+    this.ensureConfigured();
+    const timestamp = Math.floor(Date.now() / 1000);
+    const formData = new FormData();
+    formData.append('public_id', publicId);
+    formData.append('timestamp', String(timestamp));
+    formData.append('api_key', this.apiKey);
+    formData.append(
+      'signature',
+      this.sign({ public_id: publicId, timestamp: String(timestamp) }),
+    );
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${this.cloudName}/video/destroy`,
+      { method: 'POST', body: formData },
+    );
+    if (!response.ok) {
+      this.logger.warn(`Cloudinary video delete failed: ${await response.text()}`);
+    }
+  }
+
+  /**
    * true si la URL es una imagen de la cuenta de Cloudinary de Chamba
    * (https://res.cloudinary.com/<cloud>/image/upload/...). Una foto de
    * cualquier otro sitio no se acepta.
@@ -103,6 +226,7 @@ export class StorageService {
     if (!publicId) {
       return;
     }
+    if (this.useDevDisk) return;
 
     this.ensureConfigured();
 

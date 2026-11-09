@@ -24,6 +24,7 @@ import { SessionRevocation1793700100000 } from './migrations/1793700100000-Sessi
 import { PaymentRefunds1793700200000 } from './migrations/1793700200000-PaymentRefunds';
 import { RedactSensitiveApiLogs1793700300000 } from './migrations/1793700300000-RedactSensitiveApiLogs';
 import { MediaOwnership1793700400000 } from './migrations/1793700400000-MediaOwnership';
+import { MaterialsVideoAndPasswordChange1793800000000 } from './migrations/1793800000000-MaterialsVideoAndPasswordChange';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { MediaOwnership1793700400000 } from './migrations/1793700400000-MediaOwn
             PaymentRefunds1793700200000,
             RedactSensitiveApiLogs1793700300000,
             MediaOwnership1793700400000,
+            MaterialsVideoAndPasswordChange1793800000000,
           ],
           migrationsRun: true,
           migrationsTableName: 'typeorm_migrations',

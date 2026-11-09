@@ -4,7 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { RedisStore } from 'connect-redis';
 import session from 'express-session';
-import { json, urlencoded } from 'express';
+import { json, static as serveStatic, urlencoded } from 'express';
+import { join } from 'node:path';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { REDIS_CLIENT } from './infrastructure/redis/redis.constants';
@@ -52,6 +53,12 @@ async function bootstrap() {
     credentials: true,
     maxAge: 86400,
   });
+  // Archivos de prueba que StorageService guarda en disco cuando no hay
+  // Cloudinary (solo desarrollo).
+  if (!isProduction) {
+    app.use('/dev-uploads', serveStatic(join(process.cwd(), 'dev-uploads')));
+  }
+
   const requestBodyLimit = '15mb';
   app.use(json({ limit: requestBodyLimit }));
   app.use(urlencoded({ extended: true, limit: requestBodyLimit }));

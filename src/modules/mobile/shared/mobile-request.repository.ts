@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
+import { jobIsScheduledSql } from './job-schedule';
 
 @Injectable()
 export class MobileRequestRepository {
@@ -111,6 +112,10 @@ export class MobileRequestRepository {
              days,
              daily_rate,
              start_date,
+             materials_mode,
+             materials_note,
+             video_url,
+             video_thumbnail_url,
              payment_method
       FROM job_requests
       WHERE id = $1
@@ -144,6 +149,11 @@ export class MobileRequestRepository {
       days: row.days == null ? null : Number(row.days),
       dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
       startDate: row.start_date,
+      materialsMode: row.materials_mode ?? null,
+      materialsNote: row.materials_note ?? null,
+      video: row.video_url
+        ? { url: row.video_url, thumbnailUrl: row.video_thumbnail_url ?? null }
+        : null,
       paymentMethod: row.payment_method ?? 'Efectivo',
     };
   }
@@ -233,11 +243,20 @@ export class MobileRequestRepository {
              jr.days,
              jr.daily_rate,
              jr.start_date,
+             jr.materials_mode,
+             jr.materials_note,
+             jr.video_url,
+             jr.video_thumbnail_url,
              jr.payment_method,
              (SELECT COUNT(*) FROM job_offers jo WHERE jo.request_id = jr.id AND jo.status = 'pending') AS pending_offers_count
       FROM job_requests jr
       WHERE jr.client_user_id = $1
-      ORDER BY jr.created_at DESC
+        -- Un trabajo asignado para otro día va a la agenda: no ocupa el
+        -- inicio y el cliente puede pedir otro mientras tanto.
+        AND NOT (jr.status = 'assigned' AND ${jobIsScheduledSql('jr')})
+      ORDER BY
+        CASE WHEN jr.status IN ('searching', 'negotiating', 'assigned') THEN 0 ELSE 1 END,
+        jr.created_at DESC
       LIMIT 1
       `,
       [clientUserId],
@@ -267,9 +286,54 @@ export class MobileRequestRepository {
       days: row.days == null ? null : Number(row.days),
       dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
       startDate: row.start_date,
+      materialsMode: row.materials_mode ?? null,
+      materialsNote: row.materials_note ?? null,
+      video: row.video_url
+        ? { url: row.video_url, thumbnailUrl: row.video_thumbnail_url ?? null }
+        : null,
       paymentMethod: row.payment_method ?? 'Efectivo',
       pendingOffersCount: Number(row.pending_offers_count ?? 0),
     };
+  }
+
+  /** Trabajos del cliente ya asignados y programados para otro día (agenda). */
+  public async findClientScheduledRequests(clientUserId: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT jr.id, jr.title, jr.address, jr.start_date, jr.modality, jr.days,
+             jr.estimated_hours, jo.amount, jo.materials_amount,
+             w.first_name AS worker_first_name, w.last_name AS worker_last_name,
+             w.profile_photo_url AS worker_photo_url
+      FROM job_requests jr
+      LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
+      LEFT JOIN users w ON w.id = jo.worker_user_id
+      WHERE jr.client_user_id = $1
+        AND jr.status = 'assigned'
+        AND ${jobIsScheduledSql('jr')}
+      ORDER BY jr.start_date ASC
+      LIMIT 20
+      `,
+      [clientUserId],
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      address: row.address,
+      startDate: row.start_date,
+      modality: row.modality,
+      days: row.days == null ? null : Number(row.days),
+      estimatedHours:
+        row.estimated_hours == null ? null : Number(row.estimated_hours),
+      amount: row.amount == null ? null : Number(row.amount),
+      materialsAmount:
+        row.materials_amount == null ? null : Number(row.materials_amount),
+      worker: row.worker_first_name
+        ? {
+            name: `${row.worker_first_name} ${row.worker_last_name ?? ''}`.trim(),
+            profilePhotoUrl: row.worker_photo_url ?? null,
+          }
+        : null,
+    }));
   }
 
   public async resolveRequest(params: {

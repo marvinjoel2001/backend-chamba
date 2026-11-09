@@ -17,6 +17,11 @@ export class AdminUsersService implements OnApplicationBootstrap {
     await this.seedSuperUser();
   }
 
+  /**
+   * Crea admin/admin si no existe. Mientras su contraseña siga siendo "admin"
+   * queda marcado para cambiarla: el panel no deja hacer nada más hasta que
+   * la cambie.
+   */
   private async seedSuperUser() {
     const adminUser = await this.findByUsername('admin');
     if (!adminUser) {
@@ -25,9 +30,20 @@ export class AdminUsersService implements OnApplicationBootstrap {
       const newAdmin = this.adminUserRepository.create({
         username: 'admin',
         passwordHash,
+        mustChangePassword: true,
       });
       await this.adminUserRepository.save(newAdmin);
       this.logger.log('Superuser "admin" has been seeded.');
+      return;
+    }
+    if (
+      !adminUser.mustChangePassword &&
+      (await bcrypt.compare('admin', adminUser.passwordHash))
+    ) {
+      await this.adminUserRepository.update(adminUser.id, {
+        mustChangePassword: true,
+      });
+      this.logger.warn('Admin "admin" still uses the default password.');
     }
   }
 
@@ -42,6 +58,7 @@ export class AdminUsersService implements OnApplicationBootstrap {
   async updatePassword(id: string, newPasswordHash: string): Promise<void> {
     await this.adminUserRepository.update(id, {
       passwordHash: newPasswordHash,
+      mustChangePassword: false,
     });
   }
 }

@@ -761,9 +761,10 @@ export class MobileAdminService {
         typeof rows[0].value_json === 'string'
           ? JSON.parse(rows[0].value_json)
           : rows[0].value_json;
-      return { commissionPercent: Number(val.percent ?? 10) };
+      return { commissionPercent: Number(val.percent ?? 0) };
     }
-    return { commissionPercent: 10 };
+    // Sin configurar, Chamba no cobra (los gastos de servicio salen en 0).
+    return { commissionPercent: 0 };
   }
 
   public async updateCommissionConfig(params: { commissionPercent: number }) {

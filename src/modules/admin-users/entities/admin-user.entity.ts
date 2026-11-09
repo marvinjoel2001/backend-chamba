@@ -17,6 +17,10 @@ export class AdminUser {
   @Column()
   passwordHash: string;
 
+  /** Contraseña inicial (admin/admin): el panel obliga a cambiarla al entrar. */
+  @Column({ name: 'must_change_password', type: 'boolean', default: false })
+  mustChangePassword: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
