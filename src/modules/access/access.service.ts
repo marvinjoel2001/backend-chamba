@@ -135,13 +135,15 @@ export class AccessService {
     const rows = await this.db.query(`SELECT jr.id, jr.title, jr.description, jr.category, jr.address,
       jr.status, jr.budget, jr.created_at, jr.completed_at, jr.modality, jo.status AS offer_status,
       jr.estimated_hours, jr.hourly_rate, jr.days, jr.daily_rate, jr.payment_method,
+      jr.payment_method_code, jr.cancel_reason, jr.cancelled_by, jr.cancelled_by_role, jr.cancelled_at,
       ST_Y(jr.location::geometry) AS latitude, ST_X(jr.location::geometry) AS longitude,
       COALESCE(jr.settled_amount, jo.amount, jr.budget) AS amount,
       w.id AS worker_id, w.first_name AS worker_first_name, w.last_name AS worker_last_name,
       w.profile_photo_url AS worker_photo, c.id AS client_id, c.first_name AS client_first_name,
       c.last_name AS client_last_name, c.profile_photo_url AS client_photo, ct.id AS thread_id,
       (SELECT p.url FROM job_request_photos p WHERE p.request_id = jr.id ORDER BY p.created_at LIMIT 1) AS photo_url,
-      EXISTS (SELECT 1 FROM worker_reviews r WHERE r.request_id = jr.id) AS reviewed
+      EXISTS (SELECT 1 FROM worker_reviews r WHERE r.request_id = jr.id) AS reviewed,
+      (SELECT json_build_object('id', p.id, 'status', p.status, 'amount', p.amount, 'methodName', p.method_name, 'provider', p.provider, 'refundReason', p.refund_reason, 'refundRequestedAt', p.refund_requested_at, 'refundedAt', p.refunded_at, 'refundNote', p.refund_note) FROM payments p WHERE p.request_id = jr.id AND p.status IN ('paid', 'refund_pending', 'refunded', 'refund_declined', 'reported') ORDER BY (p.status IN ('refund_pending', 'refunded', 'paid')) DESC, p.created_at DESC LIMIT 1) AS payment_info
       FROM job_requests jr
       JOIN users c ON c.id = jr.client_user_id
       LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
@@ -161,6 +163,16 @@ export class AccessService {
       days: row.days == null ? null : Number(row.days),
       dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
       paymentMethod: row.payment_method ?? null,
+      paymentMethodCode: row.payment_method_code ?? null,
+      paymentStatus: row.payment_info?.status ?? null,
+      paidAmount: row.payment_info?.amount != null ? Number(row.payment_info.amount) : null,
+      refundReason: row.payment_info?.refundReason ?? null,
+      refundRequestedAt: row.payment_info?.refundRequestedAt ?? null,
+      refundedAt: row.payment_info?.refundedAt ?? null,
+      refundNote: row.payment_info?.refundNote ?? null,
+      cancelReason: row.cancel_reason ?? null,
+      cancelledByRole: row.cancelled_by_role ?? (row.cancelled_by ? (row.cancelled_by === row.client_id ? 'client' : 'worker') : null),
+      cancelledAt: row.cancelled_at ?? null,
       latitude: row.latitude == null ? null : Number(row.latitude),
       longitude: row.longitude == null ? null : Number(row.longitude),
       threadId: row.thread_id ?? null, photoUrl: row.photo_url ?? null,

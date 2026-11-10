@@ -512,16 +512,120 @@ export class PaymentsService {
     return { ok: true, status: 'refund_declined' };
   }
 
+  /** Confirmación manual de pago y emisión directa de reembolso por administración. */
+  async adminConfirmAndRefund(
+    paymentId: string,
+    adminId: string,
+    reason?: string,
+  ) {
+    const payment = await this.findPayment(paymentId);
+    const motive =
+      reason?.trim() ||
+      payment.refund_reason ||
+      'Reembolso autorizado por administración';
+
+    // Si status era pending o reported, primero se confirma el cobro
+    if (['pending', 'reported'].includes(payment.status)) {
+      await this.dataSource.query(
+        `UPDATE payments
+         SET status = 'paid', confirmed_at = NOW(), confirmed_by = $2, updated_at = NOW()
+         WHERE id = $1`,
+        [paymentId, adminId],
+      );
+    }
+
+    const row = rowsOf(
+      await this.dataSource.query(
+        `UPDATE payments p
+         SET status = 'refunded',
+             refunded_at = NOW(),
+             refunded_by = $2,
+             refund_reason = $3,
+             refund_note = $4,
+             updated_at = NOW()
+         FROM job_requests jr
+         WHERE p.id = $1 AND jr.id = p.request_id
+         RETURNING p.id, p.request_id, p.client_user_id, p.amount, jr.title`,
+        [paymentId, adminId, motive, reason?.trim().slice(0, 500) || null],
+      ),
+    )[0];
+
+    if (!row) {
+      throw new BadRequestException('No se pudo procesar el reembolso.');
+    }
+
+    this.logger.log(
+      `Pago ${paymentId}: el admin ${adminId} confirmó y reembolsó (${motive})`,
+    );
+    await this.notifyRefund(row, 'done');
+    return { ok: true, status: 'refunded' };
+  }
+
+  /** Descarta un pago pendiente o reportado marcándolo como fallido. */
+  async adminDiscardPayment(paymentId: string, adminId: string, note?: string) {
+    const motive = note?.trim() || 'Descartado por administración';
+    const row = rowsOf(
+      await this.dataSource.query(
+        `UPDATE payments
+         SET status = 'failed', admin_note = $2, failure_reason = $2, updated_at = NOW()
+         WHERE id = $1
+         RETURNING id`,
+        [paymentId, motive],
+      ),
+    )[0];
+    if (!row) {
+      await this.findPayment(paymentId);
+      throw new BadRequestException('No se pudo descartar el pago.');
+    }
+    return { ok: true, status: 'failed' };
+  }
+
   // ---------------------------------------------------------------- admin
+
+  async listForClient(clientUserId: string) {
+    const rows = await this.dataSource.query(
+      `SELECT ${PAYMENT_COLUMNS}, jr.title AS request_title, jr.status AS request_status,
+              jr.cancel_reason, jr.cancelled_by_role
+       FROM payments p
+       JOIN job_requests jr ON jr.id = p.request_id
+       WHERE p.client_user_id = $1
+         AND p.status IN ('paid', 'refund_pending', 'refunded', 'refund_declined', 'reported', 'pending')
+       ORDER BY p.created_at DESC
+       LIMIT 100`,
+      [clientUserId],
+    );
+    return rowsOf(rows).map((r) => ({
+      id: r.id,
+      requestId: r.request_id,
+      requestTitle: r.request_title,
+      requestStatus: r.request_status,
+      methodName: r.method_name,
+      provider: r.provider,
+      amount: Number(r.amount),
+      currency: r.currency,
+      status: r.status,
+      createdAt: r.created_at,
+      confirmedAt: r.confirmed_at,
+      refundReason: r.refund_reason ?? null,
+      refundRequestedAt: r.refund_requested_at ?? null,
+      refundedAt: r.refunded_at ?? null,
+      refundNote: r.refund_note ?? null,
+      cancelReason: r.cancel_reason ?? null,
+      cancelledByRole: r.cancelled_by_role ?? null,
+    }));
+  }
 
   async adminList(status?: string) {
     const rows = await this.dataSource.query(
       `SELECT ${PAYMENT_COLUMNS}, jr.title AS request_title, jr.status AS request_status,
+              jr.cancel_reason, jr.cancelled_by_role, jr.cancelled_by,
+              TRIM(CONCAT(cb.first_name, ' ', COALESCE(cb.last_name, ''))) AS cancelled_by_name,
               TRIM(CONCAT(u.first_name, ' ', COALESCE(u.last_name, ''))) AS client_name,
               u.email AS client_email, u.phone AS client_phone
        FROM payments p
        JOIN job_requests jr ON jr.id = p.request_id
        LEFT JOIN users u ON u.id = p.client_user_id
+       LEFT JOIN users cb ON cb.id = jr.cancelled_by
        WHERE ($1::text IS NULL OR p.status = $1)
          AND p.status <> 'cancelled'
        ORDER BY (p.status = 'refund_pending') DESC, p.created_at DESC
@@ -541,12 +645,17 @@ export class PaymentsService {
       amount: Number(r.amount),
       currency: r.currency,
       status: r.status,
+      externalId: r.external_id ?? null,
       createdAt: r.created_at,
       confirmedAt: r.confirmed_at,
       refundReason: r.refund_reason ?? null,
       refundRequestedAt: r.refund_requested_at ?? null,
       refundedAt: r.refunded_at ?? null,
       refundNote: r.refund_note ?? null,
+      cancelReason: r.cancel_reason ?? null,
+      cancelledByRole: r.cancelled_by_role ?? null,
+      cancelledBy: r.cancelled_by ?? null,
+      cancelledByName: r.cancelled_by_name?.trim() || null,
     }));
   }
 

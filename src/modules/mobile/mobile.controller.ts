@@ -647,6 +647,19 @@ export class MobileController {
     return this.mobileService.clientConfirmArrival({ requestId, clientUserId });
   }
 
+  @Post('mobile/tracking/client-reject-arrival')
+  clientRejectArrival(
+    @Body('requestId') requestId: string,
+    @Body('clientUserId') clientUserId: string,
+    @Body('reason') reason?: string,
+  ) {
+    return this.mobileService.clientRejectArrival({
+      requestId,
+      clientUserId,
+      reason,
+    });
+  }
+
   @Post('mobile/tracking/clock')
   setWorkPaused(@Req() req: any, @Body('requestId') requestId: string, @Body('paused') paused: boolean) {
     return this.mobileService.setWorkPaused({ requestId, clientUserId: req.principal.id, paused });
@@ -664,8 +677,9 @@ export class MobileController {
   cancelJob(
     @Body('requestId') requestId: string,
     @Body('userId') userId: string,
+    @Body('reason') reason?: string,
   ) {
-    return this.mobileService.cancelJob({ requestId, userId });
+    return this.mobileService.cancelJob({ requestId, userId, reason });
   }
 
   @Get('mobile/worker/radar')
@@ -919,11 +933,15 @@ export class MobileController {
     @Param('disputeId') disputeId: string,
     @Body('resolution') resolution: string,
     @Body('resolvedBy') resolvedBy?: string,
+    @Body('cancelJob') cancelJob?: boolean,
+    @Body('refundClient') refundClient?: boolean,
   ) {
     return this.mobileService.resolveDispute({
       disputeId,
       resolution,
       resolvedBy: resolvedBy ?? 'admin',
+      cancelJob,
+      refundClient,
     });
   }
 
@@ -958,8 +976,11 @@ export class MobileController {
   // --- Admin: Cancel Job ---
 
   @Post('mobile/admin/requests/:requestId/cancel')
-  adminCancelJob(@Param('requestId') requestId: string) {
-    return this.mobileService.adminCancelJob({ requestId });
+  adminCancelJob(
+    @Param('requestId') requestId: string,
+    @Body('reason') reason?: string,
+  ) {
+    return this.mobileService.adminCancelJob({ requestId, reason });
   }
 
   @Get('mobile/admin/cancellation-stats')

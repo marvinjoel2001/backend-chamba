@@ -58,7 +58,7 @@ export class MobileAccessGuard implements CanActivate {
       }
     }
     if (path.includes('/worker/') && principal.role !== 'worker') throw new ForbiddenException();
-    if (['createRequest', 'webJobs', 'uploadRequestPhoto', 'uploadRequestVideo', 'acceptOffer', 'clientCounterOffer', 'clientConfirmArrival', 'setWorkPaused', 'createReview'].includes(name)
+    if (['createRequest', 'webJobs', 'uploadRequestPhoto', 'uploadRequestVideo', 'acceptOffer', 'clientCounterOffer', 'clientConfirmArrival', 'clientRejectArrival', 'setWorkPaused', 'createReview'].includes(name)
         && principal.role !== 'client') throw new ForbiddenException();
     if (['getIncomingRequest', 'upsertOffer', 'discardOffer', 'declineOffer', 'reactivateOffer', 'workerMarkArrived', 'completeJob', 'dismissRequest'].includes(name)
         && principal.role !== 'worker') throw new ForbiddenException();
@@ -78,7 +78,7 @@ export class MobileAccessGuard implements CanActivate {
     if (name === 'getNotificationRequest') return true;
     if (name === 'getDisputeMessages' && req.query.readBy === 'admin') throw new ForbiddenException();
     // Existing controller arguments remain compatible but are sourced from the authenticated actor.
-    const actor = ['createRequest', 'getRequestStatus', 'getOffers', 'getClientHistory', 'acceptOffer', 'clientCounterOffer', 'clientConfirmArrival', 'createReview'].includes(name)
+    const actor = ['createRequest', 'getRequestStatus', 'getOffers', 'getClientHistory', 'acceptOffer', 'clientCounterOffer', 'clientConfirmArrival', 'clientRejectArrival', 'createReview'].includes(name)
       ? 'clientUserId' : ['sendThreadMessage'].includes(name) ? 'senderUserId' : 'userId';
     if (req.method === 'GET') Object.defineProperty(req, 'query', { value: { ...req.query, [actor]: principal.id }, configurable: true });
     return true;

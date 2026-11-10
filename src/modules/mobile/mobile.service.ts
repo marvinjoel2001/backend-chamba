@@ -1002,6 +1002,14 @@ export class MobileService implements OnModuleInit {
     return this.requestsService.clientConfirmArrival(params);
   }
 
+  async clientRejectArrival(params: {
+    requestId: string;
+    clientUserId: string;
+    reason?: string;
+  }) {
+    return this.requestsService.clientRejectArrival(params);
+  }
+
   async completeJob(params: { requestId: string; workerUserId: string }) {
     return this.requestsService.completeJob(params);
   }
@@ -1048,7 +1056,7 @@ export class MobileService implements OnModuleInit {
     };
   }
 
-  async cancelJob(params: { requestId: string; userId: string }) {
+  async cancelJob(params: { requestId: string; userId: string; reason?: string }) {
     return this.requestsService.cancelJob(params);
   }
 
@@ -1123,11 +1131,11 @@ export class MobileService implements OnModuleInit {
   }
 
   async getWorkerHistory(workerUserId: string) {
-    return this.usersService.getWorkerHistory(workerUserId);
+    return this.requestsService.getWorkerHistory(workerUserId);
   }
 
   async getClientHistory(clientUserId: string) {
-    return this.usersService.getClientHistory(clientUserId);
+    return this.requestsService.getClientHistory(clientUserId);
   }
 
   async createReview(params: {
@@ -1312,12 +1320,14 @@ export class MobileService implements OnModuleInit {
   async resolveDispute(params: {
     disputeId: string;
     resolution: string;
-    resolvedBy: string;
+    resolvedBy?: string;
+    cancelJob?: boolean;
+    refundClient?: boolean;
   }) {
     return this.disputesService.resolveDispute(params);
   }
 
-  async adminCancelJob(params: { requestId: string }) {
+  async adminCancelJob(params: { requestId: string; reason?: string }) {
     return this.adminService.adminCancelJob(params);
   }
 

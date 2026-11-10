@@ -144,11 +144,20 @@ export class MobileDisputesService {
   public async resolveDispute(params: {
     disputeId: string;
     resolution: string;
-    resolvedBy: string;
+    resolvedBy?: string;
+    cancelJob?: boolean;
+    refundClient?: boolean;
   }) {
     if (!params.disputeId || !params.resolution?.trim()) {
       throw new BadRequestException('disputeId and resolution are required');
     }
+
+    const disputeRows = await this.dataSource.query<any[]>(
+      `SELECT request_id, reported_by, reported_user FROM disputes WHERE id = $1 LIMIT 1`,
+      [params.disputeId],
+    );
+    const dispute = disputeRows[0];
+    const requestId = dispute?.request_id;
 
     await this.dataSource.query(
       `
@@ -167,8 +176,23 @@ export class MobileDisputesService {
       ],
     );
 
+    // Mensaje automático del sistema/admin en el chat de la disputa
+    await this.dataSource
+      .query(
+        `
+        INSERT INTO dispute_messages (dispute_id, sender_type, sender_id, content)
+        VALUES ($1, 'admin', NULL, $2)
+        `,
+        [params.disputeId, `✅ Caso resuelto: ${params.resolution.trim()}`],
+      )
+      .catch((e) =>
+        this.logger.warn('Failed to insert resolution message in dispute_messages', e),
+      );
+
+    const participants = await this.participantsOf(params.disputeId);
+
     // Se avisa a las dos partes: el reportado también participa del chat.
-    for (const userId of await this.participantsOf(params.disputeId)) {
+    for (const userId of participants) {
       const tokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
         [userId],
@@ -185,10 +209,90 @@ export class MobileDisputesService {
         );
     }
 
-    this.realtimeGateway.emitToAdmins('dispute.resolved', {
+    const resolvedPayload = {
       disputeId: params.disputeId,
+      resolution: params.resolution.trim(),
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    this.realtimeGateway.emitToAdmins('dispute.resolved', resolvedPayload);
+    for (const userId of participants) {
+      this.realtimeGateway.emitToUser(userId, 'dispute.resolved', resolvedPayload);
+    }
+
+    // Cancelar trabajo y/o solicitar reembolso si fue indicado
+    if (params.cancelJob && requestId) {
+      await this.dataSource
+        .query(
+          `
+          UPDATE job_requests
+          SET status = 'cancelled',
+              cancelled_by_role = 'admin',
+              cancel_reason = $2,
+              cancelled_at = NOW(),
+              updated_at = NOW()
+          WHERE id = $1 AND status NOT IN ('completed', 'cancelled')
+          `,
+          [requestId, `Disputa resuelta: ${params.resolution.trim()}`],
+        )
+        .catch((e) => this.logger.warn('Failed to cancel job in resolveDispute', e));
+
+      await this.dataSource
+        .query(
+          `
+          INSERT INTO job_request_status_history (request_id, from_status, to_status, changed_by_role, reason, metadata)
+          VALUES ($1, 'disputed', 'cancelled', 'admin', $2, '{}'::jsonb)
+          `,
+          [requestId, `Disputa resuelta: ${params.resolution.trim()}`],
+        )
+        .catch(() => {});
+
+      for (const userId of participants) {
+        this.realtimeGateway.emitToUser(userId, 'job.cancelled', {
+          requestId,
+          cancelerRole: 'admin',
+          reason: `Disputa resuelta: ${params.resolution.trim()}`,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+
+    if ((params.cancelJob || params.refundClient) && requestId) {
+      try {
+        const refundRes = await this.dataSource.query(
+          `
+          UPDATE payments p
+          SET status = 'refund_pending',
+              refund_reason = $2,
+              refund_requested_at = NOW(),
+              updated_at = NOW()
+          FROM job_requests jr
+          WHERE p.request_id = $1 AND p.status = 'paid' AND jr.id = p.request_id
+          RETURNING p.id, p.request_id, p.client_user_id, p.amount, jr.title
+          `,
+          [requestId, `Disputa resuelta: ${params.resolution.trim()}`],
+        );
+        const refundRows = Array.isArray(refundRes?.[0]) ? refundRes[0] : (Array.isArray(refundRes) ? refundRes : []);
+        for (const p of refundRows) {
+          this.realtimeGateway?.emitToAdmins?.('payment.refund_pending', {
+            paymentId: p.id,
+            requestId: p.request_id,
+            amount: Number(p.amount),
+          });
+          await this.notificationsService
+            ?.notifyPaymentRefund?.({
+              userId: p.client_user_id,
+              requestId: p.request_id,
+              jobTitle: p.title ?? 'tu trabajo',
+              amount: Number(p.amount),
+              stage: 'pending',
+            })
+            ?.catch?.(() => {});
+        }
+      } catch (e) {
+        this.logger.warn('Failed to set refund_pending in resolveDispute', e);
+      }
+    }
 
     return { disputeId: params.disputeId, status: 'resolved' };
   }

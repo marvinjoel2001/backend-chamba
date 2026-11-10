@@ -879,6 +879,15 @@ export class MobileRequestsService {
              jr.materials_note,
              jr.video_url,
              jr.video_thumbnail_url,
+             jr.payment_method,
+             jr.payment_method_code,
+             (SELECT row_to_json(p_sub) FROM (
+               SELECT status, amount, provider, method_name, refund_reason, refund_note, refunded_at
+               FROM payments
+               WHERE request_id = jr.id AND status IN ('paid', 'refund_pending', 'refunded', 'reported')
+               ORDER BY created_at DESC
+               LIMIT 1
+             ) p_sub) AS payment_info,
              ST_Y(jr.location::geometry) AS dest_lat,
              ST_X(jr.location::geometry) AS dest_lng,
              w.id AS worker_id,
@@ -939,6 +948,13 @@ export class MobileRequestsService {
       workStartedAt: row.work_started_at ?? null,
       ...workClock(row),
       settledAmount: row.settled_amount == null ? null : Number(row.settled_amount),
+      paymentMethod: row.payment_method || 'Efectivo',
+      paymentMethodCode: row.payment_method_code || 'cash',
+      paymentStatus: row.payment_info?.status ?? null,
+      isDigitalPayment: Boolean(
+        row.payment_info?.status === 'paid' ||
+          (row.payment_method_code && row.payment_method_code !== 'cash'),
+      ),
       serverTime: new Date().toISOString(),
       distanceKm,
       etaMinutes:
@@ -1031,6 +1047,14 @@ export class MobileRequestsService {
       }
     }
 
+    await this.repo.recordStatusChange?.({
+      requestId: params.requestId,
+      fromStatus: 'assigned',
+      toStatus: 'worker_arrived',
+      changedByUserId: params.workerUserId,
+      changedByRole: 'worker',
+    });
+
     return { requestId: params.requestId, workerArrived: true };
   }
 
@@ -1095,7 +1119,67 @@ export class MobileRequestsService {
         );
     }
 
+    await this.repo.recordStatusChange?.({
+      requestId: params.requestId,
+      fromStatus: 'worker_arrived',
+      toStatus: 'arrival_confirmed',
+      changedByUserId: params.clientUserId,
+      changedByRole: 'client',
+    });
+
     return { requestId: params.requestId, clientConfirmedArrival: true };
+  }
+
+  public async clientRejectArrival(params: {
+    requestId: string;
+    clientUserId: string;
+    reason?: string;
+  }) {
+    const reason = params.reason?.trim() || null;
+    const rows = await this.dataSource.query<any[]>(
+      `
+      UPDATE job_requests
+      SET worker_arrived = false, updated_at = NOW()
+      WHERE id = $1
+        AND client_user_id = $2
+        AND status = 'assigned'
+        AND worker_arrived = true
+        AND client_confirmed_arrival = false
+      RETURNING id
+      `,
+      [params.requestId, params.clientUserId],
+    );
+    if (!firstUpdatedRow(rows)) {
+      throw new BadRequestException(
+        'No se puede rechazar la llegada: el trabajo no está activo o el trabajador no ha marcado su llegada',
+      );
+    }
+
+    const offerRows = await this.dataSource.query<any[]>(
+      `SELECT worker_user_id FROM job_offers WHERE request_id = $1 AND status = 'accepted' LIMIT 1`,
+      [params.requestId],
+    );
+    if (offerRows[0]) {
+      this.realtimeGateway.emitToUser(
+        offerRows[0].worker_user_id,
+        'job.arrival_rejected',
+        {
+          requestId: params.requestId,
+          reason,
+        },
+      );
+    }
+
+    await this.repo.recordStatusChange?.({
+      requestId: params.requestId,
+      fromStatus: 'worker_arrived',
+      toStatus: 'arrival_rejected',
+      changedByUserId: params.clientUserId,
+      changedByRole: 'client',
+      reason,
+    });
+
+    return { requestId: params.requestId, workerArrived: false };
   }
 
   public async setWorkPaused(params: { requestId: string; clientUserId: string; paused: boolean }) {
@@ -1219,10 +1303,23 @@ export class MobileRequestsService {
       `[completeJob] Trabajo ${params.requestId} completado por worker ${params.workerUserId}`,
     );
 
+    await this.repo.recordStatusChange?.({
+      requestId: params.requestId,
+      fromStatus: 'assigned',
+      toStatus: 'completed',
+      changedByUserId: params.workerUserId,
+      changedByRole: 'worker',
+      metadata: { amount: Number(completed.settled_amount) },
+    });
+
     return { requestId: params.requestId, status: 'completed', amount: Number(completed.settled_amount) };
   }
 
-  public async cancelJob(params: { requestId: string; userId: string }) {
+  public async cancelJob(params: {
+    requestId: string;
+    userId: string;
+    reason?: string;
+  }) {
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT jr.id, jr.title, jr.status, jr.client_user_id, jo.worker_user_id
@@ -1241,20 +1338,25 @@ export class MobileRequestsService {
     if (req.status === 'cancelled' || req.status === 'completed') {
       throw new BadRequestException(
         req.status === 'cancelled'
-          ? 'El trabajo ya fue cancelado'
-          : 'No se puede cancelar un trabajo completado',
+           ? 'El trabajo ya fue cancelado'
+           : 'No se puede cancelar un trabajo completado',
       );
     }
+
+    const cancelerRole: 'client' | 'worker' =
+      req.client_user_id === params.userId ? 'client' : 'worker';
+    const cancelReason = params.reason?.trim() || null;
 
     const cancelledRows = await this.dataSource.query<any[]>(
       `
       UPDATE job_requests
-      SET status = 'cancelled', updated_at = NOW(), cancelled_by = $2
+      SET status = 'cancelled', updated_at = NOW(), cancelled_by = $2,
+          cancelled_by_role = $3, cancel_reason = $4, cancelled_at = NOW()
       WHERE id = $1
         AND status NOT IN ('cancelled', 'completed')
       RETURNING id
       `,
-      [params.requestId, params.userId],
+      [params.requestId, params.userId, cancelerRole, cancelReason],
     );
     if (!firstUpdatedRow(cancelledRows)) {
       throw new BadRequestException('El trabajo ya no se puede cancelar');
@@ -1269,17 +1371,26 @@ export class MobileRequestsService {
     });
     // is_available queda como el trabajador lo dejó (ver completeJob).
 
+    const cancelPayload = {
+      requestId: params.requestId,
+      cancelerUserId: params.userId,
+      cancelerRole,
+      reason: cancelReason,
+    };
+
     if (req.client_user_id) {
-      this.realtimeGateway.emitToUser(req.client_user_id, 'job.cancelled', {
-        requestId: params.requestId,
-        cancelerUserId: params.userId,
-      });
+      this.realtimeGateway.emitToUser(
+        req.client_user_id,
+        'job.cancelled',
+        cancelPayload,
+      );
     }
     if (req.worker_user_id) {
-      this.realtimeGateway.emitToUser(req.worker_user_id, 'job.cancelled', {
-        requestId: params.requestId,
-        cancelerUserId: params.userId,
-      });
+      this.realtimeGateway.emitToUser(
+        req.worker_user_id,
+        'job.cancelled',
+        cancelPayload,
+      );
     }
 
     const canceler = await this.repo.getUserById(params.userId);
@@ -1309,6 +1420,8 @@ export class MobileRequestsService {
       this.realtimeGateway.emitToUser(closed.workerUserId, 'job.cancelled', {
         requestId: params.requestId,
         cancelerUserId: params.userId,
+        cancelerRole,
+        reason: cancelReason,
       });
       const token = await this.repo.getLatestPushToken(closed.workerUserId);
       this.notificationsService
@@ -1322,6 +1435,50 @@ export class MobileRequestsService {
           this.logger.error('Failed to notify pending-offer worker', e),
         );
     }
+
+    // Si hay un pago paid para ese requestId, cámbialo inmediatamente a refund_pending y avisa al cliente y admin
+    try {
+      const refundRes = await this.dataSource.query(
+        `UPDATE payments
+         SET status = 'refund_pending',
+             refund_reason = $2,
+             refund_requested_at = NOW(),
+             updated_at = NOW()
+         WHERE request_id = $1 AND status = 'paid'
+         RETURNING id, request_id, client_user_id, amount`,
+        [params.requestId, cancelReason || 'Trabajo cancelado'],
+      );
+      const refundRows = Array.isArray(refundRes?.[0]) ? refundRes[0] : (Array.isArray(refundRes) ? refundRes : []);
+      for (const p of refundRows) {
+        this.realtimeGateway.emitToAdmins?.('payment.refund_pending', {
+          paymentId: p.id,
+          requestId: p.request_id,
+          amount: Number(p.amount),
+        });
+        await this.notificationsService
+          ?.notifyPaymentRefund?.({
+            userId: p.client_user_id,
+            requestId: p.request_id,
+            jobTitle: req.title ?? 'tu trabajo',
+            amount: Number(p.amount),
+            stage: 'pending',
+          })
+          ?.catch?.(() => {});
+      }
+    } catch (e: any) {
+      this.logger.warn(
+        `No se pudo actualizar pago a refund_pending al cancelar: ${e?.message}`,
+      );
+    }
+
+    await this.repo.recordStatusChange?.({
+      requestId: params.requestId,
+      fromStatus: req.status,
+      toStatus: 'cancelled',
+      changedByUserId: params.userId,
+      changedByRole: cancelerRole,
+      reason: cancelReason,
+    });
 
     return { requestId: params.requestId, status: 'cancelled' };
   }
@@ -2105,5 +2262,192 @@ Reglas obligatorias:
     }
 
     return uploaded;
+  }
+
+  public async getWorkerHistory(workerUserId: string) {
+    await this.repo.getUserById(workerUserId);
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT jo.id AS offer_id,
+             COALESCE(jr.settled_amount, jo.amount) AS amount,
+             jo.status AS offer_status,
+             jo.created_at AS accepted_at,
+             jr.id AS request_id,
+             jr.title,
+             jr.description,
+             jr.category,
+             jr.address,
+             jr.status AS request_status,
+             jr.payment_method,
+             jr.payment_method_code,
+             jr.completed_at,
+             jr.work_started_at,
+             jr.work_paused_at,
+             jr.work_paused_seconds,
+             jr.cancel_reason,
+             jr.cancelled_by,
+             jr.cancelled_by_role,
+             jr.cancelled_at,
+             (SELECT row_to_json(p_sub) FROM (
+               SELECT id, status, amount, method_name AS "methodName", provider,
+                      refund_reason AS "refundReason", refund_requested_at AS "refundRequestedAt",
+                      refunded_at AS "refundedAt", refund_note AS "refundNote"
+               FROM payments
+               WHERE request_id = jr.id AND status IN ('paid', 'refund_pending', 'refunded', 'refund_declined', 'reported')
+               ORDER BY (status IN ('refund_pending', 'refunded', 'paid')) DESC, created_at DESC
+               LIMIT 1
+             ) p_sub) AS payment_info,
+             c.id AS client_id,
+             c.first_name AS client_first_name,
+             c.last_name AS client_last_name,
+             c.profile_photo_url AS client_photo,
+             ct.id AS thread_id,
+             (SELECT p.url FROM job_request_photos p WHERE p.request_id = jr.id ORDER BY p.created_at ASC LIMIT 1) as photo_url
+      FROM job_offers jo
+      JOIN job_requests jr ON jr.id = jo.request_id
+      JOIN users c ON c.id = jr.client_user_id
+      LEFT JOIN chat_threads ct
+        ON ct.request_id = jr.id
+       AND ct.worker_user_id = jo.worker_user_id
+       AND ct.client_user_id = jr.client_user_id
+      WHERE jo.worker_user_id = $1
+        AND jo.status = 'accepted'
+        AND jr.status IN ('assigned', 'completed', 'cancelled')
+      ORDER BY jo.created_at DESC
+      LIMIT 300
+      `,
+      [workerUserId],
+    );
+
+    return {
+      workerUserId,
+      jobs: rows.map((row) => ({
+        offerId: row.offer_id,
+        requestId: row.request_id,
+        title: row.title,
+        description: row.description,
+        category: row.category,
+        address: row.address,
+        amount: Number(row.amount),
+        offerStatus: row.offer_status,
+        requestStatus: row.request_status,
+        acceptedAt: row.accepted_at,
+        completedAt: row.completed_at,
+        workElapsedSeconds: row.work_started_at ? workClock(row).workElapsedSeconds : null,
+        threadId: row.thread_id ?? null,
+        photoUrl: row.photo_url ?? null,
+        paymentMethod: row.payment_method ?? 'Efectivo',
+        paymentMethodCode: row.payment_method_code ?? null,
+        paymentStatus: row.payment_info?.status ?? null,
+        paidAmount: row.payment_info?.amount != null ? Number(row.payment_info.amount) : null,
+        refundReason: row.payment_info?.refundReason ?? null,
+        refundRequestedAt: row.payment_info?.refundRequestedAt ?? null,
+        refundedAt: row.payment_info?.refundedAt ?? null,
+        refundNote: row.payment_info?.refundNote ?? null,
+        cancelReason: row.cancel_reason ?? null,
+        cancelledByRole: row.cancelled_by_role ?? (row.cancelled_by ? (row.cancelled_by === row.client_id ? 'client' : 'worker') : null),
+        client: {
+          id: row.client_id,
+          firstName: row.client_first_name,
+          lastName: row.client_last_name ?? '',
+          profilePhotoUrl: row.client_photo ?? null,
+        },
+      })),
+    };
+  }
+
+  public async getClientHistory(clientUserId: string) {
+    await this.repo.getUserById(clientUserId);
+
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT jr.id AS request_id,
+             jr.title,
+             jr.description,
+             jr.category,
+             jr.address,
+             jr.status AS request_status,
+             jr.created_at,
+             jr.completed_at,
+             jr.modality,
+             jr.payment_method,
+             jr.payment_method_code,
+             jr.cancel_reason,
+             jr.cancelled_by,
+             jr.cancelled_by_role,
+             jr.cancelled_at,
+             (SELECT row_to_json(p_sub) FROM (
+               SELECT id, status, amount, method_name AS "methodName", provider,
+                      refund_reason AS "refundReason", refund_requested_at AS "refundRequestedAt",
+                      refunded_at AS "refundedAt", refund_note AS "refundNote"
+               FROM payments
+               WHERE request_id = jr.id AND status IN ('paid', 'refund_pending', 'refunded', 'refund_declined', 'reported')
+               ORDER BY (status IN ('refund_pending', 'refunded', 'paid')) DESC, created_at DESC
+               LIMIT 1
+             ) p_sub) AS payment_info,
+             jo.id AS offer_id,
+             COALESCE(jr.settled_amount, jo.amount) AS amount,
+             jo.status AS offer_status,
+             w.id AS worker_id,
+             w.first_name AS worker_first_name,
+             w.last_name AS worker_last_name,
+             w.profile_photo_url AS worker_photo,
+             ct.id AS thread_id,
+             (SELECT p.url FROM job_request_photos p WHERE p.request_id = jr.id ORDER BY p.created_at ASC LIMIT 1) as photo_url,
+             EXISTS (SELECT 1 FROM worker_reviews r WHERE r.request_id = jr.id) AS reviewed
+      FROM job_requests jr
+      LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
+      LEFT JOIN users w ON w.id = jo.worker_user_id
+      LEFT JOIN chat_threads ct
+        ON ct.request_id = jr.id
+       AND ct.worker_user_id = w.id
+       AND ct.client_user_id = jr.client_user_id
+      WHERE jr.client_user_id = $1
+        AND jr.status IN ('assigned', 'completed', 'cancelled')
+      ORDER BY jr.created_at DESC
+      LIMIT 80
+      `,
+      [clientUserId],
+    );
+
+    return {
+      clientUserId,
+      jobs: rows.map((row) => ({
+        requestId: row.request_id,
+        title: row.title,
+        description: row.description,
+        category: row.category,
+        address: row.address,
+        amount: row.amount != null ? Number(row.amount) : null,
+        offerId: row.offer_id ?? null,
+        offerStatus: row.offer_status ?? null,
+        requestStatus: row.request_status,
+        createdAt: row.created_at,
+        completedAt: row.completed_at ?? null,
+        modality: row.modality ?? null,
+        threadId: row.thread_id ?? null,
+        photoUrl: row.photo_url ?? null,
+        reviewed: row.reviewed === true,
+        paymentMethod: row.payment_method ?? 'Efectivo',
+        paymentMethodCode: row.payment_method_code ?? null,
+        paymentStatus: row.payment_info?.status ?? null,
+        paidAmount: row.payment_info?.amount != null ? Number(row.payment_info.amount) : null,
+        refundReason: row.payment_info?.refundReason ?? null,
+        refundRequestedAt: row.payment_info?.refundRequestedAt ?? null,
+        refundedAt: row.payment_info?.refundedAt ?? null,
+        refundNote: row.payment_info?.refundNote ?? null,
+        cancelReason: row.cancel_reason ?? null,
+        cancelledByRole: row.cancelled_by_role ?? (row.cancelled_by ? (row.cancelled_by === clientUserId ? 'client' : 'worker') : null),
+        worker: row.worker_id
+          ? {
+              id: row.worker_id,
+              firstName: row.worker_first_name,
+              lastName: row.worker_last_name ?? '',
+              profilePhotoUrl: row.worker_photo ?? null,
+            }
+          : null,
+      })),
+    };
   }
 }

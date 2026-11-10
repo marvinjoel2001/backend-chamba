@@ -468,6 +468,7 @@ export class MobileOffersService {
     };
     let rejectedRows: { id: string; worker_user_id: string }[] = [];
     let jobTitle = 'un trabajo';
+    let fromRequestStatus: string | null = null;
 
     try {
       // 1. Bloqueo pesimista de la solicitud (FOR UPDATE)
@@ -494,6 +495,7 @@ export class MobileOffersService {
       if (!request) {
         throw new NotFoundException('Solicitud o trabajo no encontrado');
       }
+      fromRequestStatus = request.status;
 
       if (request.client_user_id !== params.clientUserId) {
         throw new UnauthorizedException(
@@ -752,6 +754,19 @@ export class MobileOffersService {
           .catch(() => {});
       }
     }
+
+    await this.repo?.recordStatusChange?.({
+      requestId: acceptedOffer.request_id,
+      fromStatus: fromRequestStatus,
+      toStatus: 'assigned',
+      changedByUserId: params.clientUserId,
+      changedByRole: 'client',
+      metadata: {
+        offerId: params.offerId,
+        workerUserId: acceptedOffer.worker_user_id,
+        amount: acceptedOffer.amount,
+      },
+    });
 
     return {
       accepted: true,

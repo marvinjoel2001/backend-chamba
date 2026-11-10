@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -9,6 +10,7 @@ import { jobIsScheduledSql } from './job-schedule';
 
 @Injectable()
 export class MobileRequestRepository {
+  private readonly logger = new Logger(MobileRequestRepository.name);
   // Vida de la oferta por modalidad (segundos): por hora es urgente,
   // fijo es intermedio y por dia (trabajos planificados) da mas margen.
   private static readonly DEFAULT_OFFER_LIFETIME_BY_PRICE_TYPE: Record<
@@ -743,6 +745,51 @@ export class MobileRequestRepository {
         WHERE id = $1 OR LOWER(name) = LOWER($2)
         `,
         [id, name],
+      );
+    }
+  }
+
+  public async recordStatusChange(
+    params: {
+      requestId: string;
+      fromStatus?: string | null;
+      toStatus: string;
+      changedByUserId?: string | null;
+      changedByRole?: 'client' | 'worker' | 'admin' | 'system';
+      reason?: string | null;
+      metadata?: Record<string, any>;
+    },
+    runner?: { query: Function },
+  ): Promise<void> {
+    try {
+      const q = runner ?? this.dataSource;
+      if (!q || typeof q.query !== 'function') return;
+      await q.query(
+        `
+        INSERT INTO job_request_status_history (
+          request_id,
+          from_status,
+          to_status,
+          changed_by_user_id,
+          changed_by_role,
+          reason,
+          metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+        `,
+        [
+          params.requestId,
+          params.fromStatus ?? null,
+          params.toStatus,
+          params.changedByUserId ?? null,
+          params.changedByRole ?? 'system',
+          params.reason ?? null,
+          JSON.stringify(params.metadata ?? {}),
+        ],
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to record status change for request ${params.requestId}: ${err?.message}`,
       );
     }
   }

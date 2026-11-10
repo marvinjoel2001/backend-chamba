@@ -368,7 +368,8 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
     const cancelledRows = await this.dataSource.query<any[]>(
       `
       UPDATE job_requests
-      SET status = 'cancelled', cancelled_by = NULL, updated_at = NOW()
+      SET status = 'cancelled', cancelled_by = NULL, cancelled_by_role = 'system',
+          cancel_reason = 'Expirada por tiempo', cancelled_at = NOW(), updated_at = NOW()
       WHERE id = $1
         AND status IN ('searching', 'negotiating')
       RETURNING id
@@ -421,6 +422,15 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
         requestId: req.id,
       })
       .catch((e) => this.logger.error('Error sending timeout push', e));
+
+    await this.repo.recordStatusChange?.({
+      requestId: req.id,
+      fromStatus: 'searching',
+      toStatus: 'cancelled',
+      changedByUserId: null,
+      changedByRole: 'system',
+      reason: 'Expirada por tiempo',
+    });
   }
 
   private async sendReminder(req: any, newLevel: number) {

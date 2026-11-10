@@ -658,6 +658,40 @@ export class MobileAdminService {
     );
     const notifiedCount = Number(notifiedRows[0]?.notified_count ?? 0);
 
+    let statusHistory: any[] = [];
+    try {
+      const historyRows = await this.dataSource.query<any[]>(
+        `SELECT id, from_status AS "fromStatus", to_status AS "toStatus",
+                changed_by_user_id AS "changedByUserId", changed_by_role AS "changedByRole",
+                reason, metadata, created_at AS "createdAt"
+         FROM job_request_status_history
+         WHERE request_id = $1::uuid
+         ORDER BY created_at ASC`,
+        [requestId],
+      );
+      statusHistory = historyRows ?? [];
+    } catch (e: any) {
+      this.logger.warn(`Could not load statusHistory: ${e?.message}`);
+    }
+
+    let paymentInfo: any = null;
+    try {
+      const paymentRows = await this.dataSource.query<any[]>(
+        `SELECT id, status, amount, currency, provider, method_name AS "methodName",
+                external_id AS "externalId", refund_reason AS "refundReason",
+                refund_requested_at AS "refundRequestedAt", refunded_at AS "refundedAt",
+                refund_note AS "refundNote", confirmed_at AS "confirmedAt", created_at AS "createdAt"
+         FROM payments
+         WHERE request_id = $1::uuid
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [requestId],
+      );
+      paymentInfo = paymentRows[0] ?? null;
+    } catch (e: any) {
+      this.logger.warn(`Could not load paymentInfo: ${e?.message}`);
+    }
+
     return {
       id: row.id,
       title: row.title,
@@ -721,6 +755,8 @@ export class MobileAdminService {
         expiresAt: o.expires_at || null,
         createdAt: o.created_at,
       })),
+      statusHistory,
+      payment: paymentInfo,
     };
   }
 
@@ -731,12 +767,28 @@ export class MobileAdminService {
         u.first_name,
         u.last_name,
         u.type,
-        COUNT(*)::int AS cancel_count
+        u.phone,
+        COUNT(*)::int AS cancel_count,
+        COUNT(*) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM job_offers jo
+            WHERE jo.request_id = jr.id AND jo.status = 'accepted'
+          )
+        )::int AS worker_assigned_cancel_count,
+        (
+          SELECT ARRAY_REMOVE(ARRAY_AGG(sub.cancel_reason), NULL)
+          FROM (
+            SELECT r2.cancel_reason
+            FROM job_requests r2
+            WHERE r2.cancelled_by = u.id AND r2.status = 'cancelled' AND r2.cancel_reason IS NOT NULL
+            ORDER BY r2.updated_at DESC
+            LIMIT 5
+          ) sub
+        ) AS recent_reasons
       FROM job_requests jr
-      LEFT JOIN job_offers jo ON jo.request_id = jr.id AND jo.status = 'accepted'
-      JOIN users u ON u.id = COALESCE(jo.worker_user_id, jr.client_user_id)
-      WHERE jr.status = 'cancelled'
-      GROUP BY u.id, u.first_name, u.last_name, u.type
+      JOIN users u ON u.id = jr.cancelled_by
+      WHERE jr.status = 'cancelled' AND jr.cancelled_by IS NOT NULL
+      GROUP BY u.id, u.first_name, u.last_name, u.type, u.phone
       HAVING COUNT(*) >= 1
       ORDER BY cancel_count DESC
       LIMIT 100
@@ -747,7 +799,10 @@ export class MobileAdminService {
         id: r.id,
         name: [r.first_name, r.last_name].filter(Boolean).join(' '),
         type: r.type,
-        cancelCount: r.cancel_count,
+        phone: r.phone ?? null,
+        cancelCount: Number(r.cancel_count ?? 0),
+        workerAssignedCancelCount: Number(r.worker_assigned_cancel_count ?? 0),
+        recentReasons: Array.isArray(r.recent_reasons) ? r.recent_reasons : [],
       })),
     };
   }
@@ -1065,7 +1120,7 @@ export class MobileAdminService {
     return this.getStripeConfig();
   }
 
-  public async adminCancelJob(params: { requestId: string }) {
+  public async adminCancelJob(params: { requestId: string; reason?: string }) {
     const rows = await this.dataSource.query<any[]>(
       `SELECT id, title, client_user_id, status FROM job_requests WHERE id = $1 LIMIT 1`,
       [params.requestId],
@@ -1079,14 +1134,23 @@ export class MobileAdminService {
       );
     }
 
+    const cancelReason = params.reason?.trim() || null;
+
     await this.dataSource.query(
-      `UPDATE job_requests SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
-      [params.requestId],
+      `UPDATE job_requests
+       SET status = 'cancelled', cancelled_by_role = 'admin',
+           cancel_reason = $2, cancelled_at = NOW(), updated_at = NOW()
+       WHERE id = $1`,
+      [params.requestId, cancelReason],
     );
 
     const closedOffers = await this.repo.closePendingOffers(params.requestId);
     for (const closed of closedOffers) {
-      this.realtimeGateway.emitToUser(closed.workerUserId, 'job.cancelled', { requestId: params.requestId });
+      this.realtimeGateway.emitToUser(closed.workerUserId, 'job.cancelled', {
+        requestId: params.requestId,
+        cancelerRole: 'admin',
+        reason: cancelReason,
+      });
       const token = await this.repo.getLatestPushToken(closed.workerUserId);
       this.notificationsService
         .notifyRequestClosed({
@@ -1113,7 +1177,11 @@ export class MobileAdminService {
     });
 
     if (req.client_user_id) {
-      this.realtimeGateway.emitToUser(req.client_user_id, 'job.cancelled', { requestId: params.requestId });
+      this.realtimeGateway.emitToUser(req.client_user_id, 'job.cancelled', {
+        requestId: params.requestId,
+        cancelerRole: 'admin',
+        reason: cancelReason,
+      });
       const clientTokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
         [req.client_user_id],
@@ -1130,7 +1198,11 @@ export class MobileAdminService {
     }
 
     if (offerRows[0]?.worker_user_id) {
-      this.realtimeGateway.emitToUser(offerRows[0].worker_user_id, 'job.cancelled', { requestId: params.requestId });
+      this.realtimeGateway.emitToUser(offerRows[0].worker_user_id, 'job.cancelled', {
+        requestId: params.requestId,
+        cancelerRole: 'admin',
+        reason: cancelReason,
+      });
       const workerTokenRows = await this.dataSource.query<any[]>(
         `SELECT token AS push_token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 1`,
         [offerRows[0].worker_user_id],
@@ -1145,6 +1217,47 @@ export class MobileAdminService {
         })
         .catch((e) => this.logger.error('Failed to notify worker cancel', e));
     }
+
+    try {
+      const refundRes = await this.dataSource.query(
+        `UPDATE payments
+         SET status = 'refund_pending',
+             refund_reason = $2,
+             refund_requested_at = NOW(),
+             updated_at = NOW()
+         WHERE request_id = $1 AND status = 'paid'
+         RETURNING id, request_id, client_user_id, amount`,
+        [params.requestId, cancelReason || 'Cancelado por administración'],
+      );
+      const refundRows = Array.isArray(refundRes?.[0]) ? refundRes[0] : (Array.isArray(refundRes) ? refundRes : []);
+      for (const p of refundRows) {
+        this.realtimeGateway?.emitToAdmins?.('payment.refund_pending', {
+          paymentId: p.id,
+          requestId: p.request_id,
+          amount: Number(p.amount),
+        });
+        await this.notificationsService
+          ?.notifyPaymentRefund?.({
+            userId: p.client_user_id,
+            requestId: p.request_id,
+            jobTitle: req.title ?? 'tu trabajo',
+            amount: Number(p.amount),
+            stage: 'pending',
+          })
+          ?.catch?.(() => {});
+      }
+    } catch (e: any) {
+      this.logger.warn(`Could not mark payment as refund_pending on adminCancelJob: ${e?.message}`);
+    }
+
+    await this.repo?.recordStatusChange?.({
+      requestId: params.requestId,
+      fromStatus: req.status,
+      toStatus: 'cancelled',
+      changedByUserId: null,
+      changedByRole: 'admin',
+      reason: cancelReason,
+    });
 
     return { requestId: params.requestId, status: 'cancelled' };
   }

@@ -22,6 +22,12 @@ export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
   @UseGuards(UserAccessGuard)
+  @Get()
+  listMine(@Req() req: any) {
+    return this.payments.listForClient(req.principal.id);
+  }
+
+  @UseGuards(UserAccessGuard)
   @Post('checkout')
   checkout(@Req() req: any, @Body('offerId') offerId: string) {
     return this.payments.checkout(req.principal.id, offerId);
@@ -88,5 +94,23 @@ export class AdminPaymentsController {
     @Body('note') note?: string,
   ) {
     return this.payments.adminDeclineRefund(id, req.principal.id, note);
+  }
+
+  @Post(':id/confirm-refund')
+  confirmRefund(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('reason') reason?: string,
+  ) {
+    return this.payments.adminConfirmAndRefund(id, req.principal.id, reason);
+  }
+
+  @Post(':id/discard')
+  discard(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('note') note?: string,
+  ) {
+    return this.payments.adminDiscardPayment(id, req.principal.id, note);
   }
 }

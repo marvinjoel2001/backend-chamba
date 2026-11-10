@@ -728,7 +728,7 @@ export class NotificationsService {
       title,
       body,
       data: {
-        type: 'payment',
+        type: 'payment_refund',
         requestId: params.requestId,
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
         deep_link: `/request/${params.requestId}`,
@@ -788,10 +788,18 @@ export class NotificationsService {
               COUNT(*) FILTER (WHERE is_read = true)::int AS read
        FROM notifications
        WHERE user_id = $1 AND type NOT IN ('payment', 'payment_received')
-       GROUP BY type`, [userId]);
-    return { byType: rows.map((row: { type: string; unread: number; read: number }) => ({
-      type: row.type, unread: Number(row.unread), read: Number(row.read),
-    })) };
+       GROUP BY type`,
+      [userId],
+    );
+    return {
+      byType: rows.map(
+        (row: { type: string; unread: number; read: number }) => ({
+          type: row.type,
+          unread: Number(row.unread),
+          read: Number(row.read),
+        }),
+      ),
+    };
   }
 
   async markNotificationsAsRead(userId: string, ids: string[]): Promise<void> {

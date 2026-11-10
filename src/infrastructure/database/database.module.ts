@@ -26,6 +26,7 @@ import { RedactSensitiveApiLogs1793700300000 } from './migrations/1793700300000-
 import { MediaOwnership1793700400000 } from './migrations/1793700400000-MediaOwnership';
 import { MaterialsVideoAndPasswordChange1793800000000 } from './migrations/1793800000000-MaterialsVideoAndPasswordChange';
 import { AddDayBeforeReminderSent1793900000000 } from './migrations/1793900000000-AddDayBeforeReminderSent';
+import { RequestStatusHistoryAndCancelReason1794000000000 } from './migrations/1794000000000-RequestStatusHistoryAndCancelReason';
 
 @Module({
   imports: [
@@ -81,6 +82,7 @@ import { AddDayBeforeReminderSent1793900000000 } from './migrations/179390000000
             MediaOwnership1793700400000,
             MaterialsVideoAndPasswordChange1793800000000,
             AddDayBeforeReminderSent1793900000000,
+            RequestStatusHistoryAndCancelReason1794000000000,
           ],
           migrationsRun: true,
           migrationsTableName: 'typeorm_migrations',
