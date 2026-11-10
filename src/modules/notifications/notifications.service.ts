@@ -107,15 +107,22 @@ export class NotificationsService {
     category: string;
     offeredPrice: string;
     distanceKm: string;
+    /** "mañana" / "el 13 nov" si el trabajo es para otro día. */
+    startDayLabel?: string | null;
   }): Promise<number> {
     let sent = 0;
     for (const user of new Map(params.users.map(u => [u.userId, u])).values()) {
       const hex = createHash('sha256').update('request_new:' + params.jobId + ':' + user.userId).digest('hex').slice(0, 32);
       const eventId = hex.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
       const messageId = await this.deliver({ userId: user.userId,
-        title: `📍 Trabajo nuevo cerca: ${params.category}`,
-        body: `Tienes una solicitud ${params.offeredPrice}${user.distanceKm ? ' a ' + user.distanceKm + ' km' : ''}. Toca para revisar.`,
+        // Un trabajo para otro día se anuncia con su fecha: si no, se
+        // confunde con los que hay que atender ahora.
+        title: params.startDayLabel
+          ? `📅 Trabajo para ${params.startDayLabel}: ${params.category}`
+          : `📍 Trabajo nuevo cerca: ${params.category}`,
+        body: `Tienes una solicitud de ${params.offeredPrice}${user.distanceKm ? ' a ' + user.distanceKm + ' km' : ''}. Toca para revisar.`,
         data: { type: 'request_new', eventId, jobId: params.jobId, requestId: params.jobId,
+          ...(params.startDayLabel ? { startDayLabel: params.startDayLabel } : {}),
           deep_link: '/request/' + params.jobId, expiresAt: params.expiresAt || new Date(Date.now() + 120000).toISOString() } });
       if (messageId) sent++;
     }

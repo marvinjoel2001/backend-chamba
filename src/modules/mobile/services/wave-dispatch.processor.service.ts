@@ -9,6 +9,7 @@ import { DataSource } from 'typeorm';
 import { Worker, Job } from 'bullmq';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
+import { jobStartDayLabel } from '../shared/job-schedule';
 import {
   WAVE_QUEUE_NAME,
   WaveJobData,
@@ -91,6 +92,7 @@ export class WaveDispatchProcessorService
         address: params.address,
         description: params.description,
         aiCategories: params.aiCategories,
+        startDate: params.startDate ?? null,
         queuePosition: worker.queuePosition,
       });
     }
@@ -116,8 +118,9 @@ export class WaveDispatchProcessorService
       users,
       jobId: params.requestId,
       category: params.category,
-      offeredPrice: `Bs ${Math.round(params.budget)}`,
+      offeredPrice: `Bs. ${Math.round(params.budget)}`,
       distanceKm: nearestDistance.toFixed(1),
+      startDayLabel: jobStartDayLabel(params.startDate),
     });
   }
 

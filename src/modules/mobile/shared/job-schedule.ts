@@ -74,3 +74,33 @@ export function jobIsScheduledSql(alias: string): string {
     AND COALESCE(${alias}.worker_arrived, false) = false
     AND ${startDaySql(alias)} > ${TODAY_SQL})`;
 }
+
+const START_MONTHS = [
+  'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+  'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+];
+
+/**
+ * Cuándo empieza un trabajo programado, para los avisos: "mañana" o
+ * "el 13 nov". Devuelve null si es para hoy, ya pasó o no tiene fecha
+ * (se avisa como trabajo de ahora).
+ */
+export function jobStartDayLabel(
+  startDate?: string | null,
+  now: Date = new Date(),
+): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(startDate ?? '').trim());
+  if (!match) return null;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: JOB_TIME_ZONE })
+    .format(now)
+    .split('-')
+    .map(Number);
+  const daysAway = Math.round(
+    (Date.UTC(year, month - 1, day) - Date.UTC(today[0], today[1] - 1, today[2])) /
+      86_400_000,
+  );
+  if (!Number.isFinite(daysAway) || daysAway <= 0) return null;
+  if (daysAway === 1) return 'mañana';
+  return `el ${day} ${START_MONTHS[month - 1] ?? ''}`.trim();
+}

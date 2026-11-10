@@ -17,6 +17,8 @@ export interface WaveJobData {
   address: string;
   description: string;
   aiCategories: Array<{ id: string; name: string; confidence: number }>;
+  /** Fecha de inicio pedida por el cliente ('YYYY-MM-DD...'), si la puso. */
+  startDate?: string | null;
   waveWorkers: Array<{
     workerId: string;
     distanceKm: number;

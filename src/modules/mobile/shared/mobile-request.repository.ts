@@ -377,7 +377,7 @@ export class MobileRequestRepository {
   }
 
   public async expireStaleOffers(requestId?: string) {
-    const rows = await this.dataSource.query<any[]>(
+    const rawRows = await this.dataSource.query<any[]>(
       `
       UPDATE job_offers jo
       SET status = 'expired'
@@ -391,6 +391,11 @@ export class MobileRequestRepository {
       `,
       [requestId ?? null],
     );
+    const rows: any[] = Array.isArray(rawRows?.[0])
+      ? rawRows[0]
+      : Array.isArray(rawRows)
+        ? rawRows
+        : [];
 
     for (const row of rows) {
       const payload = {
@@ -600,7 +605,7 @@ export class MobileRequestRepository {
       clientUserId: string;
     }>
   > {
-    const rows = await this.dataSource.query<any[]>(
+    const rawRows = await this.dataSource.query<any[]>(
       `
       UPDATE job_offers jo
       SET status = 'expired', expires_at = NOW()
@@ -612,6 +617,11 @@ export class MobileRequestRepository {
       `,
       [requestId],
     );
+    const rows: any[] = Array.isArray(rawRows?.[0])
+      ? rawRows[0]
+      : Array.isArray(rawRows)
+        ? rawRows
+        : [];
 
     return rows.map((row) => {
       const payload = {

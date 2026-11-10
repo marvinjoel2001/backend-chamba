@@ -20,6 +20,7 @@ import { workClock } from '../shared/work-clock';
 import {
   jobIsScheduledSql,
   workerHasConflictingJobSql,
+  jobStartDayLabel,
 } from '../shared/job-schedule';
 
 // TypeORM's PostgreSQL UPDATE returns [rows, affectedCount], unlike SELECT.
@@ -583,6 +584,9 @@ export class MobileRequestsService {
              jr.materials_note,
              jr.video_url,
              jr.video_thumbnail_url,
+             jr.created_at,
+             ST_Y(jr.location::geometry) AS latitude,
+             ST_X(jr.location::geometry) AS longitude,
              CASE
                WHEN w.current_location IS NOT NULL
                  THEN ST_Distance(jr.location, w.current_location) / 1000.0
@@ -643,7 +647,27 @@ export class MobileRequestsService {
               $2::float8 * 1000
             )
             AND (
-              NOT EXISTS (SELECT 1 FROM worker_skills ws0 WHERE ws0.user_id = $1)
+              -- Pedido "General" (sin ningún oficio concreto en la categoría
+              -- ni en las de la IA): lo ven todos, igual que al avisar en
+              -- seedOffersForRequest (isGeneral). Si no, llega la alerta y
+              -- la lista sale vacía.
+              NOT EXISTS (
+                SELECT 1
+                FROM (
+                  SELECT btrim(${plainSql('jr.category')}) AS name
+                  UNION ALL
+                  SELECT btrim(${plainSql("value->>'name'")})
+                  FROM jsonb_array_elements(
+                    CASE
+                      WHEN jsonb_typeof(jr.ai_categories) = 'array'
+                        THEN jr.ai_categories
+                      ELSE '[]'::jsonb
+                    END
+                  ) value
+                ) cats
+                WHERE COALESCE(cats.name, '') NOT IN ('', 'general')
+              )
+              OR NOT EXISTS (SELECT 1 FROM worker_skills ws0 WHERE ws0.user_id = $1)
               OR EXISTS (
                 SELECT 1
                 FROM worker_skills ws
@@ -726,6 +750,8 @@ export class MobileRequestsService {
         hourlyRate: row.hourly_rate == null ? null : Number(row.hourly_rate),
         days: row.days == null ? null : Number(row.days),
         dailyRate: row.daily_rate == null ? null : Number(row.daily_rate),
+        // La app muestra "hace 5 min" y resalta las recién llegadas.
+        createdAt: row.created_at ?? null,
         startDate: row.start_date,
         materialsMode: row.materials_mode ?? null,
         materialsNote: row.materials_note ?? null,
@@ -733,6 +759,8 @@ export class MobileRequestsService {
           ? { url: row.video_url, thumbnailUrl: row.video_thumbnail_url ?? null }
           : null,
         address: row.address,
+        latitude: row.latitude == null ? null : Number(row.latitude),
+        longitude: row.longitude == null ? null : Number(row.longitude),
         status: row.status,
         isScheduled: row.is_scheduled === true,
         photos: row.photos ?? [],
@@ -1768,6 +1796,7 @@ export class MobileRequestsService {
         address: request.address,
         description: request.description,
         aiCategories: request.aiCategories ?? [],
+        startDate: request.startDate ?? null,
         waveWorkers,
         waveIndex,
       };
@@ -1820,6 +1849,7 @@ export class MobileRequestsService {
     address: string;
     description: string;
     aiCategories: Array<{ id: string; name: string; confidence: number }>;
+    startDate?: string | null;
     waveWorkers: Array<{
       workerId: string;
       distanceKm: number;
@@ -1869,6 +1899,7 @@ export class MobileRequestsService {
         address: params.address,
         description: params.description,
         aiCategories: params.aiCategories,
+        startDate: params.startDate ?? null,
         queuePosition: worker.queuePosition,
       });
     }
@@ -1899,8 +1930,9 @@ export class MobileRequestsService {
       users,
       jobId: params.requestId,
       category: params.category,
-      offeredPrice: `Bs ${params.budget.toFixed(2)}`,
+      offeredPrice: `Bs. ${Math.round(params.budget)}`,
       distanceKm: nearestDistance.toFixed(1),
+      startDayLabel: jobStartDayLabel(params.startDate),
     });
   }
 

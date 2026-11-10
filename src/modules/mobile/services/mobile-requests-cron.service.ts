@@ -365,7 +365,7 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
 
   private async cancelRequest(req: any, reason: string) {
     this.logger.log(`Cancelling request ${req.id} due to ${reason}`);
-    const cancelledRows = await this.dataSource.query<any[]>(
+    const rawCancelled = await this.dataSource.query<any[]>(
       `
       UPDATE job_requests
       SET status = 'cancelled', cancelled_by = NULL, cancelled_by_role = 'system',
@@ -376,6 +376,11 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
       `,
       [req.id],
     );
+    const cancelledRows: any[] = Array.isArray(rawCancelled?.[0])
+      ? rawCancelled[0]
+      : Array.isArray(rawCancelled)
+        ? rawCancelled
+        : [];
     if (!cancelledRows[0]) {
       // Alguien acepto/cancelo en paralelo; no hacer nada.
       return;

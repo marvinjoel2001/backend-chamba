@@ -191,4 +191,59 @@ describe('MobileRequestsService.createRequest (modalidades)', () => {
     ).rejects.toThrow('budget must be greater than 0');
     expect(queryMock).not.toHaveBeenCalled();
   });
+
+  it('getIncomingRequest incluye excepción para categoría General y devuelve createdAt y coordenadas (H-DS-01 / H-DS-11)', async () => {
+    const repo = (service as any).repo;
+    repo.getUserById = jest.fn().mockResolvedValue({
+      id: 'worker-1',
+      isAvailable: true,
+      isAgencyWorker: false,
+      verificationStatus: 'verified',
+    });
+    repo.expireStaleOffers = jest.fn().mockResolvedValue(undefined);
+    repo.getWorkerNotificationRadiusKm = jest.fn().mockResolvedValue(10);
+    repo.getOfferLifetimeConfig = jest.fn().mockResolvedValue({});
+    repo.resolveOfferLifetimeSeconds = jest.fn().mockReturnValue(300);
+
+    queryMock.mockResolvedValueOnce([
+      {
+        request_id: 'req-general-1',
+        title: 'Limpiar patio',
+        description: 'La puerta de entrada roza el piso.',
+        category: 'General',
+        budget: '80',
+        price_type: 'fixed',
+        modality: 'fixed',
+        created_at: '2026-11-10T18:00:00.000Z',
+        address: 'Zona Sopocachi',
+        latitude: '-16.505',
+        longitude: '-68.130',
+        status: 'searching',
+        is_scheduled: false,
+        photos: [],
+        distance_km: '0.7',
+        client_id: 'client-1',
+        client_first_name: 'Ana',
+        client_last_name: 'Quispe',
+        client_rating: '4.8',
+        client_reviews: '5',
+        client_verification: 'verified',
+      },
+    ]);
+
+    const res = await service.getIncomingRequest('worker-1');
+    const sql: string = queryMock.mock.calls[0][0];
+    expect(sql).toContain("NOT IN ('', 'general')");
+    expect(sql).toContain('ST_Y(jr.location::geometry) AS latitude');
+    expect(sql).toContain('ST_X(jr.location::geometry) AS longitude');
+    expect(res.requests).toHaveLength(1);
+    expect(res.requests[0]).toMatchObject({
+      id: 'req-general-1',
+      title: 'Limpiar patio',
+      category: 'General',
+      createdAt: '2026-11-10T18:00:00.000Z',
+      latitude: -16.505,
+      longitude: -68.13,
+    });
+  });
 });
