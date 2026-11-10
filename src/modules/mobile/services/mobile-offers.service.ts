@@ -956,12 +956,31 @@ export class MobileOffersService {
 
     const workerRows = await this.dataSource.query<any[]>(
       `
-      SELECT worker_user_id
-      FROM job_offers
-      WHERE request_id = $1
-        AND status = 'pending'
+      SELECT DISTINCT jo.worker_user_id
+      FROM job_offers jo
+      JOIN users w ON w.id = jo.worker_user_id
+      WHERE jo.request_id = $1
+        AND (
+          jo.status = 'pending'
+          -- Las ofertas vencen en 2-15 min: quien ofertó y se le venció también
+          -- se entera de que el cliente subió el precio, salvo que haya
+          -- descartado el trabajo, bloqueado al cliente o ya no esté disponible.
+          OR (
+            jo.status = 'expired'
+            AND jo.offered_by_agency_id IS NULL
+            AND w.is_available = true
+            AND w.is_agency_worker = false
+            AND COALESCE(w.is_blocked, false) = false
+            AND NOT EXISTS (SELECT 1 FROM dismissed_requests d
+                            WHERE d.request_id = jo.request_id AND d.worker_user_id = jo.worker_user_id)
+            AND NOT EXISTS (SELECT 1 FROM request_reports r
+                            WHERE r.request_id = jo.request_id AND r.reporter_user_id = jo.worker_user_id)
+            AND NOT EXISTS (SELECT 1 FROM user_blocks b
+                            WHERE b.blocker_user_id = jo.worker_user_id AND b.blocked_user_id = $2)
+          )
+        )
       `,
-      [params.requestId],
+      [params.requestId, params.clientUserId],
     );
 
     const client = await this.repo.getUserById(params.clientUserId);

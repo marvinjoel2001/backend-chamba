@@ -67,7 +67,7 @@ type CreateRequestInput = {
   materialsMode?: string;
   materialsNote?: string;
   /** Video ya subido por el backend para este cliente (ver mobile.service). */
-  video?: { url: string; publicId: string; thumbnailUrl: string | null };
+  video?: { url: string; publicId: string | null; thumbnailUrl: string | null };
 };
 
 const MATERIALS_MODES = ['client', 'worker', 'discuss'];
@@ -702,6 +702,7 @@ export class MobileRequestsService {
       return {
         isAvailable: Boolean(user.isAvailable),
         available: Boolean(user.isAvailable),
+        isAgencyWorker: Boolean(user.isAgencyWorker),
         requests: [],
       };
     }
@@ -770,6 +771,9 @@ export class MobileRequestsService {
     return {
       isAvailable: Boolean(user.isAvailable),
       available: Boolean(user.isAvailable),
+      // La app lo guardaba solo al iniciar sesión: si una agencia vincula al
+      // trabajador después, seguía esperando solicitudes que ya no le llegan.
+      isAgencyWorker: Boolean(user.isAgencyWorker),
       offerLifetimeSeconds:
         requests.length > 0 ? requests[0].offerLifetimeSeconds : 120,
       request: requests.length > 0 ? requests[0] : null,

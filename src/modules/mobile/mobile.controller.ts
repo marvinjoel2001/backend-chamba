@@ -47,6 +47,11 @@ export class MobileController {
     private readonly workModalities: WorkModalitiesService,
   ) {}
 
+  @Get('mobile/profile/verification')
+  getMyVerification(@Req() req: any) {
+    return this.mobileService.getMyVerification(req.principal.id);
+  }
+
   // ── Eliminación de cuenta (espera de 30 días). El usuario sale del token,
   //    nunca del body, para que nadie pueda programar el borrado de otra cuenta.
   @Get('mobile/account/deletion')
@@ -225,7 +230,8 @@ export class MobileController {
     @Body('startDate') startDate?: string,
     @Body('materialsMode') materialsMode?: string,
     @Body('materialsNote') materialsNote?: string,
-    @Body('video') video?: { uploadToken?: string; thumbnailUrl?: string },
+    @Body('video')
+    video?: { uploadToken?: string; thumbnailUrl?: string; fromRequestId?: string },
   ) {
     return this.mobileService.createRequest({
       materialsMode,
@@ -235,6 +241,7 @@ export class MobileController {
           ? {
               uploadToken: video.uploadToken,
               thumbnailUrl: video.thumbnailUrl,
+              fromRequestId: video.fromRequestId,
             }
           : undefined,
       clientUserId,

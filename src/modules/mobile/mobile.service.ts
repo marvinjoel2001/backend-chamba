@@ -65,7 +65,8 @@ type CreateRequestInput = {
   /** 'client' (los tiene), 'worker' (que los traiga) o 'discuss' (lo hablan). */
   materialsMode?: string;
   materialsNote?: string;
-  video?: { uploadToken?: string; thumbnailUrl?: string };
+  /** fromRequestId: "Buscar otro trabajador" reutiliza el video de un pedido propio. */
+  video?: { uploadToken?: string; thumbnailUrl?: string; fromRequestId?: string };
 };
 
 @Injectable()
@@ -105,6 +106,22 @@ export class MobileService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     // El esquema lo manejan las migraciones (database.module.ts → migrationsRun).
     await this.seedBaseData();
+  }
+
+  async getMyVerification(userId: string) {
+    // Read the database rather than an admin/user cache. Never accept a user
+    // identifier from the client for this endpoint.
+    const user = await this.repo.getUserById(userId);
+    return {
+      user: {
+        id: user.id,
+        verificationStatus: user.verificationStatus,
+        idPhotoUrl: user.idPhotoUrl,
+        facePhotoUrl: user.facePhotoUrl,
+        idPhotoVerified: user.idPhotoVerified,
+        facePhotoVerified: user.facePhotoVerified,
+      },
+    };
   }
 
   async register(input: {
@@ -666,8 +683,10 @@ export class MobileService implements OnModuleInit {
     }
 
     const normalizedEmail = normalized.toLowerCase();
-    const normalizedPhone = this.geoHelpers.normalizePhone(normalized);
+    const normalizedPhone = normalized.includes('@') ? null : this.geoHelpers.normalizePhone(normalized);
 
+    // Misma búsqueda que login(): también encuentra teléfonos guardados con el
+    // prefijo 591 (trabajadores creados por agencias o datos antiguos).
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT id
@@ -675,7 +694,8 @@ export class MobileService implements OnModuleInit {
       WHERE LOWER(email) = LOWER($1)
          OR (
            $2::text IS NOT NULL
-           AND regexp_replace(COALESCE(phone, ''), '[^0-9]+', '', 'g') = $2
+           AND (regexp_replace(COALESCE(phone, ''), '[^0-9]+', '', 'g') = $2
+             OR ($2 ~ '^[67][0-9]{7}$' AND regexp_replace(COALESCE(phone, ''), '[^0-9]+', '', 'g') = '591' || $2))
          )
       LIMIT 1
       `,
@@ -718,7 +738,9 @@ export class MobileService implements OnModuleInit {
     }
     // El video solo vale con el comprobante de que lo subió el backend para
     // este cliente.
-    let video: { url: string; publicId: string; thumbnailUrl: string | null } | undefined;
+    let video:
+      | { url: string; publicId: string | null; thumbnailUrl: string | null }
+      | undefined;
     if (input.video?.uploadToken) {
       const ticket = this.access.verifyUploadTicket(
         input.video.uploadToken,
@@ -733,6 +755,30 @@ export class MobileService implements OnModuleInit {
         publicId: ticket.publicId,
         thumbnailUrl:
           thumb && thumb.startsWith('https://res.cloudinary.com/') ? thumb : null,
+      };
+    } else if (
+      typeof input.video?.fromRequestId === 'string' &&
+      /^[0-9a-f-]{36}$/i.test(input.video.fromRequestId)
+    ) {
+      // "Buscar otro trabajador": el video ya lo subió el backend para un
+      // pedido de este mismo cliente. Se guarda sin publicId: el archivo sigue
+      // siendo del pedido original y nunca se borra desde la copia.
+      const rows = await this.dataSource.query<any[]>(
+        `SELECT video_url, video_thumbnail_url
+           FROM job_requests
+          WHERE id = $1 AND client_user_id = $2 AND video_url IS NOT NULL
+          LIMIT 1`,
+        [input.video.fromRequestId, input.clientUserId],
+      );
+      if (!rows[0]) {
+        throw new BadRequestException(
+          'No encontramos el video anterior. Quítalo o graba uno nuevo.',
+        );
+      }
+      video = {
+        url: rows[0].video_url,
+        publicId: null,
+        thumbnailUrl: rows[0].video_thumbnail_url ?? null,
       };
     }
     return this.requestsService.createRequest({

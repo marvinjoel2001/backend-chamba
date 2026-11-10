@@ -621,10 +621,13 @@ export class MobileUsersService {
        AND ct.worker_user_id = jo.worker_user_id
        AND ct.client_user_id = jr.client_user_id
       WHERE jo.worker_user_id = $1
-        AND jo.status IN ('accepted', 'rejected')
+        -- Solo los trabajos que el trabajador ganó: las ofertas rechazadas
+        -- salían como "Asignado"/"Completado" con el monto de otro trabajador
+        -- y además gastaban el límite que usa la billetera.
+        AND jo.status = 'accepted'
         AND jr.status IN ('assigned', 'completed', 'cancelled')
       ORDER BY jo.created_at DESC
-      LIMIT 80
+      LIMIT 300
       `,
       [workerUserId],
     );

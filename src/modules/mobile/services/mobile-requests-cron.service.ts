@@ -11,6 +11,8 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
   // Si la solicitud sigue sin asignarse cuando falta menos de esto para el
   // inicio programado, se cancela automaticamente.
   private static readonly CANCEL_BEFORE_START_MINUTES = 60;
+  /** Búsqueda mínima que debe tener un pedido para aplicarle la regla anterior. */
+  private static readonly MIN_SEARCH_BEFORE_START_CANCEL_MINUTES = 120;
   // Ventana del recordatorio "tu trabajo empieza pronto".
   private static readonly START_REMINDER_WINDOW_MINUTES = 60;
   // Recordatorio de la noche anterior, en hora de Bolivia: de 19:00 a 22:00.
@@ -96,7 +98,17 @@ export class MobileRequestsCronService implements OnApplicationBootstrap {
       let reminder1Minutes = modalityConfig.reminder1Minutes;
       let reminder2Minutes = modalityConfig.reminder2Minutes;
 
-      if (startAt) {
+      // Pedido para "hoy" creado cuando ya faltaba poco para el inicio (o con
+      // la hora pasada: una fecha sin hora cuenta como las 09:00): la regla
+      // de "cancelar 1 hora antes" lo cancelaba en el primer ciclo, a los 0-5
+      // minutos. Esos pedidos usan el tiempo normal de su modalidad.
+      const createdInsideStartWindow =
+        startAt != null &&
+        (startAt.getTime() - createdAt.getTime()) / (1000 * 60) <=
+          MobileRequestsCronService.CANCEL_BEFORE_START_MINUTES +
+            MobileRequestsCronService.MIN_SEARCH_BEFORE_START_CANCEL_MINUTES;
+
+      if (startAt && !createdInsideStartWindow) {
         // Trabajo con fecha/hora de inicio: cancelar si falta menos de 1 hora
         // (o ya paso) y nadie fue asignado.
         const minutesUntilStart =

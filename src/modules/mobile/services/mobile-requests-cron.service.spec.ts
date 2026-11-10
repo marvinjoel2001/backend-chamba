@@ -39,7 +39,20 @@ describe('request deadlines and reminders', () => {
     expect(repo.closePendingOffers).not.toHaveBeenCalled();
   });
   it('scheduled requests enter cancellation when only 60 minutes remain', async () => {
-    db.query.mockResolvedValueOnce([request('daily', 10, { start_date: '2026-10-09T09:00:00' })]).mockResolvedValueOnce([]);
+    db.query.mockResolvedValueOnce([request('daily', 300, { start_date: '2026-10-09T09:00:00' })]).mockResolvedValueOnce([]);
+    await cron.handleRequestTimeouts();
+    expect(db.query).toHaveBeenCalledTimes(2);
+  });
+  // 12:00Z son las 08:00 en Bolivia.
+  it.each([['2026-10-09T08:30:00'], ['2026-10-09T09:00:00'], ['2026-10-09T07:00:00'], ['2026-10-08']])(
+    'un pedido para hoy creado cerca del inicio (%s) no se cancela a los minutos', async (start_date) => {
+      db.query.mockResolvedValueOnce([request('daily', 4, { start_date })]);
+      await cron.handleRequestTimeouts();
+      expect(db.query).toHaveBeenCalledTimes(1);
+      expect(notifications.notifyClientToImproveOffer).not.toHaveBeenCalled();
+    });
+  it('ese pedido sí vence con el tiempo normal de su modalidad', async () => {
+    db.query.mockResolvedValueOnce([request('daily', 720, { start_date: '2026-10-08T22:00:00' })]).mockResolvedValueOnce([]);
     await cron.handleRequestTimeouts();
     expect(db.query).toHaveBeenCalledTimes(2);
   });

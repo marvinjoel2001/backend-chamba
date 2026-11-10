@@ -120,6 +120,53 @@ describe('Fotos: el backend solo usa y borra imágenes que él subió', () => {
       ]);
     });
 
+    describe('video del pedido anterior ("Buscar otro trabajador")', () => {
+      const PREVIOUS = '11111111-2222-3333-4444-555555555555';
+      let query: jest.Mock;
+      beforeEach(() => {
+        query = jest.fn();
+        (service as any).dataSource = { query };
+      });
+
+      it('copia el video de un pedido propio, sin publicId', async () => {
+        query.mockResolvedValue([
+          { video_url: 'https://res.cloudinary.com/chamba-cloud/video/upload/v.mp4', video_thumbnail_url: null },
+        ]);
+        await service.createRequest({
+          clientUserId: 'cliente-1',
+          video: { fromRequestId: PREVIOUS },
+        } as any);
+        // Solo busca entre los pedidos de este cliente.
+        expect(query.mock.calls[0][1]).toEqual([PREVIOUS, 'cliente-1']);
+        expect(query.mock.calls[0][0]).toContain('client_user_id = $2');
+        expect(requests.createRequest.mock.calls[0][0].video).toEqual({
+          url: 'https://res.cloudinary.com/chamba-cloud/video/upload/v.mp4',
+          publicId: null,
+          thumbnailUrl: null,
+        });
+      });
+
+      it('rechaza el pedido de otro cliente o sin video', async () => {
+        query.mockResolvedValue([]);
+        await expect(
+          service.createRequest({
+            clientUserId: 'cliente-1',
+            video: { fromRequestId: PREVIOUS },
+          } as any),
+        ).rejects.toThrow('video anterior');
+        expect(requests.createRequest).not.toHaveBeenCalled();
+      });
+
+      it('un id que no es un uuid se ignora sin consultar la base', async () => {
+        await service.createRequest({
+          clientUserId: 'cliente-1',
+          video: { fromRequestId: "x' OR 1=1" },
+        } as any);
+        expect(query).not.toHaveBeenCalled();
+        expect(requests.createRequest.mock.calls[0][0].video).toBeUndefined();
+      });
+    });
+
     it.each([EXTERNAL, OTHER_CLOUD, ''])(
       'rechaza una foto que no es de Chamba: %s',
       async (url) => {
