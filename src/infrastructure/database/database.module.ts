@@ -29,6 +29,7 @@ import { AddDayBeforeReminderSent1793900000000 } from './migrations/179390000000
 import { RequestStatusHistoryAndCancelReason1794000000000 } from './migrations/1794000000000-RequestStatusHistoryAndCancelReason';
 import { AddAvatarUrlToBotProfiles1794363000000 } from './migrations/1794363000000-AddAvatarUrlToBotProfiles';
 import { SeedSantaCruzBotsAndUsers1794363500000 } from './migrations/1794363500000-SeedSantaCruzBotsAndUsers';
+import { UpdateSantaCruzBotsAvatarsAndGenders1794364000000 } from './migrations/1794364000000-UpdateSantaCruzBotsAvatarsAndGenders';
 
 @Module({
   imports: [
@@ -87,6 +88,7 @@ import { SeedSantaCruzBotsAndUsers1794363500000 } from './migrations/17943635000
             RequestStatusHistoryAndCancelReason1794000000000,
             AddAvatarUrlToBotProfiles1794363000000,
             SeedSantaCruzBotsAndUsers1794363500000,
+            UpdateSantaCruzBotsAvatarsAndGenders1794364000000,
           ],
           migrationsRun: true,
           migrationsTableName: 'typeorm_migrations',
