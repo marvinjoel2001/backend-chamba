@@ -27,6 +27,8 @@ import { MediaOwnership1793700400000 } from './migrations/1793700400000-MediaOwn
 import { MaterialsVideoAndPasswordChange1793800000000 } from './migrations/1793800000000-MaterialsVideoAndPasswordChange';
 import { AddDayBeforeReminderSent1793900000000 } from './migrations/1793900000000-AddDayBeforeReminderSent';
 import { RequestStatusHistoryAndCancelReason1794000000000 } from './migrations/1794000000000-RequestStatusHistoryAndCancelReason';
+import { AddAvatarUrlToBotProfiles1794363000000 } from './migrations/1794363000000-AddAvatarUrlToBotProfiles';
+import { SeedSantaCruzBotsAndUsers1794363500000 } from './migrations/1794363500000-SeedSantaCruzBotsAndUsers';
 
 @Module({
   imports: [
@@ -83,6 +85,8 @@ import { RequestStatusHistoryAndCancelReason1794000000000 } from './migrations/1
             MaterialsVideoAndPasswordChange1793800000000,
             AddDayBeforeReminderSent1793900000000,
             RequestStatusHistoryAndCancelReason1794000000000,
+            AddAvatarUrlToBotProfiles1794363000000,
+            SeedSantaCruzBotsAndUsers1794363500000,
           ],
           migrationsRun: true,
           migrationsTableName: 'typeorm_migrations',

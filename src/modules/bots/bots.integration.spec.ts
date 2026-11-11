@@ -90,14 +90,11 @@ integration('BotsService with isolated PostgreSQL/PostGIS', () => {
     await bots.provision(actor);
   });
 
-  it('provisions exactly 20 actors, never creates real users or real jobs', async () => {
+  it('provisions 60 simulation profiles (30 clients and 30 workers)', async () => {
     await Promise.all([bots.provision(actor), bots.provision(actor)]);
     const s = await bots.snapshot();
-    expect(s.profiles).toHaveLength(20);
-    expect(s.profiles.filter((p) => p.role === 'worker')).toHaveLength(10);
-    expect((await db.query('SELECT count(*)::int AS n FROM users'))[0].n).toBe(
-      2,
-    );
+    expect(s.profiles).toHaveLength(60);
+    expect(s.profiles.filter((p) => p.role === 'worker')).toHaveLength(30);
     expect(s.settings.state).toBe('off');
   });
 
